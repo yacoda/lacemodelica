@@ -16,6 +16,7 @@ struct Variable {
     std::string variability;  // "fixed", "tunable", "continuous"
     std::string initial;  // "exact", "approx", "calculated"
     std::string startValue;
+    std::string description;  // Variable description from comment
     int valueReference;
     int derivativeOf = -1;  // valueReference of state if this is a derivative
     std::vector<std::string> dimensions;  // For arrays

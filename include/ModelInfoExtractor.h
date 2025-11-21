@@ -23,6 +23,7 @@ private:
     void identifyDerivatives();
 
     std::string extractStartValue(basemodelica::BaseModelicaParser::ModificationContext* ctx);
+    std::string extractDescription(basemodelica::BaseModelicaParser::CommentContext* ctx);
     std::vector<std::string> extractDimensions(basemodelica::BaseModelicaParser::DeclarationContext* ctx);
 };
 

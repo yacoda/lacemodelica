@@ -109,6 +109,11 @@ void ModelInfoExtractor::extractVariables(basemodelica::BaseModelicaParser::Base
                         var.startValue = extractStartValue(mod);
                     }
 
+                    // Extract description from comment
+                    if (compDecl->comment()) {
+                        var.description = extractDescription(compDecl->comment());
+                    }
+
                     info.addVariable(var);
                 }
             }
@@ -183,6 +188,18 @@ std::string ModelInfoExtractor::extractStartValue(basemodelica::BaseModelicaPars
         }
     }
 
+    return "";
+}
+
+std::string ModelInfoExtractor::extractDescription(basemodelica::BaseModelicaParser::CommentContext* ctx) {
+    if (ctx && ctx->stringComment()) {
+        std::string desc = ctx->stringComment()->getText();
+        // Remove surrounding quotes
+        if (desc.size() >= 2 && desc.front() == '"' && desc.back() == '"') {
+            return desc.substr(1, desc.size() - 2);
+        }
+        return desc;
+    }
     return "";
 }
 

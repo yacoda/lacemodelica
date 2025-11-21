@@ -65,6 +65,11 @@ bool FMUGenerator::generateModelDescription(const ModelInfo& info, const std::st
 
         varElem->SetAttribute("name", var.name.c_str());
         varElem->SetAttribute("valueReference", var.valueReference);
+
+        if (!var.description.empty()) {
+            varElem->SetAttribute("description", var.description.c_str());
+        }
+
         varElem->SetAttribute("causality", var.causality.c_str());
         varElem->SetAttribute("variability", var.variability.c_str());
 
