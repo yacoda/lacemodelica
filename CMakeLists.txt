@@ -9,13 +9,13 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# ANTLR4 setup
+# Dependencies
 include(FetchContent)
 
+# ANTLR4 runtime
 set(ANTLR_VERSION 4.13.2)
 set(ANTLR_TAG ${ANTLR_VERSION})
 
-# Download ANTLR4 runtime for C++
 FetchContent_Declare(
     antlr4_runtime
     GIT_REPOSITORY https://github.com/antlr/antlr4.git
@@ -23,7 +23,14 @@ FetchContent_Declare(
     SOURCE_SUBDIR runtime/Cpp
 )
 
-FetchContent_MakeAvailable(antlr4_runtime)
+# TinyXML-2
+FetchContent_Declare(
+    tinyxml2
+    GIT_REPOSITORY https://github.com/leethomason/tinyxml2.git
+    GIT_TAG 10.0.0
+)
+
+FetchContent_MakeAvailable(antlr4_runtime tinyxml2)
 
 # Generated parser location (in source tree so it can be committed)
 set(GENERATED_PARSER_DIR ${CMAKE_SOURCE_DIR}/generated)
@@ -68,4 +75,4 @@ add_executable(lacemodelica
     src/main.cpp
     ${GENERATED_SOURCES}
 )
-target_link_libraries(lacemodelica antlr4_shared)
+target_link_libraries(lacemodelica antlr4_shared tinyxml2)

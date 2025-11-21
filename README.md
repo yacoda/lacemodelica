@@ -116,6 +116,7 @@ All tests currently pass with successful parsing.
 ### Runtime Dependencies
 
 - ANTLR4 C++ Runtime 4.13.2 (automatically fetched via CMake)
+- TinyXML-2 10.0.0 (automatically fetched via CMake)
 
 ### Build Dependencies
 
@@ -132,6 +133,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - **BaseModelica Grammar**: Copyright (c) 2024 Jadon Clugston (MIT License)
   - Source: https://github.com/SciML/BaseModelica.jl
 - **ANTLR4**: Copyright (c) 2012-2024 The ANTLR Project (BSD-3-Clause License)
+- **TinyXML-2**: Copyright (c) Lee Thomason (Zlib License)
 
 ## Contributing
 
