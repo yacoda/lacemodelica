@@ -48,6 +48,14 @@ public:
         return nullptr;
     }
 
+    const Variable* findVariable(const std::string& name) const {
+        auto it = variableIndex.find(name);
+        if (it != variableIndex.end()) {
+            return &variables[it->second];
+        }
+        return nullptr;
+    }
+
     std::vector<Variable> getStates() const {
         std::vector<Variable> states;
         for (const auto& var : variables) {

@@ -85,14 +85,26 @@ bool FMUGenerator::generateModelDescription(const ModelInfo& info, const std::st
             varElem->SetAttribute("derivative", var.derivativeOf);
         }
 
-        // Handle array dimensions
+        // Handle array dimensions as child elements (FMI 3.0)
         if (!var.dimensions.empty()) {
-            std::string dimStr;
-            for (size_t i = 0; i < var.dimensions.size(); i++) {
-                if (i > 0) dimStr += " ";
-                dimStr += var.dimensions[i];
+            for (const auto& dim : var.dimensions) {
+                XMLElement* dimElem = doc.NewElement("Dimension");
+                // If dimension is a number, use start attribute
+                // If dimension is a variable name, look up its valueReference
+                if (std::isdigit(dim[0])) {
+                    dimElem->SetAttribute("start", dim.c_str());
+                } else {
+                    // It's a structural parameter reference - find its valueReference
+                    auto* dimVar = info.findVariable(dim);
+                    if (dimVar) {
+                        dimElem->SetAttribute("valueReference", dimVar->valueReference);
+                    } else {
+                        // Fallback if not found - use start with the value
+                        dimElem->SetAttribute("start", dim.c_str());
+                    }
+                }
+                varElem->InsertEndChild(dimElem);
             }
-            varElem->SetAttribute("dimensions", dimStr.c_str());
         }
 
         modelVariables->InsertEndChild(varElem);
