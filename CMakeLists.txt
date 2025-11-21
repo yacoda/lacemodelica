@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2025 Joris Gillis, YACODA
+
 cmake_minimum_required(VERSION 3.14)
 
 project(lacemodelica VERSION 0.1.0 LANGUAGES CXX)

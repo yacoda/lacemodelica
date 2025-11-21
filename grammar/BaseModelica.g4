@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2024 Jadon Clugston
+// Source: https://github.com/SciML/BaseModelica.jl
+
 grammar BaseModelica;
 
 // ============================================================================

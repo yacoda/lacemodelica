@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2025 Joris Gillis, YACODA
+
 #include <iostream>
 #include <fstream>
 #include <filesystem>
