@@ -1,0 +1,122 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2025 Joris Gillis, YACODA
+
+name: CI
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+
+jobs:
+  build-and-test:
+    name: Build and Test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        build_type: [Release, Debug]
+        include:
+          - os: ubuntu-latest
+            compiler: g++
+          - os: macos-latest
+            compiler: clang++
+          - os: windows-latest
+            compiler: msvc
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup CMake
+      uses: jwlawson/actions-setup-cmake@v2
+      with:
+        cmake-version: '3.14.x'
+
+    - name: Install dependencies (Ubuntu)
+      if: runner.os == 'Linux'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential
+
+    - name: Install dependencies (macOS)
+      if: runner.os == 'macOS'
+      run: |
+        brew install cmake
+
+    - name: Configure CMake (Unix)
+      if: runner.os != 'Windows'
+      run: |
+        mkdir -p build
+        cd build
+        cmake .. -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+      env:
+        CXX: ${{ matrix.compiler }}
+
+    - name: Configure CMake (Windows)
+      if: runner.os == 'Windows'
+      run: |
+        mkdir build
+        cd build
+        cmake .. -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+
+    - name: Build (Unix)
+      if: runner.os != 'Windows'
+      run: |
+        cd build
+        make -j$(nproc 2>/dev/null || sysctl -n hw.ncpu)
+
+    - name: Build (Windows)
+      if: runner.os == 'Windows'
+      run: |
+        cd build
+        cmake --build . --config ${{ matrix.build_type }} -j
+
+    - name: Run tests (Unix)
+      if: runner.os != 'Windows'
+      run: |
+        cd build
+        ./lacemodelica
+
+    - name: Run tests (Windows)
+      if: runner.os == 'Windows'
+      run: |
+        cd build
+        ${{ matrix.build_type }}\lacemodelica.exe
+
+    - name: Test specific file (Unix)
+      if: runner.os != 'Windows'
+      run: |
+        cd build
+        ./lacemodelica ../test/testfiles/MinimalValid.bmo
+        ./lacemodelica ../test/testfiles/NegativeVariable.bmo
+
+    - name: Test specific file (Windows)
+      if: runner.os == 'Windows'
+      run: |
+        cd build
+        ${{ matrix.build_type }}\lacemodelica.exe ..\test\testfiles\MinimalValid.bmo
+        ${{ matrix.build_type }}\lacemodelica.exe ..\test\testfiles\NegativeVariable.bmo
+
+    - name: Upload build artifacts (Linux)
+      if: matrix.build_type == 'Release' && matrix.os == 'ubuntu-latest'
+      uses: actions/upload-artifact@v4
+      with:
+        name: lacemodelica-linux
+        path: build/lacemodelica
+
+    - name: Upload build artifacts (macOS)
+      if: matrix.build_type == 'Release' && matrix.os == 'macos-latest'
+      uses: actions/upload-artifact@v4
+      with:
+        name: lacemodelica-macos
+        path: build/lacemodelica
+
+    - name: Upload build artifacts (Windows)
+      if: matrix.build_type == 'Release' && matrix.os == 'windows-latest'
+      uses: actions/upload-artifact@v4
+      with:
+        name: lacemodelica-windows
+        path: build/Release/lacemodelica.exe
