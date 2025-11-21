@@ -73,6 +73,8 @@ include_directories(${GENERATED_PARSER_DIR})
 # Executable
 add_executable(lacemodelica
     src/main.cpp
+    src/ModelInfoExtractor.cpp
+    src/FMUGenerator.cpp
     ${GENERATED_SOURCES}
 )
 target_link_libraries(lacemodelica antlr4_shared tinyxml2)

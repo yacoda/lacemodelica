@@ -7,6 +7,8 @@
 #include "antlr4-runtime.h"
 #include "BaseModelicaLexer.h"
 #include "BaseModelicaParser.h"
+#include "ModelInfoExtractor.h"
+#include "FMUGenerator.h"
 
 using namespace antlr4;
 namespace fs = std::filesystem;
@@ -53,12 +55,56 @@ int main(int argc, char* argv[]) {
     std::string testDir = "test/testfiles";
 
     if (argc > 1) {
-        // Parse specified file
+        // Parse specified file and generate FMU
         std::string filepath = argv[1];
         std::cout << "Parsing: " << filepath << std::endl;
-        bool success = parseFile(filepath);
-        std::cout << (success ? "✓ Success" : "✗ Failed") << std::endl;
-        return success ? 0 : 1;
+
+        std::ifstream stream(filepath);
+        if (!stream.is_open()) {
+            std::cerr << "Failed to open file: " << filepath << std::endl;
+            return 1;
+        }
+
+        ANTLRInputStream input(stream);
+        basemodelica::BaseModelicaLexer lexer(&input);
+        CommonTokenStream tokens(&lexer);
+        basemodelica::BaseModelicaParser parser(&tokens);
+
+        ErrorListener errorListener;
+        parser.removeErrorListeners();
+        parser.addErrorListener(&errorListener);
+
+        auto tree = parser.baseModelica();
+
+        if (errorListener.hasError) {
+            std::cout << "✗ Parsing failed" << std::endl;
+            return 1;
+        }
+
+        std::cout << "✓ Parsing succeeded" << std::endl;
+
+        // Extract model information
+        std::cout << "\nExtracting model information..." << std::endl;
+        lacemodelica::ModelInfoExtractor extractor;
+        lacemodelica::ModelInfo info = extractor.extract(tree);
+
+        std::cout << "  Model: " << info.modelName << std::endl;
+        std::cout << "  Variables: " << info.variables.size() << std::endl;
+
+        // Generate FMU
+        std::cout << "\nGenerating FMU..." << std::endl;
+        std::string outputPath = info.modelName + "_fmu";
+        lacemodelica::FMUGenerator generator;
+        bool success = generator.generateFMU(info, outputPath);
+
+        if (success) {
+            std::cout << "\n✓ FMU generated successfully in " << outputPath << "/" << std::endl;
+        } else {
+            std::cout << "\n✗ FMU generation failed" << std::endl;
+            return 1;
+        }
+
+        return 0;
     } else {
         // Parse all test files
         if (!fs::exists(testDir)) {
