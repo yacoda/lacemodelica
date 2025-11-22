@@ -2,6 +2,7 @@
 build/
 dist/
 *_fmu/
+external_projects/
 
 # IDE
 .vscode/

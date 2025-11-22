@@ -9,6 +9,7 @@
 #include "BaseModelicaParser.h"
 #include "ModelInfoExtractor.h"
 #include "FMUGenerator.h"
+#include "ONNXGenerator.h"
 
 using namespace antlr4;
 namespace fs = std::filesystem;
@@ -97,10 +98,18 @@ int main(int argc, char* argv[]) {
         lacemodelica::FMUGenerator generator;
         bool success = generator.generateFMU(info, outputPath);
 
-        if (success) {
-            std::cout << "\n✓ FMU generated successfully in " << outputPath << "/" << std::endl;
-        } else {
-            std::cout << "\n✗ FMU generation failed" << std::endl;
+        if (!success) {
+            std::cout << "\nFMU generation failed" << std::endl;
+            return 1;
+        }
+
+        // Generate ONNX layered standard
+        std::cout << "\nGenerating ONNX layered standard..." << std::endl;
+        try {
+            lacemodelica::ONNXGenerator::generate(info, outputPath);
+            std::cout << "\nFMU with ONNX layered standard generated successfully in " << outputPath << "/" << std::endl;
+        } catch (const std::exception& e) {
+            std::cerr << "ONNX generation failed: " << e.what() << std::endl;
             return 1;
         }
 

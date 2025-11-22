@@ -11,6 +11,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 # Dependencies
 include(FetchContent)
+include(ExternalProject)
 
 # ANTLR4 runtime
 set(ANTLR_VERSION 4.13.2)
@@ -31,6 +32,68 @@ FetchContent_Declare(
 )
 
 FetchContent_MakeAvailable(antlr4_runtime tinyxml2)
+
+# Protobuf (required for ONNX)
+ExternalProject_Add(protobuf-external
+    GIT_REPOSITORY https://github.com/protocolbuffers/protobuf
+    GIT_SHALLOW ON
+    GIT_TAG v31.1
+    PREFIX "${CMAKE_BINARY_DIR}/external_projects"
+    UPDATE_COMMAND ""
+    CMAKE_ARGS
+        -DCMAKE_CXX_STANDARD=17
+        -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
+        -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+        -Dprotobuf_BUILD_TESTS=OFF
+        -Dprotobuf_ABSL_PROVIDER=module
+)
+
+add_library(protobuf::libprotobuf STATIC IMPORTED)
+add_dependencies(protobuf::libprotobuf protobuf-external)
+
+# utf8_range (protobuf dependency)
+add_library(utf8_range::utf8_range STATIC IMPORTED)
+set_target_properties(utf8_range::utf8_range PROPERTIES
+    IMPORTED_LOCATION "${CMAKE_BINARY_DIR}/external_projects/lib/${CMAKE_STATIC_LIBRARY_PREFIX}utf8_range${CMAKE_STATIC_LIBRARY_SUFFIX}"
+    INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_BINARY_DIR}/external_projects/include")
+target_link_libraries(protobuf::libprotobuf INTERFACE utf8_range::utf8_range)
+
+# Setup abseil library dependencies
+include(${CMAKE_SOURCE_DIR}/cmake/abseil_dependencies.cmake)
+setup_abseil_dependencies(protobuf::libprotobuf)
+
+file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/external_projects/include")
+set_target_properties(protobuf::libprotobuf PROPERTIES
+    IMPORTED_LOCATION "${CMAKE_BINARY_DIR}/external_projects/lib/${CMAKE_STATIC_LIBRARY_PREFIX}protobuf${CMAKE_STATIC_LIBRARY_SUFFIX}"
+    INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_BINARY_DIR}/external_projects/include")
+
+# ONNX
+ExternalProject_Add(onnx-external
+    DEPENDS protobuf::libprotobuf
+    GIT_REPOSITORY https://github.com/onnx/onnx
+    GIT_SHALLOW ON
+    GIT_TAG v1.19.1
+    PREFIX "${CMAKE_BINARY_DIR}/external_projects"
+    UPDATE_COMMAND ""
+    CMAKE_ARGS
+        -DCMAKE_CXX_STANDARD=17
+        -DONNX_BUILD_TESTS=OFF
+        -DCMAKE_PREFIX_PATH=${CMAKE_BINARY_DIR}/external_projects
+        -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
+        -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+)
+
+add_library(ONNX::onnx STATIC IMPORTED)
+add_library(ONNX::onnx_proto STATIC IMPORTED)
+add_dependencies(ONNX::onnx onnx-external)
+add_dependencies(ONNX::onnx_proto onnx-external)
+target_link_libraries(ONNX::onnx INTERFACE protobuf::libprotobuf)
+set_target_properties(ONNX::onnx PROPERTIES
+    IMPORTED_LOCATION "${CMAKE_BINARY_DIR}/external_projects/lib/${CMAKE_STATIC_LIBRARY_PREFIX}onnx${CMAKE_STATIC_LIBRARY_SUFFIX}"
+    INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_BINARY_DIR}/external_projects/include")
+set_target_properties(ONNX::onnx_proto PROPERTIES
+    IMPORTED_LOCATION "${CMAKE_BINARY_DIR}/external_projects/lib/${CMAKE_STATIC_LIBRARY_PREFIX}onnx_proto${CMAKE_STATIC_LIBRARY_SUFFIX}"
+    INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_BINARY_DIR}/external_projects/include")
 
 # Generated parser location (in source tree so it can be committed)
 set(GENERATED_PARSER_DIR ${CMAKE_SOURCE_DIR}/generated)
@@ -69,12 +132,24 @@ endif()
 include_directories(${CMAKE_SOURCE_DIR}/include)
 include_directories(${ANTLR4_INCLUDE_DIRS})
 include_directories(${GENERATED_PARSER_DIR})
+include_directories(${CMAKE_BINARY_DIR}/external_projects/include)
 
 # Executable
 add_executable(lacemodelica
     src/main.cpp
     src/ModelInfoExtractor.cpp
     src/FMUGenerator.cpp
+    src/ONNXGenerator.cpp
     ${GENERATED_SOURCES}
 )
-target_link_libraries(lacemodelica antlr4_shared tinyxml2)
+
+# Make sure lacemodelica depends on external projects
+add_dependencies(lacemodelica protobuf-external onnx-external)
+
+target_link_libraries(lacemodelica
+    antlr4_shared
+    tinyxml2
+    ONNX::onnx
+    ONNX::onnx_proto
+    protobuf::libprotobuf
+)
