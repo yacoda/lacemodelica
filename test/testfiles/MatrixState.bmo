@@ -1,0 +1,17 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2025 Joris Gillis, YACODA
+
+//! base 0.1.0
+package 'MatrixState'
+  model 'MatrixState' "Test model with matrix-sized state (3x4)"
+    parameter Real 'alpha' = 0.5 "Decay coefficient";
+
+    Real 'A'[3, 4](fixed = true, start = 0.0) "State matrix";
+    Real 'y' "Output";
+
+  equation
+    der('A') = -'alpha' * 'A';
+    'y' = 'A'[1, 1] + 'A'[2, 2] + 'A'[3, 3];
+
+  end 'MatrixState';
+end 'MatrixState';
