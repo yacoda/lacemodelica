@@ -1,0 +1,21 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2025 Joris Gillis, YACODA
+
+//! base 0.1.0
+package 'MatrixProduct'
+  model 'MatrixProduct' "Test model with matrix product"
+    parameter Real 'alpha' = 0.5 "Decay coefficient";
+
+    Real 'A'[3, 4](fixed = true, start = 0.0) "State matrix";
+    Real 'B'[4, 2](fixed = true, start = 1.0) "Transform matrix";
+    Real 'C'[3, 2] "Product result";
+    Real 'y' "Output";
+
+  equation
+    der('A') = -'alpha' * 'A';
+    der('B') = -0.1 * 'B';
+    'C' = 'A' * 'B';
+    'y' = 'C'[1, 1] + 'C'[2, 2] + 'C'[3, 1];
+
+  end 'MatrixProduct';
+end 'MatrixProduct';

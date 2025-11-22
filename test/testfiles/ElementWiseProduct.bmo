@@ -1,0 +1,21 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2025 Joris Gillis, YACODA
+
+//! base 0.1.0
+package 'ElementWiseProduct'
+  model 'ElementWiseProduct' "Test model with element-wise product"
+    parameter Real 'alpha' = 0.5 "Decay coefficient";
+
+    Real 'A'[3, 4](fixed = true, start = 1.0) "First matrix";
+    Real 'B'[3, 4](fixed = true, start = 2.0) "Second matrix";
+    Real 'C'[3, 4] "Element-wise product";
+    Real 'y' "Output";
+
+  equation
+    der('A') = -'alpha' * 'A';
+    der('B') = -0.1 * 'B';
+    'C' = 'A' .* 'B';
+    'y' = 'C'[1, 1] + 'C'[2, 2] + 'C'[3, 3];
+
+  end 'ElementWiseProduct';
+end 'ElementWiseProduct';
