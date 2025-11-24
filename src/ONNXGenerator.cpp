@@ -78,13 +78,33 @@ void ONNXGenerator::generateONNXModel(const ModelInfo& info, const std::string& 
     }
 
     // Create ONNX outputs for each equation (eq_lhs[i], eq_rhs[i])
+    // Convert expression ASTs to ONNX operator graphs
+    int nodeCounter = 0;
+
     for (size_t i = 0; i < info.equations.size(); i++) {
         const auto& eq = info.equations[i];
 
-        // Create Identity nodes as placeholders (TODO: parse expressions into operators)
-        // For now, just create outputs with metadata about the equation
+        // Convert LHS expression to ONNX graph
+        std::string lhsTensor;
+        try {
+            lhsTensor = convertExpression(eq.lhsContext, graph, nodeCounter);
+        } catch (const std::exception& e) {
+            std::cerr << "Error converting LHS of equation " << i << ": " << e.what() << std::endl;
+            std::cerr << "LHS text: " << eq.lhs << std::endl;
+            throw;
+        }
 
-        // LHS output
+        // Convert RHS expression to ONNX graph
+        std::string rhsTensor;
+        try {
+            rhsTensor = convertExpression(eq.rhsContext, graph, nodeCounter);
+        } catch (const std::exception& e) {
+            std::cerr << "Error converting RHS of equation " << i << ": " << e.what() << std::endl;
+            std::cerr << "RHS text: " << eq.rhs << std::endl;
+            throw;
+        }
+
+        // Create outputs pointing to the computed tensors
         auto* lhs_output = graph->add_output();
         lhs_output->set_name("eq_lhs[" + std::to_string(i) + "]");
         lhs_output->set_doc_string(eq.lhs);
@@ -93,7 +113,6 @@ void ONNXGenerator::generateONNXModel(const ModelInfo& info, const std::string& 
         auto* lhs_shape = lhs_type->mutable_shape();
         lhs_shape->add_dim()->set_dim_value(1);
 
-        // RHS output
         auto* rhs_output = graph->add_output();
         rhs_output->set_name("eq_rhs[" + std::to_string(i) + "]");
         rhs_output->set_doc_string(eq.rhs);
@@ -101,6 +120,19 @@ void ONNXGenerator::generateONNXModel(const ModelInfo& info, const std::string& 
         rhs_type->set_elem_type(onnx::TensorProto::FLOAT);
         auto* rhs_shape = rhs_type->mutable_shape();
         rhs_shape->add_dim()->set_dim_value(1);
+
+        // Create Identity nodes to connect computed tensors to outputs
+        auto* lhs_identity = graph->add_node();
+        lhs_identity->set_op_type("Identity");
+        lhs_identity->set_name("eq_lhs_identity_" + std::to_string(i));
+        lhs_identity->add_input(lhsTensor);
+        lhs_identity->add_output("eq_lhs[" + std::to_string(i) + "]");
+
+        auto* rhs_identity = graph->add_node();
+        rhs_identity->set_op_type("Identity");
+        rhs_identity->set_name("eq_rhs_identity_" + std::to_string(i));
+        rhs_identity->add_input(rhsTensor);
+        rhs_identity->add_output("eq_rhs[" + std::to_string(i) + "]");
     }
 
     // Serialize to file
@@ -135,6 +167,285 @@ void ONNXGenerator::generateManifest(const std::string& filepath) {
     if (doc.SaveFile(filepath.c_str()) != XML_SUCCESS) {
         throw std::runtime_error("Failed to write manifest file: " + filepath);
     }
+}
+
+// Expression conversion functions
+
+std::string ONNXGenerator::convertExpression(
+    antlr4::ParserRuleContext* expr,
+    onnx::GraphProto* graph,
+    int& nodeCounter) {
+
+    if (!expr) {
+        throw std::runtime_error("Null expression context");
+    }
+
+    // Try to cast to specific expression types
+    if (auto* exprCtx = dynamic_cast<basemodelica::BaseModelicaParser::ExpressionContext*>(expr)) {
+        // Expression -> ExpressionNoDecoration -> SimpleExpression
+        auto* exprNoDecoration = exprCtx->expressionNoDecoration();
+        if (exprNoDecoration) {
+            auto* simpleExpr = exprNoDecoration->simpleExpression();
+            if (simpleExpr) {
+                return convertSimpleExpression(simpleExpr, graph, nodeCounter);
+            }
+        }
+    } else if (auto* simpleExpr = dynamic_cast<basemodelica::BaseModelicaParser::SimpleExpressionContext*>(expr)) {
+        return convertSimpleExpression(simpleExpr, graph, nodeCounter);
+    }
+
+    // Fallback: return placeholder
+    throw std::runtime_error("Unsupported expression type: " + expr->getText());
+}
+
+std::string ONNXGenerator::convertSimpleExpression(
+    basemodelica::BaseModelicaParser::SimpleExpressionContext* expr,
+    onnx::GraphProto* graph,
+    int& nodeCounter) {
+
+    // SimpleExpression: logicalExpression+
+    // For now, assume single logical expression -> arithmetic expression
+    auto logicalExprs = expr->logicalExpression();
+    if (logicalExprs.empty()) {
+        throw std::runtime_error("Empty simple expression");
+    }
+
+    // Get first logical expression -> logical term -> logical factor -> relation -> arithmetic
+    auto* logicalExpr = logicalExprs[0];
+    auto logicalTerms = logicalExpr->logicalTerm();
+    if (logicalTerms.empty()) {
+        throw std::runtime_error("Empty logical expression");
+    }
+
+    auto* logicalTerm = logicalTerms[0];
+    auto logicalFactors = logicalTerm->logicalFactor();
+    if (logicalFactors.empty()) {
+        throw std::runtime_error("Empty logical term");
+    }
+
+    auto* logicalFactor = logicalFactors[0];
+    auto* relation = logicalFactor->relation();
+    if (!relation) {
+        throw std::runtime_error("No relation in logical factor");
+    }
+
+    auto arithmeticExprs = relation->arithmeticExpression();
+    if (arithmeticExprs.empty()) {
+        throw std::runtime_error("No arithmetic expression in relation");
+    }
+
+    return convertArithmeticExpression(arithmeticExprs[0], graph, nodeCounter);
+}
+
+std::string ONNXGenerator::convertArithmeticExpression(
+    basemodelica::BaseModelicaParser::ArithmeticExpressionContext* expr,
+    onnx::GraphProto* graph,
+    int& nodeCounter) {
+
+    // ArithmeticExpression: addOperator? term (addOperator term)*
+    auto terms = expr->term();
+    auto addOps = expr->addOperator();
+
+    if (terms.empty()) {
+        throw std::runtime_error("Empty arithmetic expression");
+    }
+
+    // Check if there's a leading addOperator (e.g., unary minus)
+    size_t termIndex = 0;
+    size_t opIndex = 0;
+
+    // Convert first term
+    std::string result = convertTerm(terms[termIndex++], graph, nodeCounter);
+
+    // If we have more addOps than remaining terms, first addOp was a leading unary
+    if (addOps.size() > terms.size() - 1) {
+        // Leading operator - apply it to the first term
+        std::string opText = addOps[opIndex++]->getText();
+
+        if (opText == "-") {
+            auto* node = graph->add_node();
+            std::string outputTensor = "tensor_" + std::to_string(nodeCounter++);
+            node->set_op_type("Neg");
+            node->set_name("Neg_" + std::to_string(nodeCounter));
+            node->add_input(result);
+            node->add_output(outputTensor);
+            result = outputTensor;
+        } else if (opText == "+") {
+            // Unary plus - no-op
+        } else {
+            throw std::runtime_error("Unsupported leading operator: " + opText);
+        }
+    }
+
+    // Process remaining terms with operators
+    while (opIndex < addOps.size()) {
+        std::string opText = addOps[opIndex]->getText();
+        std::string rightTensor = convertTerm(terms[termIndex], graph, nodeCounter);
+        termIndex++;
+        opIndex++;
+
+        // Create ONNX node for the operation
+        auto* node = graph->add_node();
+        std::string outputTensor = "tensor_" + std::to_string(nodeCounter++);
+
+        if (opText == "+") {
+            node->set_op_type("Add");
+        } else if (opText == "-") {
+            node->set_op_type("Sub");
+        } else if (opText == ".+") {
+            node->set_op_type("Add");  // Element-wise add
+        } else if (opText == ".-") {
+            node->set_op_type("Sub");  // Element-wise sub
+        } else {
+            throw std::runtime_error("Unsupported add operator: " + opText);
+        }
+
+        node->set_name(node->op_type() + "_" + std::to_string(nodeCounter));
+        node->add_input(result);
+        node->add_input(rightTensor);
+        node->add_output(outputTensor);
+
+        result = outputTensor;
+    }
+
+    return result;
+}
+
+std::string ONNXGenerator::convertTerm(
+    basemodelica::BaseModelicaParser::TermContext* expr,
+    onnx::GraphProto* graph,
+    int& nodeCounter) {
+
+    // Term: factor (mulOperator factor)*
+    auto factors = expr->factor();
+    auto mulOps = expr->mulOperator();
+
+    if (factors.empty()) {
+        throw std::runtime_error("Empty term");
+    }
+
+    // Convert first factor
+    std::string result = convertFactor(factors[0], graph, nodeCounter);
+
+    // Process remaining factors with operators
+    for (size_t i = 0; i < mulOps.size(); i++) {
+        std::string opText = mulOps[i]->getText();
+        std::string rightTensor = convertFactor(factors[i + 1], graph, nodeCounter);
+
+        // Create ONNX node for the operation
+        auto* node = graph->add_node();
+        std::string outputTensor = "tensor_" + std::to_string(nodeCounter++);
+
+        if (opText == "*") {
+            node->set_op_type("Mul");
+        } else if (opText == "/") {
+            node->set_op_type("Div");
+        } else if (opText == ".*") {
+            node->set_op_type("Mul");  // Element-wise multiply
+        } else if (opText == "./") {
+            node->set_op_type("Div");  // Element-wise divide
+        } else {
+            throw std::runtime_error("Unsupported mul operator: " + opText);
+        }
+
+        node->set_name(node->op_type() + "_" + std::to_string(nodeCounter));
+        node->add_input(result);
+        node->add_input(rightTensor);
+        node->add_output(outputTensor);
+
+        result = outputTensor;
+    }
+
+    return result;
+}
+
+std::string ONNXGenerator::convertFactor(
+    basemodelica::BaseModelicaParser::FactorContext* expr,
+    onnx::GraphProto* graph,
+    int& nodeCounter) {
+
+    // Factor: primary (('^' | '.^') primary)?
+    auto primaries = expr->primary();
+
+    if (primaries.empty()) {
+        throw std::runtime_error("Empty factor");
+    }
+
+    std::string result = convertPrimary(primaries[0], graph, nodeCounter);
+
+    // Handle power operator if present
+    if (primaries.size() > 1) {
+        std::string exponentTensor = convertPrimary(primaries[1], graph, nodeCounter);
+
+        auto* node = graph->add_node();
+        std::string outputTensor = "tensor_" + std::to_string(nodeCounter++);
+
+        node->set_op_type("Pow");
+        node->set_name("Pow_" + std::to_string(nodeCounter));
+        node->add_input(result);
+        node->add_input(exponentTensor);
+        node->add_output(outputTensor);
+
+        result = outputTensor;
+    }
+
+    return result;
+}
+
+std::string ONNXGenerator::convertPrimary(
+    basemodelica::BaseModelicaParser::PrimaryContext* expr,
+    onnx::GraphProto* graph,
+    int& nodeCounter) {
+
+    // Handle different primary types
+
+    // 1. Number literal
+    if (expr->UNSIGNED_NUMBER()) {
+        std::string value = expr->UNSIGNED_NUMBER()->getText();
+
+        // Create constant tensor
+        auto* constant = graph->add_initializer();
+        std::string constName = "const_" + std::to_string(nodeCounter++);
+        constant->set_name(constName);
+        constant->set_data_type(onnx::TensorProto::FLOAT);
+        constant->add_dims(1);
+        constant->add_float_data(std::stof(value));
+
+        return constName;
+    }
+
+    // 2. Component reference (variable)
+    if (expr->componentReference()) {
+        std::string varName = expr->componentReference()->getText();
+        // Strip quotes if present
+        if (varName.front() == '\'' && varName.back() == '\'') {
+            varName = varName.substr(1, varName.size() - 2);
+        }
+        return varName;  // Variable inputs are already in the graph
+    }
+
+    // 3. Function call (e.g., der())
+    if (expr->functionCallArgs()) {
+        // Check for der() function
+        std::string text = expr->getText();
+        if (text.find("der(") == 0) {
+            // Extract der(varname) -> return "der(varname)"
+            return text;  // Return as-is, should match variable input name
+        }
+        throw std::runtime_error("Unsupported function call: " + text);
+    }
+
+    // 4. Parenthesized expression
+    if (expr->outputExpressionList()) {
+        // (expression) - just convert the expression inside
+        auto outputList = expr->outputExpressionList();
+        auto expressions = outputList->expression();
+        if (!expressions.empty()) {
+            return convertExpression(expressions[0], graph, nodeCounter);
+        }
+    }
+
+    throw std::runtime_error("Unsupported primary expression: " + expr->getText());
 }
 
 } // namespace lacemodelica

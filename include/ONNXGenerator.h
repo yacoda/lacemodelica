@@ -4,7 +4,13 @@
 #pragma once
 
 #include "ModelInfo.h"
+#include "BaseModelicaParser.h"
 #include <string>
+
+// Forward declare ONNX types
+namespace onnx {
+    class GraphProto;
+}
 
 namespace lacemodelica {
 
@@ -17,6 +23,44 @@ public:
 private:
     static void generateONNXModel(const ModelInfo& info, const std::string& filepath);
     static void generateManifest(const std::string& filepath);
+
+    // Convert BaseModelica expression AST to ONNX nodes
+    // Returns the name of the output tensor
+    static std::string convertExpression(
+        antlr4::ParserRuleContext* expr,
+        onnx::GraphProto* graph,
+        int& nodeCounter
+    );
+
+    static std::string convertSimpleExpression(
+        basemodelica::BaseModelicaParser::SimpleExpressionContext* expr,
+        onnx::GraphProto* graph,
+        int& nodeCounter
+    );
+
+    static std::string convertArithmeticExpression(
+        basemodelica::BaseModelicaParser::ArithmeticExpressionContext* expr,
+        onnx::GraphProto* graph,
+        int& nodeCounter
+    );
+
+    static std::string convertTerm(
+        basemodelica::BaseModelicaParser::TermContext* expr,
+        onnx::GraphProto* graph,
+        int& nodeCounter
+    );
+
+    static std::string convertFactor(
+        basemodelica::BaseModelicaParser::FactorContext* expr,
+        onnx::GraphProto* graph,
+        int& nodeCounter
+    );
+
+    static std::string convertPrimary(
+        basemodelica::BaseModelicaParser::PrimaryContext* expr,
+        onnx::GraphProto* graph,
+        int& nodeCounter
+    );
 };
 
 } // namespace lacemodelica
