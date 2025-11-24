@@ -1,0 +1,23 @@
+//! base 0.1.0
+package 'MultiOutputFunction'
+  function 'polar_to_cartesian' "Convert polar to cartesian coordinates"
+    input Real 'r';
+    input Real 'theta';
+    output Real 'x';
+    output Real 'y';
+  algorithm
+    'x' := 'r' * cos('theta');
+    'y' := 'r' * sin('theta');
+  end 'polar_to_cartesian';
+
+  model 'MultiOutputFunction' "Model with multi-output function"
+    Real 'r'(start = 1.0);
+    Real 'theta'(start = 0.0);
+    Real 'x';
+    Real 'y';
+  equation
+    der('r') = 0.01;
+    der('theta') = 1.0;
+    ('x', 'y') = 'polar_to_cartesian'('r', 'theta');
+  end 'MultiOutputFunction';
+end 'MultiOutputFunction';

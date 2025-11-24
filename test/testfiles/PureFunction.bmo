@@ -1,0 +1,17 @@
+//! base 0.1.0
+package 'PureFunction'
+  pure function 'square' "Square a number"
+    input Real 'x';
+    output Real 'y';
+  algorithm
+    'y' := 'x' * 'x';
+  end 'square';
+
+  model 'PureFunction' "Model using pure function"
+    Real 'x'(start = 2.0);
+    Real 'y';
+  equation
+    der('x') = 0.1;
+    'y' = 'square'('x');
+  end 'PureFunction';
+end 'PureFunction';

@@ -1,0 +1,16 @@
+//! base 0.1.0
+package 'ExternalFunction'
+  function 'my_sqrt' "External square root function"
+    input Real 'x';
+    output Real 'y';
+  external "C" 'y' = sqrt('x');
+  end 'my_sqrt';
+
+  model 'ExternalFunction' "Model using external function"
+    Real 'x'(start = 4.0);
+    Real 'y';
+  equation
+    der('x') = 0.1;
+    'y' = 'my_sqrt'('x');
+  end 'ExternalFunction';
+end 'ExternalFunction';

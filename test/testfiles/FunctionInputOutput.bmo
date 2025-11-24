@@ -1,0 +1,23 @@
+//! base 0.1.0
+package 'FunctionInputOutput'
+  function 'polynomial' "Evaluate polynomial"
+    input Real 'x';
+    input Real 'a';
+    input Real 'b';
+    input Real 'c';
+    output Real 'result';
+  algorithm
+    'result' := 'a' * 'x' * 'x' + 'b' * 'x' + 'c';
+  end 'polynomial';
+
+  model 'FunctionInputOutput' "Model with function call"
+    Real 'x'(start = 0.0);
+    Real 'y';
+    parameter Real 'a' = 1.0;
+    parameter Real 'b' = 2.0;
+    parameter Real 'c' = 3.0;
+  equation
+    der('x') = 0.5;
+    'y' = 'polynomial'('x', 'a', 'b', 'c');
+  end 'FunctionInputOutput';
+end 'FunctionInputOutput';
