@@ -127,9 +127,23 @@ void ModelInfoExtractor::extractEquations(basemodelica::BaseModelicaParser::Base
 
     auto composition = longClass->composition();
 
-    // Scan equations for der() calls
+    // Extract equations from the AST
     for (auto equation : composition->equation()) {
-        // Look for der() calls in the equation
+        // Check if it's a simple equation (lhs = rhs)
+        auto simpleExpr = equation->simpleExpression();
+        auto fullExpr = equation->expression();
+
+        if (simpleExpr && fullExpr) {
+            // This is an equation with = sign
+            Equation eq;
+            eq.lhs = simpleExpr->getText();
+            eq.rhs = fullExpr->getText();
+            eq.lhsContext = simpleExpr;  // Store AST node
+            eq.rhsContext = fullExpr;    // Store AST node
+            info.equations.push_back(eq);
+        }
+
+        // Scan equation text for der() calls to identify derivatives
         std::string eqText = equation->getText();
         size_t pos = 0;
         while ((pos = eqText.find("der(", pos)) != std::string::npos) {

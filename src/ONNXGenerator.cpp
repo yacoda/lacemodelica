@@ -34,7 +34,6 @@ std::string ONNXGenerator::generate(const ModelInfo& info, const std::string& ou
 }
 
 void ONNXGenerator::generateONNXModel(const ModelInfo& info, const std::string& filepath) {
-    // Create a trivial "hello world" ONNX model
     onnx::ModelProto model;
 
     // Set model metadata
@@ -52,41 +51,57 @@ void ONNXGenerator::generateONNXModel(const ModelInfo& info, const std::string& 
     auto* graph = model.mutable_graph();
     graph->set_name(info.modelName);
 
-    // Add a trivial "hello world" computation: output = input + 1.0
-    // This is just a placeholder for now
+    // Create ONNX inputs for each variable and parameter
+    for (const auto& var : info.variables) {
+        auto* input = graph->add_input();
+        input->set_name(var.name);
+        auto* input_type = input->mutable_type()->mutable_tensor_type();
+        input_type->set_elem_type(onnx::TensorProto::FLOAT);
+        auto* input_shape = input_type->mutable_shape();
 
-    // Create input tensor
-    auto* input = graph->add_input();
-    input->set_name("x");
-    auto* input_type = input->mutable_type()->mutable_tensor_type();
-    input_type->set_elem_type(onnx::TensorProto::FLOAT);
-    auto* input_shape = input_type->mutable_shape();
-    auto* input_dim = input_shape->add_dim();
-    input_dim->set_dim_value(1);
+        // Handle array dimensions
+        if (!var.dimensions.empty()) {
+            for (const auto& dim : var.dimensions) {
+                auto* shape_dim = input_shape->add_dim();
+                // Try to parse as integer, otherwise leave symbolic
+                try {
+                    shape_dim->set_dim_value(std::stoi(dim));
+                } catch (...) {
+                    shape_dim->set_dim_param(dim);
+                }
+            }
+        } else {
+            // Scalar: shape [1]
+            auto* shape_dim = input_shape->add_dim();
+            shape_dim->set_dim_value(1);
+        }
+    }
 
-    // Create constant node (value = 1.0)
-    auto* constant = graph->add_initializer();
-    constant->set_name("one");
-    constant->set_data_type(onnx::TensorProto::FLOAT);
-    constant->add_dims(1);
-    constant->add_float_data(1.0f);
+    // Create ONNX outputs for each equation (eq_lhs[i], eq_rhs[i])
+    for (size_t i = 0; i < info.equations.size(); i++) {
+        const auto& eq = info.equations[i];
 
-    // Create Add node
-    auto* add_node = graph->add_node();
-    add_node->set_op_type("Add");
-    add_node->set_name("add_one");
-    add_node->add_input("x");
-    add_node->add_input("one");
-    add_node->add_output("y");
+        // Create Identity nodes as placeholders (TODO: parse expressions into operators)
+        // For now, just create outputs with metadata about the equation
 
-    // Create output tensor
-    auto* output = graph->add_output();
-    output->set_name("y");
-    auto* output_type = output->mutable_type()->mutable_tensor_type();
-    output_type->set_elem_type(onnx::TensorProto::FLOAT);
-    auto* output_shape = output_type->mutable_shape();
-    auto* output_dim = output_shape->add_dim();
-    output_dim->set_dim_value(1);
+        // LHS output
+        auto* lhs_output = graph->add_output();
+        lhs_output->set_name("eq_lhs[" + std::to_string(i) + "]");
+        lhs_output->set_doc_string(eq.lhs);
+        auto* lhs_type = lhs_output->mutable_type()->mutable_tensor_type();
+        lhs_type->set_elem_type(onnx::TensorProto::FLOAT);
+        auto* lhs_shape = lhs_type->mutable_shape();
+        lhs_shape->add_dim()->set_dim_value(1);
+
+        // RHS output
+        auto* rhs_output = graph->add_output();
+        rhs_output->set_name("eq_rhs[" + std::to_string(i) + "]");
+        rhs_output->set_doc_string(eq.rhs);
+        auto* rhs_type = rhs_output->mutable_type()->mutable_tensor_type();
+        rhs_type->set_elem_type(onnx::TensorProto::FLOAT);
+        auto* rhs_shape = rhs_type->mutable_shape();
+        rhs_shape->add_dim()->set_dim_value(1);
+    }
 
     // Serialize to file
     std::ofstream ofs(filepath, std::ios::binary);

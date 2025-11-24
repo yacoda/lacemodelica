@@ -7,7 +7,23 @@
 #include <vector>
 #include <map>
 
+// Forward declare ANTLR context types
+namespace basemodelica {
+    class BaseModelicaParser;
+}
+
+namespace antlr4 {
+    class ParserRuleContext;
+}
+
 namespace lacemodelica {
+
+struct Equation {
+    std::string lhs;  // Left-hand side expression as string
+    std::string rhs;  // Right-hand side expression as string
+    antlr4::ParserRuleContext* lhsContext = nullptr;  // AST node for LHS
+    antlr4::ParserRuleContext* rhsContext = nullptr;  // AST node for RHS
+};
 
 struct Variable {
     std::string name;
@@ -32,6 +48,7 @@ public:
 
     std::vector<Variable> variables;
     std::map<std::string, int> variableIndex;  // name -> index in variables
+    std::vector<Equation> equations;
 
     int nextValueReference = 1;
 
