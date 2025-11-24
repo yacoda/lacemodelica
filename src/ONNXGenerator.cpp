@@ -51,8 +51,13 @@ void ONNXGenerator::generateONNXModel(const ModelInfo& info, const std::string& 
     auto* graph = model.mutable_graph();
     graph->set_name(info.modelName);
 
-    // Create ONNX inputs for each variable and parameter
+    // Create ONNX inputs for each variable and parameter (skip derivatives)
     for (const auto& var : info.variables) {
+        // Skip derivative variables - der() will be an operator
+        if (var.isDerivative) {
+            continue;
+        }
+
         auto* input = graph->add_input();
         input->set_name(var.name);
         auto* input_type = input->mutable_type()->mutable_tensor_type();
@@ -429,8 +434,26 @@ std::string ONNXGenerator::convertPrimary(
         // Check for der() function
         std::string text = expr->getText();
         if (text.find("der(") == 0) {
-            // Extract der(varname) -> return "der(varname)"
-            return text;  // Return as-is, should match variable input name
+            // Extract variable name from der('varname')
+            size_t start = 4;  // After "der("
+            size_t end = text.find(")", start);
+            std::string varName = text.substr(start, end - start);
+
+            // Strip quotes if present
+            if (varName.front() == '\'' && varName.back() == '\'') {
+                varName = varName.substr(1, varName.size() - 2);
+            }
+
+            // Create a Der operator node
+            auto* node = graph->add_node();
+            std::string outputTensor = "tensor_" + std::to_string(nodeCounter++);
+
+            node->set_op_type("Der");
+            node->set_name("Der_" + std::to_string(nodeCounter));
+            node->add_input(varName);  // Input is the variable itself
+            node->add_output(outputTensor);
+
+            return outputTensor;
         }
         throw std::runtime_error("Unsupported function call: " + text);
     }
