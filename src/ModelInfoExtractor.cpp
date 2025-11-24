@@ -157,6 +157,20 @@ void ModelInfoExtractor::extractEquations(basemodelica::BaseModelicaParser::Base
 }
 
 void ModelInfoExtractor::processEquation(basemodelica::BaseModelicaParser::EquationContext* equation, std::vector<Equation>& target) {
+    // Check for unsupported equation types first
+    if (equation->ifEquation()) {
+        throw std::runtime_error("If-equations are not supported (" + sourceFile + ":" +
+                                 std::to_string(equation->getStart()->getLine()) + ")");
+    }
+    if (equation->forEquation()) {
+        throw std::runtime_error("For-equations are not supported (" + sourceFile + ":" +
+                                 std::to_string(equation->getStart()->getLine()) + ")");
+    }
+    if (equation->whenEquation()) {
+        throw std::runtime_error("When-equations are not supported (" + sourceFile + ":" +
+                                 std::to_string(equation->getStart()->getLine()) + ")");
+    }
+
     // Check if it's a simple equation (lhs = rhs)
     auto simpleExpr = equation->simpleExpression();
     auto fullExpr = equation->expression();
@@ -175,21 +189,26 @@ void ModelInfoExtractor::processEquation(basemodelica::BaseModelicaParser::Equat
         }
 
         target.push_back(eq);
+
+        // Scan equation text for der() calls to identify derivatives
+        std::string eqText = equation->getText();
+        size_t pos = 0;
+        while ((pos = eqText.find("der(", pos)) != std::string::npos) {
+            // Extract the variable name inside der()
+            size_t start = pos + 4;
+            size_t end = eqText.find(")", start);
+            if (end != std::string::npos) {
+                std::string varName = eqText.substr(start, end - start);
+                derivativeCalls.insert(varName);
+            }
+            pos = end;
+        }
+        return;
     }
 
-    // Scan equation text for der() calls to identify derivatives
-    std::string eqText = equation->getText();
-    size_t pos = 0;
-    while ((pos = eqText.find("der(", pos)) != std::string::npos) {
-        // Extract the variable name inside der()
-        size_t start = pos + 4;
-        size_t end = eqText.find(")", start);
-        if (end != std::string::npos) {
-            std::string varName = eqText.substr(start, end - start);
-            derivativeCalls.insert(varName);
-        }
-        pos = end;
-    }
+    // If we get here, equation type is unknown
+    throw std::runtime_error("Unsupported equation type (" + sourceFile + ":" +
+                             std::to_string(equation->getStart()->getLine()) + ")");
 }
 
 void ModelInfoExtractor::identifyDerivatives() {
