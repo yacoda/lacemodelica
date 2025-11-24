@@ -139,8 +139,12 @@ void ONNXGenerator::generateEquationOutputs(
         try {
             lhsTensor = convertExpression(eq.lhsContext, graph, nodeCounter);
         } catch (const std::exception& e) {
-            std::cerr << "Error converting LHS of " << prefix << " equation " << i << ": " << e.what() << std::endl;
-            std::cerr << "LHS text: " << eq.lhs << std::endl;
+            std::cerr << "Error converting LHS of " << prefix << " equation " << i;
+            if (!eq.sourceFile.empty()) {
+                std::cerr << " (" << eq.sourceFile << ":" << eq.sourceLine << ")";
+            }
+            std::cerr << ": " << e.what() << std::endl;
+            std::cerr << "LHS text: " << eq.lhsContext->getText() << std::endl;
             throw;
         }
 
@@ -149,8 +153,12 @@ void ONNXGenerator::generateEquationOutputs(
         try {
             rhsTensor = convertExpression(eq.rhsContext, graph, nodeCounter);
         } catch (const std::exception& e) {
-            std::cerr << "Error converting RHS of " << prefix << " equation " << i << ": " << e.what() << std::endl;
-            std::cerr << "RHS text: " << eq.rhs << std::endl;
+            std::cerr << "Error converting RHS of " << prefix << " equation " << i;
+            if (!eq.sourceFile.empty()) {
+                std::cerr << " (" << eq.sourceFile << ":" << eq.sourceLine << ")";
+            }
+            std::cerr << ": " << e.what() << std::endl;
+            std::cerr << "RHS text: " << eq.rhsContext->getText() << std::endl;
             throw;
         }
 
@@ -173,7 +181,6 @@ void ONNXGenerator::generateEquationOutputs(
         // Create output for this equation
         auto* eq_output = graph->add_output();
         eq_output->set_name(eqOutputName);
-        eq_output->set_doc_string(eq.lhs + " = " + eq.rhs);
         auto* eq_type = eq_output->mutable_type()->mutable_tensor_type();
         eq_type->set_elem_type(onnx::TensorProto::BOOL);  // Equal returns boolean
         auto* eq_shape = eq_type->mutable_shape();

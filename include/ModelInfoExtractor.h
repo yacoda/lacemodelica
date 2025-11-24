@@ -11,10 +11,11 @@ namespace lacemodelica {
 
 class ModelInfoExtractor {
 public:
-    ModelInfo extract(basemodelica::BaseModelicaParser::BaseModelicaContext* tree);
+    ModelInfo extract(basemodelica::BaseModelicaParser::BaseModelicaContext* tree, const std::string& sourceFile = "");
 
 private:
     ModelInfo info;
+    std::string sourceFile;
     std::set<std::string> derivativeCalls;  // Track der() calls
 
     void extractPackageAndModelName(basemodelica::BaseModelicaParser::BaseModelicaContext* ctx);

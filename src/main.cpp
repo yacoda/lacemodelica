@@ -94,7 +94,7 @@ int main(int argc, char* argv[]) {
         // Extract model information
         std::cout << "\nExtracting model information..." << std::endl;
         lacemodelica::ModelInfoExtractor extractor;
-        lacemodelica::ModelInfo info = extractor.extract(tree);
+        lacemodelica::ModelInfo info = extractor.extract(tree, filepath);
 
         std::cout << "  Model: " << info.modelName << std::endl;
         std::cout << "  Variables: " << info.variables.size() << std::endl;

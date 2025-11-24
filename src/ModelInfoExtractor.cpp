@@ -14,8 +14,9 @@ static std::string stripQuotes(const std::string& str) {
     return str;
 }
 
-ModelInfo ModelInfoExtractor::extract(basemodelica::BaseModelicaParser::BaseModelicaContext* tree) {
+ModelInfo ModelInfoExtractor::extract(basemodelica::BaseModelicaParser::BaseModelicaContext* tree, const std::string& sourceFile) {
     info = ModelInfo();
+    this->sourceFile = sourceFile;
 
     extractPackageAndModelName(tree);
     extractVariables(tree);
@@ -149,10 +150,10 @@ void ModelInfoExtractor::processEquation(basemodelica::BaseModelicaParser::Equat
     if (simpleExpr && fullExpr) {
         // This is an equation with = sign
         Equation eq;
-        eq.lhs = simpleExpr->getText();
-        eq.rhs = fullExpr->getText();
         eq.lhsContext = simpleExpr;  // Store AST node
         eq.rhsContext = fullExpr;    // Store AST node
+        eq.sourceFile = sourceFile;
+        eq.sourceLine = equation->getStart()->getLine();
 
         // Extract string comment
         if (equation->comment()) {

@@ -19,9 +19,9 @@ namespace antlr4 {
 namespace lacemodelica {
 
 struct Equation {
-    std::string lhs;  // Left-hand side expression as string
-    std::string rhs;  // Right-hand side expression as string
     std::string comment;  // String comment / documentation
+    std::string sourceFile;  // Source filename for debugging
+    size_t sourceLine = 0;  // Source line number for debugging
     antlr4::ParserRuleContext* lhsContext = nullptr;  // AST node for LHS
     antlr4::ParserRuleContext* rhsContext = nullptr;  // AST node for RHS
 };
