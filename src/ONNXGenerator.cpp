@@ -164,14 +164,13 @@ void ONNXGenerator::generateEquationOutputs(
 
         // Create an '=' operator node with LHS and RHS as inputs
         std::string eqOutputName = prefix + "[" + std::to_string(i) + "]";
-        std::string eqTensor = "tensor_" + std::to_string(nodeCounter++);
 
         auto* eq_node = graph->add_node();
         eq_node->set_op_type("Equal");
         eq_node->set_name(prefix + "_equal_" + std::to_string(i));
         eq_node->add_input(lhsTensor);
         eq_node->add_input(rhsTensor);
-        eq_node->add_output(eqTensor);
+        eq_node->add_output(eqOutputName);
 
         // Set the string comment as doc_string
         if (!eq.comment.empty()) {
@@ -185,13 +184,6 @@ void ONNXGenerator::generateEquationOutputs(
         eq_type->set_elem_type(onnx::TensorProto::BOOL);  // Equal returns boolean
         auto* eq_shape = eq_type->mutable_shape();
         eq_shape->add_dim()->set_dim_value(1);
-
-        // Create Identity node to connect Equal output to graph output
-        auto* identity = graph->add_node();
-        identity->set_op_type("Identity");
-        identity->set_name(prefix + "_identity_" + std::to_string(i));
-        identity->add_input(eqTensor);
-        identity->add_output(eqOutputName);
     }
 }
 
