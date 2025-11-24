@@ -78,6 +78,8 @@ void ModelInfoExtractor::extractVariables(basemodelica::BaseModelicaParser::Base
                     var.name = stripQuotes(compDecl->declaration()->IDENT()->getText());
                     var.type = stripQuotes(typeSpec);
                     var.valueReference = info.nextValueReference++;
+                    var.sourceFile = sourceFile;
+                    var.sourceLine = compDecl->getStart()->getLine();
 
                     // Check for annotation(Evaluate=true) for structural parameters
                     if (compDecl->comment() && compDecl->comment()->annotationComment()) {

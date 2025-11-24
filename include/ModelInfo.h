@@ -39,6 +39,8 @@ struct Variable {
     std::vector<std::string> dimensions;  // For arrays
     bool isStructuralParameter = false;
     bool isDerivative = false;
+    std::string sourceFile;  // Source filename for debugging
+    size_t sourceLine = 0;  // Source line number for debugging
 };
 
 class ModelInfo {

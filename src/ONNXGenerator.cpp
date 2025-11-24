@@ -80,6 +80,17 @@ void ONNXGenerator::generateONNXModel(const ModelInfo& info, const std::string& 
             auto* shape_dim = input_shape->add_dim();
             shape_dim->set_dim_value(1);
         }
+
+        // Add source location metadata
+        if (!var.sourceFile.empty()) {
+            auto* meta_file = input->add_metadata_props();
+            meta_file->set_key("source_file");
+            meta_file->set_value(var.sourceFile);
+
+            auto* meta_line = input->add_metadata_props();
+            meta_line->set_key("source_line");
+            meta_line->set_value(std::to_string(var.sourceLine));
+        }
     }
 
     // Create ONNX outputs for equations
@@ -183,6 +194,17 @@ void ONNXGenerator::generateEquationOutputs(
         // Set the string comment as doc_string on the output
         if (!eq.comment.empty()) {
             eq_output->set_doc_string(eq.comment);
+        }
+
+        // Add source location metadata
+        if (!eq.sourceFile.empty()) {
+            auto* meta_file = eq_output->add_metadata_props();
+            meta_file->set_key("source_file");
+            meta_file->set_value(eq.sourceFile);
+
+            auto* meta_line = eq_output->add_metadata_props();
+            meta_line->set_key("source_line");
+            meta_line->set_value(std::to_string(eq.sourceLine));
         }
     }
 }
