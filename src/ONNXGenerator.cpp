@@ -172,11 +172,6 @@ void ONNXGenerator::generateEquationOutputs(
         eq_node->add_input(rhsTensor);
         eq_node->add_output(eqOutputName);
 
-        // Set the string comment as doc_string
-        if (!eq.comment.empty()) {
-            eq_node->set_doc_string(eq.comment);
-        }
-
         // Create output for this equation
         auto* eq_output = graph->add_output();
         eq_output->set_name(eqOutputName);
@@ -184,6 +179,11 @@ void ONNXGenerator::generateEquationOutputs(
         eq_type->set_elem_type(onnx::TensorProto::BOOL);  // Equal returns boolean
         auto* eq_shape = eq_type->mutable_shape();
         eq_shape->add_dim()->set_dim_value(1);
+
+        // Set the string comment as doc_string on the output
+        if (!eq.comment.empty()) {
+            eq_output->set_doc_string(eq.comment);
+        }
     }
 }
 
