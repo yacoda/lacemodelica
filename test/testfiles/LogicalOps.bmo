@@ -1,0 +1,16 @@
+//! base 0.1.0
+package 'LogicalOps'
+  model 'LogicalOps' "Boolean logic in equations"
+    Real 'x'(start = 0.0);
+    Real 'y'(start = 1.0);
+    Boolean 'inRange';
+    Boolean 'isPositive';
+    Real 'control';
+  equation
+    der('x') = 0.5;
+    der('y') = -0.3 * 'y';
+    'inRange' = ('x' >= 0.0) and ('x' <= 1.0);
+    'isPositive' = ('y' > 0.0) or ('x' > 0.5);
+    'control' = if 'inRange' and not 'isPositive' then 1.0 else 0.0;
+  end 'LogicalOps';
+end 'LogicalOps';

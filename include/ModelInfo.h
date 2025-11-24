@@ -49,6 +49,7 @@ public:
     std::vector<Variable> variables;
     std::map<std::string, int> variableIndex;  // name -> index in variables
     std::vector<Equation> equations;
+    std::vector<Equation> initialEquations;
 
     int nextValueReference = 1;
 

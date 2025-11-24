@@ -1,0 +1,12 @@
+//! base 0.1.0
+package 'NestedIf'
+  model 'NestedIf' "Nested conditional expressions"
+    Real 'x'(start = 0.0);
+    Real 'mode';
+    Real 'output';
+  equation
+    der('x') = 1.0;
+    'mode' = if 'x' < 0.3 then 1.0 elseif 'x' < 0.6 then 2.0 elseif 'x' < 0.9 then 3.0 else 4.0;
+    'output' = 'mode' * 'x';
+  end 'NestedIf';
+end 'NestedIf';

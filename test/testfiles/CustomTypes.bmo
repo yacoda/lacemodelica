@@ -1,0 +1,14 @@
+//! base 0.1.0
+package 'CustomTypes'
+  type 'Voltage' = Real(unit = "V");
+  type 'Current' = Real(unit = "A");
+
+  model 'CustomTypes' "Using custom types"
+    'Voltage' 'v'(start = 0.0);
+    'Current' 'i';
+    parameter Real 'R' = 10.0 "Resistance";
+  equation
+    der('v') = 1.0;
+    'i' = 'v' / 'R';
+  end 'CustomTypes';
+end 'CustomTypes';

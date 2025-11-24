@@ -1,0 +1,12 @@
+//! base 0.1.0
+package 'InputOutput'
+  model 'InputOutput' "Model with inputs and outputs"
+    input Real 'u'(start = 0.0) "Control input";
+    output Real 'y' "System output";
+    Real 'x'(start = 1.0) "Internal state";
+    parameter Real 'gain' = 2.0;
+  equation
+    der('x') = -'x' + 'u';
+    'y' = 'gain' * 'x';
+  end 'InputOutput';
+end 'InputOutput';

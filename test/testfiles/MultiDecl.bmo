@@ -1,0 +1,15 @@
+//! base 0.1.0
+package 'MultiDecl'
+  model 'MultiDecl' "Multiple variable declaration"
+    Real 'x', 'y', 'z';
+    parameter Real 'k1' = 0.5, 'k2' = 0.3, 'k3' = 0.2;
+  initial equation
+    'x' = 1.0;
+    'y' = 0.0;
+    'z' = 0.5;
+  equation
+    der('x') = -'k1' * 'x' + 'k2' * 'y';
+    der('y') = 'k1' * 'x' - 'k3' * 'y';
+    der('z') = 'k3' * 'y' - 'k2' * 'z';
+  end 'MultiDecl';
+end 'MultiDecl';

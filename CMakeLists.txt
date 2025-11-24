@@ -168,6 +168,7 @@ foreach(TEST_FILE ${TEST_FILES})
         COMMAND lacemodelica ${TEST_FILE}
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
     )
+    set_tests_properties(parse_${TEST_NAME} PROPERTIES LABELS "parse")
 endforeach()
 
 # Add Python FMU import test (runs independently, expects FMUs to exist)
@@ -178,4 +179,5 @@ if(Python3_FOUND)
         COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/test/test_fmu_import.py
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
     )
+    set_tests_properties(fmu_import_test PROPERTIES LABELS "integration")
 endif()

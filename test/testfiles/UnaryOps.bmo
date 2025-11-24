@@ -1,0 +1,12 @@
+//! base 0.1.0
+package 'UnaryOps'
+  model 'UnaryOps' "Unary plus and minus"
+    Real 'x'(start = 1.0);
+    Real 'y';
+    Real 'z';
+  equation
+    der('x') = +0.5;
+    'y' = -'x';
+    'z' = -(('x' + 1.0) * 'y');
+  end 'UnaryOps';
+end 'UnaryOps';

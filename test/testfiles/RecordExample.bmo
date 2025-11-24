@@ -1,0 +1,16 @@
+//! base 0.1.0
+package 'RecordExample'
+  record 'Point'
+    Real 'x';
+    Real 'y';
+  end 'Point';
+
+  model 'RecordExample' "Using record types"
+    'Point' 'p'(x(start = 1.0), y(start = 2.0));
+    Real 'distance';
+  equation
+    der('p.x') = -'p.y';
+    der('p.y') = 'p.x';
+    'distance' = ('p.x' ^ 2 + 'p.y' ^ 2) ^ 0.5;
+  end 'RecordExample';
+end 'RecordExample';

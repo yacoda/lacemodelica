@@ -1,0 +1,16 @@
+//! base 0.1.0
+package 'Comparisons'
+  model 'Comparisons' "All comparison operators"
+    Real 'x'(start = 0.0);
+    Boolean 'lt', 'le', 'gt', 'ge', 'eq', 'ne';
+    parameter Real 'ref' = 0.5;
+  equation
+    der('x') = 0.1;
+    'lt' = 'x' < 'ref';
+    'le' = 'x' <= 'ref';
+    'gt' = 'x' > 'ref';
+    'ge' = 'x' >= 'ref';
+    'eq' = 'x' == 'ref';
+    'ne' = 'x' <> 'ref';
+  end 'Comparisons';
+end 'Comparisons';

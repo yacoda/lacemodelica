@@ -1,0 +1,16 @@
+//! base 0.1.0
+package 'ArithmeticOps'
+  model 'ArithmeticOps' "Various arithmetic operations"
+    Real 'x'(start = 1.0);
+    Real 'squared';
+    Real 'cubed';
+    Real 'sqrt_approx';
+    Real 'complex';
+  equation
+    der('x') = 0.1;
+    'squared' = 'x' ^ 2;
+    'cubed' = 'x' ^ 3;
+    'sqrt_approx' = 'x' ^ 0.5;
+    'complex' = (('x' + 1.0) ^ 2) / (('x' - 0.5) ^ 2 + 1.0);
+  end 'ArithmeticOps';
+end 'ArithmeticOps';

@@ -1,0 +1,15 @@
+//! base 0.1.0
+package 'GlobalConst'
+  constant Real 'PI' = 3.14159265;
+  constant Real 'E' = 2.71828;
+
+  model 'GlobalConst' "Using global constants"
+    Real 'x'(start = 0.0);
+    Real 'sine_wave';
+    Real 'exp_decay';
+  equation
+    der('x') = 1.0;
+    'sine_wave' = sin(2.0 * 'PI' * 'x');
+    'exp_decay' = 'E' ^ (-'x');
+  end 'GlobalConst';
+end 'GlobalConst';

@@ -24,6 +24,14 @@ private:
     static void generateONNXModel(const ModelInfo& info, const std::string& filepath);
     static void generateManifest(const std::string& filepath);
 
+    // Generate ONNX outputs for a list of equations with given prefix
+    static void generateEquationOutputs(
+        const std::vector<Equation>& equations,
+        const std::string& prefix,
+        onnx::GraphProto* graph,
+        int& nodeCounter
+    );
+
     // Convert BaseModelica expression AST to ONNX nodes
     // Returns the name of the output tensor
     static std::string convertExpression(

@@ -1,0 +1,18 @@
+//! base 0.1.0
+package 'ComplexInit'
+  model 'ComplexInit' "Multiple initial equations"
+    Real 'x'(start = 0.0);
+    Real 'y'(start = 0.0);
+    Real 'z';
+    parameter Real 'x0' = 1.0;
+    parameter Real 'y0' = 2.0;
+  initial equation
+    'x' = 'x0' * 1.5;
+    'y' = 'y0' - 0.5;
+    'x' + 'y' = 'z';
+  equation
+    der('x') = -'y';
+    der('y') = 'x';
+    'z' = 'x' ^ 2 + 'y' ^ 2;
+  end 'ComplexInit';
+end 'ComplexInit';

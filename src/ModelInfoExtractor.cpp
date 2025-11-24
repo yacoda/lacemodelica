@@ -127,35 +127,47 @@ void ModelInfoExtractor::extractEquations(basemodelica::BaseModelicaParser::Base
 
     auto composition = longClass->composition();
 
-    // Extract equations from the AST
+    // Extract regular equations
     for (auto equation : composition->equation()) {
-        // Check if it's a simple equation (lhs = rhs)
-        auto simpleExpr = equation->simpleExpression();
-        auto fullExpr = equation->expression();
+        processEquation(equation, info.equations);
+    }
 
-        if (simpleExpr && fullExpr) {
-            // This is an equation with = sign
-            Equation eq;
-            eq.lhs = simpleExpr->getText();
-            eq.rhs = fullExpr->getText();
-            eq.lhsContext = simpleExpr;  // Store AST node
-            eq.rhsContext = fullExpr;    // Store AST node
-            info.equations.push_back(eq);
+    // Extract initial equations
+    for (auto initialEq : composition->initialEquation()) {
+        // initialEquation can be either equation or prioritizeEquation
+        if (initialEq->equation()) {
+            processEquation(initialEq->equation(), info.initialEquations);
         }
+    }
+}
 
-        // Scan equation text for der() calls to identify derivatives
-        std::string eqText = equation->getText();
-        size_t pos = 0;
-        while ((pos = eqText.find("der(", pos)) != std::string::npos) {
-            // Extract the variable name inside der()
-            size_t start = pos + 4;
-            size_t end = eqText.find(")", start);
-            if (end != std::string::npos) {
-                std::string varName = eqText.substr(start, end - start);
-                derivativeCalls.insert(varName);
-            }
-            pos = end;
+void ModelInfoExtractor::processEquation(basemodelica::BaseModelicaParser::EquationContext* equation, std::vector<Equation>& target) {
+    // Check if it's a simple equation (lhs = rhs)
+    auto simpleExpr = equation->simpleExpression();
+    auto fullExpr = equation->expression();
+
+    if (simpleExpr && fullExpr) {
+        // This is an equation with = sign
+        Equation eq;
+        eq.lhs = simpleExpr->getText();
+        eq.rhs = fullExpr->getText();
+        eq.lhsContext = simpleExpr;  // Store AST node
+        eq.rhsContext = fullExpr;    // Store AST node
+        target.push_back(eq);
+    }
+
+    // Scan equation text for der() calls to identify derivatives
+    std::string eqText = equation->getText();
+    size_t pos = 0;
+    while ((pos = eqText.find("der(", pos)) != std::string::npos) {
+        // Extract the variable name inside der()
+        size_t start = pos + 4;
+        size_t end = eqText.find(")", start);
+        if (end != std::string::npos) {
+            std::string varName = eqText.substr(start, end - start);
+            derivativeCalls.insert(varName);
         }
+        pos = end;
     }
 }
 

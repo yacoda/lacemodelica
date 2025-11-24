@@ -1,0 +1,14 @@
+//! base 0.1.0
+package 'DerExpression'
+  model 'DerExpression' "Der applied to expressions (rare 1% case)"
+    Real 'x'(start = 1.0);
+    Real 'y'(start = 2.0);
+    Real 'z';
+    Real 'dz_dt';
+  equation
+    der('x') = -'x';
+    der('y') = 'x' - 'y';
+    'z' = 'x' * 'y';
+    'dz_dt' = der('x' * 'y');
+  end 'DerExpression';
+end 'DerExpression';

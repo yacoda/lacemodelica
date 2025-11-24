@@ -22,6 +22,8 @@ private:
     void extractEquations(basemodelica::BaseModelicaParser::BaseModelicaContext* ctx);
     void identifyDerivatives();
 
+    void processEquation(basemodelica::BaseModelicaParser::EquationContext* equation, std::vector<Equation>& target);
+
     std::string extractStartValue(basemodelica::BaseModelicaParser::ModificationContext* ctx);
     std::string extractDescription(basemodelica::BaseModelicaParser::CommentContext* ctx);
     std::vector<std::string> extractDimensions(basemodelica::BaseModelicaParser::DeclarationContext* ctx);

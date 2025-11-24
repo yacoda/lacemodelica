@@ -82,63 +82,14 @@ void ONNXGenerator::generateONNXModel(const ModelInfo& info, const std::string& 
         }
     }
 
-    // Create ONNX outputs for each equation (eq_lhs[i], eq_rhs[i])
-    // Convert expression ASTs to ONNX operator graphs
+    // Create ONNX outputs for equations
     int nodeCounter = 0;
 
-    for (size_t i = 0; i < info.equations.size(); i++) {
-        const auto& eq = info.equations[i];
+    // Generate outputs for regular equations
+    generateEquationOutputs(info.equations, "eq", graph, nodeCounter);
 
-        // Convert LHS expression to ONNX graph
-        std::string lhsTensor;
-        try {
-            lhsTensor = convertExpression(eq.lhsContext, graph, nodeCounter);
-        } catch (const std::exception& e) {
-            std::cerr << "Error converting LHS of equation " << i << ": " << e.what() << std::endl;
-            std::cerr << "LHS text: " << eq.lhs << std::endl;
-            throw;
-        }
-
-        // Convert RHS expression to ONNX graph
-        std::string rhsTensor;
-        try {
-            rhsTensor = convertExpression(eq.rhsContext, graph, nodeCounter);
-        } catch (const std::exception& e) {
-            std::cerr << "Error converting RHS of equation " << i << ": " << e.what() << std::endl;
-            std::cerr << "RHS text: " << eq.rhs << std::endl;
-            throw;
-        }
-
-        // Create outputs pointing to the computed tensors
-        auto* lhs_output = graph->add_output();
-        lhs_output->set_name("eq_lhs[" + std::to_string(i) + "]");
-        lhs_output->set_doc_string(eq.lhs);
-        auto* lhs_type = lhs_output->mutable_type()->mutable_tensor_type();
-        lhs_type->set_elem_type(onnx::TensorProto::FLOAT);
-        auto* lhs_shape = lhs_type->mutable_shape();
-        lhs_shape->add_dim()->set_dim_value(1);
-
-        auto* rhs_output = graph->add_output();
-        rhs_output->set_name("eq_rhs[" + std::to_string(i) + "]");
-        rhs_output->set_doc_string(eq.rhs);
-        auto* rhs_type = rhs_output->mutable_type()->mutable_tensor_type();
-        rhs_type->set_elem_type(onnx::TensorProto::FLOAT);
-        auto* rhs_shape = rhs_type->mutable_shape();
-        rhs_shape->add_dim()->set_dim_value(1);
-
-        // Create Identity nodes to connect computed tensors to outputs
-        auto* lhs_identity = graph->add_node();
-        lhs_identity->set_op_type("Identity");
-        lhs_identity->set_name("eq_lhs_identity_" + std::to_string(i));
-        lhs_identity->add_input(lhsTensor);
-        lhs_identity->add_output("eq_lhs[" + std::to_string(i) + "]");
-
-        auto* rhs_identity = graph->add_node();
-        rhs_identity->set_op_type("Identity");
-        rhs_identity->set_name("eq_rhs_identity_" + std::to_string(i));
-        rhs_identity->add_input(rhsTensor);
-        rhs_identity->add_output("eq_rhs[" + std::to_string(i) + "]");
-    }
+    // Generate outputs for initial equations
+    generateEquationOutputs(info.initialEquations, "init_eq", graph, nodeCounter);
 
     // Serialize to file
     std::ofstream ofs(filepath, std::ios::binary);
@@ -171,6 +122,67 @@ void ONNXGenerator::generateManifest(const std::string& filepath) {
     // Save to file
     if (doc.SaveFile(filepath.c_str()) != XML_SUCCESS) {
         throw std::runtime_error("Failed to write manifest file: " + filepath);
+    }
+}
+
+void ONNXGenerator::generateEquationOutputs(
+    const std::vector<Equation>& equations,
+    const std::string& prefix,
+    onnx::GraphProto* graph,
+    int& nodeCounter) {
+
+    for (size_t i = 0; i < equations.size(); i++) {
+        const auto& eq = equations[i];
+
+        // Convert LHS expression to ONNX graph
+        std::string lhsTensor;
+        try {
+            lhsTensor = convertExpression(eq.lhsContext, graph, nodeCounter);
+        } catch (const std::exception& e) {
+            std::cerr << "Error converting LHS of " << prefix << " equation " << i << ": " << e.what() << std::endl;
+            std::cerr << "LHS text: " << eq.lhs << std::endl;
+            throw;
+        }
+
+        // Convert RHS expression to ONNX graph
+        std::string rhsTensor;
+        try {
+            rhsTensor = convertExpression(eq.rhsContext, graph, nodeCounter);
+        } catch (const std::exception& e) {
+            std::cerr << "Error converting RHS of " << prefix << " equation " << i << ": " << e.what() << std::endl;
+            std::cerr << "RHS text: " << eq.rhs << std::endl;
+            throw;
+        }
+
+        // Create outputs pointing to the computed tensors
+        auto* lhs_output = graph->add_output();
+        lhs_output->set_name(prefix + "_lhs[" + std::to_string(i) + "]");
+        lhs_output->set_doc_string(eq.lhs);
+        auto* lhs_type = lhs_output->mutable_type()->mutable_tensor_type();
+        lhs_type->set_elem_type(onnx::TensorProto::FLOAT);
+        auto* lhs_shape = lhs_type->mutable_shape();
+        lhs_shape->add_dim()->set_dim_value(1);
+
+        auto* rhs_output = graph->add_output();
+        rhs_output->set_name(prefix + "_rhs[" + std::to_string(i) + "]");
+        rhs_output->set_doc_string(eq.rhs);
+        auto* rhs_type = rhs_output->mutable_type()->mutable_tensor_type();
+        rhs_type->set_elem_type(onnx::TensorProto::FLOAT);
+        auto* rhs_shape = rhs_type->mutable_shape();
+        rhs_shape->add_dim()->set_dim_value(1);
+
+        // Create Identity nodes to connect computed tensors to outputs
+        auto* lhs_identity = graph->add_node();
+        lhs_identity->set_op_type("Identity");
+        lhs_identity->set_name(prefix + "_lhs_identity_" + std::to_string(i));
+        lhs_identity->add_input(lhsTensor);
+        lhs_identity->add_output(prefix + "_lhs[" + std::to_string(i) + "]");
+
+        auto* rhs_identity = graph->add_node();
+        rhs_identity->set_op_type("Identity");
+        rhs_identity->set_name(prefix + "_rhs_identity_" + std::to_string(i));
+        rhs_identity->add_input(rhsTensor);
+        rhs_identity->add_output(prefix + "_rhs[" + std::to_string(i) + "]");
     }
 }
 
