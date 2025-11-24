@@ -344,6 +344,11 @@ bool ModelInfoExtractor::isConstExpression(const std::string& expr) {
         return true;
     }
 
+    // Check for boolean literals
+    if (expr == "true" || expr == "false") {
+        return true;
+    }
+
     try {
         size_t pos = 0;
         std::stod(expr, &pos);
