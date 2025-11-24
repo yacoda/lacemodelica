@@ -59,10 +59,16 @@ int main(int argc, char* argv[]) {
         // Parse command line arguments
         std::string filepath = argv[1];
         std::string outputDir;
+        bool parseOnly = false;
 
-        // Check for --output-dir option
-        if (argc > 3 && std::string(argv[2]) == "--output-dir") {
-            outputDir = argv[3];
+        // Check for options
+        for (int i = 2; i < argc; i++) {
+            if (std::string(argv[i]) == "--parse-only") {
+                parseOnly = true;
+            } else if (std::string(argv[i]) == "--output-dir" && i + 1 < argc) {
+                outputDir = argv[i + 1];
+                i++; // Skip next argument
+            }
         }
 
         std::cout << "Parsing: " << filepath << std::endl;
@@ -90,6 +96,11 @@ int main(int argc, char* argv[]) {
         }
 
         std::cout << "✓ Parsing succeeded" << std::endl;
+
+        // If parse-only mode, exit here
+        if (parseOnly) {
+            return 0;
+        }
 
         // Extract model information
         std::cout << "\nExtracting model information..." << std::endl;
