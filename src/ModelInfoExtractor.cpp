@@ -153,6 +153,12 @@ void ModelInfoExtractor::processEquation(basemodelica::BaseModelicaParser::Equat
         eq.rhs = fullExpr->getText();
         eq.lhsContext = simpleExpr;  // Store AST node
         eq.rhsContext = fullExpr;    // Store AST node
+
+        // Extract string comment
+        if (equation->comment()) {
+            eq.comment = extractDescription(equation->comment());
+        }
+
         target.push_back(eq);
     }
 

@@ -21,6 +21,7 @@ namespace lacemodelica {
 struct Equation {
     std::string lhs;  // Left-hand side expression as string
     std::string rhs;  // Right-hand side expression as string
+    std::string comment;  // String comment / documentation
     antlr4::ParserRuleContext* lhsContext = nullptr;  // AST node for LHS
     antlr4::ParserRuleContext* rhsContext = nullptr;  // AST node for RHS
 };

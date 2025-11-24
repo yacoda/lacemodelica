@@ -154,35 +154,37 @@ void ONNXGenerator::generateEquationOutputs(
             throw;
         }
 
-        // Create outputs pointing to the computed tensors
-        auto* lhs_output = graph->add_output();
-        lhs_output->set_name(prefix + "_lhs[" + std::to_string(i) + "]");
-        lhs_output->set_doc_string(eq.lhs);
-        auto* lhs_type = lhs_output->mutable_type()->mutable_tensor_type();
-        lhs_type->set_elem_type(onnx::TensorProto::FLOAT);
-        auto* lhs_shape = lhs_type->mutable_shape();
-        lhs_shape->add_dim()->set_dim_value(1);
+        // Create an '=' operator node with LHS and RHS as inputs
+        std::string eqOutputName = prefix + "[" + std::to_string(i) + "]";
+        std::string eqTensor = "tensor_" + std::to_string(nodeCounter++);
 
-        auto* rhs_output = graph->add_output();
-        rhs_output->set_name(prefix + "_rhs[" + std::to_string(i) + "]");
-        rhs_output->set_doc_string(eq.rhs);
-        auto* rhs_type = rhs_output->mutable_type()->mutable_tensor_type();
-        rhs_type->set_elem_type(onnx::TensorProto::FLOAT);
-        auto* rhs_shape = rhs_type->mutable_shape();
-        rhs_shape->add_dim()->set_dim_value(1);
+        auto* eq_node = graph->add_node();
+        eq_node->set_op_type("Equal");
+        eq_node->set_name(prefix + "_equal_" + std::to_string(i));
+        eq_node->add_input(lhsTensor);
+        eq_node->add_input(rhsTensor);
+        eq_node->add_output(eqTensor);
 
-        // Create Identity nodes to connect computed tensors to outputs
-        auto* lhs_identity = graph->add_node();
-        lhs_identity->set_op_type("Identity");
-        lhs_identity->set_name(prefix + "_lhs_identity_" + std::to_string(i));
-        lhs_identity->add_input(lhsTensor);
-        lhs_identity->add_output(prefix + "_lhs[" + std::to_string(i) + "]");
+        // Set the string comment as doc_string
+        if (!eq.comment.empty()) {
+            eq_node->set_doc_string(eq.comment);
+        }
 
-        auto* rhs_identity = graph->add_node();
-        rhs_identity->set_op_type("Identity");
-        rhs_identity->set_name(prefix + "_rhs_identity_" + std::to_string(i));
-        rhs_identity->add_input(rhsTensor);
-        rhs_identity->add_output(prefix + "_rhs[" + std::to_string(i) + "]");
+        // Create output for this equation
+        auto* eq_output = graph->add_output();
+        eq_output->set_name(eqOutputName);
+        eq_output->set_doc_string(eq.lhs + " = " + eq.rhs);
+        auto* eq_type = eq_output->mutable_type()->mutable_tensor_type();
+        eq_type->set_elem_type(onnx::TensorProto::BOOL);  // Equal returns boolean
+        auto* eq_shape = eq_type->mutable_shape();
+        eq_shape->add_dim()->set_dim_value(1);
+
+        // Create Identity node to connect Equal output to graph output
+        auto* identity = graph->add_node();
+        identity->set_op_type("Identity");
+        identity->set_name(prefix + "_identity_" + std::to_string(i));
+        identity->add_input(eqTensor);
+        identity->add_output(eqOutputName);
     }
 }
 
