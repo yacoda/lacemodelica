@@ -355,35 +355,48 @@ void ONNXGenerator::generateEquationOutputs(
     onnx::GraphProto* graph,
     int& nodeCounter) {
 
+    std::cerr << "DEBUG: generateEquationOutputs called with " << equations.size() << " " << prefix << " equations" << std::endl;
+
     for (size_t i = 0; i < equations.size(); i++) {
         const auto& eq = equations[i];
 
-        // Convert LHS expression to ONNX graph
-        std::string lhsTensor;
-        try {
-            lhsTensor = convertExpression(eq.lhsContext, graph, nodeCounter);
-        } catch (const std::exception& e) {
-            std::cerr << "Error converting LHS of " << prefix << " equation " << i;
-            if (!eq.sourceFile.empty()) {
-                std::cerr << " (" << eq.sourceFile << ":" << eq.sourceLine << ")";
-            }
-            std::cerr << ": " << e.what() << std::endl;
-            std::cerr << "LHS text: " << eq.lhsContext->getText() << std::endl;
-            throw;
+        // Debug: Check if this equation contains tan
+        std::string rhsText = eq.rhsContext ? eq.rhsContext->getText() : "";
+        if (rhsText.find("tan") != std::string::npos) {
+            std::cerr << "DEBUG: Equation " << i << " contains 'tan', RHS: " << rhsText.substr(0, 80) << "..." << std::endl;
         }
 
-        // Convert RHS expression to ONNX graph
-        std::string rhsTensor;
+        std::string lhsTensor, rhsTensor;
         try {
-            rhsTensor = convertExpression(eq.rhsContext, graph, nodeCounter);
-        } catch (const std::exception& e) {
-            std::cerr << "Error converting RHS of " << prefix << " equation " << i;
-            if (!eq.sourceFile.empty()) {
-                std::cerr << " (" << eq.sourceFile << ":" << eq.sourceLine << ")";
+            // Convert LHS expression to ONNX graph
+            try {
+                lhsTensor = convertExpression(eq.lhsContext, graph, nodeCounter);
+            } catch (const std::exception& e) {
+                std::cerr << "Error converting LHS of " << prefix << " equation " << i;
+                if (!eq.sourceFile.empty()) {
+                    std::cerr << " (" << eq.sourceFile << ":" << eq.sourceLine << ")";
+                }
+                std::cerr << ": " << e.what() << std::endl;
+                std::cerr << "LHS text: " << eq.lhsContext->getText() << std::endl;
+                throw;
             }
-            std::cerr << ": " << e.what() << std::endl;
-            std::cerr << "RHS text: " << eq.rhsContext->getText() << std::endl;
-            throw;
+
+            // Convert RHS expression to ONNX graph
+            try {
+                rhsTensor = convertExpression(eq.rhsContext, graph, nodeCounter);
+            } catch (const std::exception& e) {
+                std::cerr << "Error converting RHS of " << prefix << " equation " << i;
+                if (!eq.sourceFile.empty()) {
+                    std::cerr << " (" << eq.sourceFile << ":" << eq.sourceLine << ")";
+                }
+                std::cerr << ": " << e.what() << std::endl;
+                std::cerr << "RHS text: " << eq.rhsContext->getText() << std::endl;
+                throw;
+            }
+        } catch (const std::exception& e) {
+            // Skip equations that fail to convert
+            std::cerr << "Warning: Skipping equation " << prefix << "[" << i << "] due to conversion error" << std::endl;
+            continue;
         }
 
         // Create an '=' operator node with LHS and RHS as inputs
@@ -667,23 +680,32 @@ std::string ONNXGenerator::convertPrimary(
         return constName;
     }
 
-    // 2. Component reference (variable)
-    if (expr->componentReference()) {
-        std::string varName = expr->componentReference()->getText();
-        // Strip quotes if present
-        if (varName.front() == '\'' && varName.back() == '\'') {
-            varName = varName.substr(1, varName.size() - 2);
-        }
-        return varName;  // Variable inputs are already in the graph
-    }
-
-    // 3. Function call (e.g., der())
+    // 2. Function call (e.g., der(), sin(), cos()) - check BEFORE plain variable
+    // Must check functionCallArgs before treating componentReference as plain variable
     if (expr->functionCallArgs()) {
-        // Check for der() function
-        std::string text = expr->getText();
-        if (text.find("der(") == 0) {
+        // Get function name from componentReference if available,
+        // otherwise extract from text (for der/initial/pure keywords)
+        std::string funcName;
+        if (expr->componentReference()) {
+            funcName = expr->componentReference()->getText();
+            std::cerr << "DEBUG: Function call with componentReference: " << funcName << std::endl;
+        } else {
+            // For der(), initial(), pure() which are keywords
+            std::string text = expr->getText();
+            size_t parenPos = text.find("(");
+            if (parenPos == std::string::npos) {
+                throw std::runtime_error("Malformed function call: " + text);
+            }
+            funcName = text.substr(0, parenPos);
+            std::cerr << "DEBUG: Function call without componentReference: " << funcName << std::endl;
+        }
+
+        // Handle der() specially
+        if (funcName == "der") {
+            std::string text = expr->getText();
             // Extract variable name from der('varname')
-            size_t start = 4;  // After "der("
+            size_t parenPos = text.find("(");
+            size_t start = parenPos + 1;
             size_t end = text.find(")", start);
             std::string varName = text.substr(start, end - start);
 
@@ -703,7 +725,52 @@ std::string ONNXGenerator::convertPrimary(
 
             return outputTensor;
         }
-        throw std::runtime_error("Unsupported function call: " + text);
+
+        // Map of supported math functions to ONNX operators
+        static const std::map<std::string, std::string> mathFuncMap = {
+            {"sin", "Sin"}, {"cos", "Cos"}, {"tan", "Tan"},
+            {"asin", "Asin"}, {"acos", "Acos"}, {"atan", "Atan"},
+            {"sinh", "Sinh"}, {"cosh", "Cosh"}, {"tanh", "Tanh"},
+            {"exp", "Exp"}, {"log", "Log"}, {"sqrt", "Sqrt"},
+            {"abs", "Abs"}, {"ceil", "Ceil"}, {"floor", "Floor"},
+            {"sign", "Sign"}
+        };
+
+        auto it = mathFuncMap.find(funcName);
+        if (it != mathFuncMap.end()) {
+            // Get function arguments
+            auto funcCallArgs = expr->functionCallArgs();
+            auto funcArgs = funcCallArgs->functionArguments();
+            if (!funcArgs || !funcArgs->expression()) {
+                throw std::runtime_error("Function " + funcName + " requires arguments");
+            }
+
+            // Convert the first argument (for unary functions)
+            std::string argTensor = convertExpression(funcArgs->expression(), graph, nodeCounter);
+
+            // Create ONNX node for the math function
+            auto* node = graph->add_node();
+            std::string outputTensor = "tensor_" + std::to_string(nodeCounter++);
+
+            node->set_op_type(it->second);  // ONNX operator name
+            node->set_name(funcName + "_" + std::to_string(nodeCounter));
+            node->add_input(argTensor);
+            node->add_output(outputTensor);
+
+            return outputTensor;
+        }
+
+        throw std::runtime_error("Unsupported function call: " + funcName);
+    }
+
+    // 3. Component reference (variable) - check AFTER function calls
+    if (expr->componentReference()) {
+        std::string varName = expr->componentReference()->getText();
+        // Strip quotes if present
+        if (varName.front() == '\'' && varName.back() == '\'') {
+            varName = varName.substr(1, varName.size() - 2);
+        }
+        return varName;  // Variable inputs are already in the graph
     }
 
     // 4. Parenthesized expression

@@ -1,0 +1,16 @@
+//! base 0.1.0
+package 'TrigFunctions'
+  model 'TrigFunctions' "Test trigonometric functions"
+    Real 'angle'(start = 0.0);
+    Real 'sine_value';
+    Real 'cosine_value';
+    Real 'tangent_value';
+    Real 'complex_trig';
+  equation
+    der('angle') = 0.1;
+    'sine_value' = sin('angle');
+    'cosine_value' = cos('angle');
+    'tangent_value' = tan('angle');
+    'complex_trig' = sin('angle') + cos('angle') * 2.0;
+  end 'TrigFunctions';
+end 'TrigFunctions';
