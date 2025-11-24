@@ -26,7 +26,7 @@ package 'ParameterBindings'
     parameter Real 'array_param[3]' = 'base_value' * 3.0;
     
     // State variables that use the parameters
-    Real 'x'(start = 1.0);
+    Real 'x'(start = scaled_value);
     Real 'y'(start = 0.0);
     Real 'z'(start = 0.0);
 

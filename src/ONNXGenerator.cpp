@@ -172,12 +172,18 @@ void ONNXGenerator::generateONNXModel(const ModelInfo& info, const std::string& 
             meta_idx->set_key("input_index");
             meta_idx->set_value(std::to_string(inputIdx));
 
-            // Create Identity node to connect expression output to graph output
-            auto* identity = graph->add_node();
-            identity->set_op_type("Identity");
-            identity->set_name("start_" + std::to_string(inputIdx));
-            identity->add_input(exprTensor);
-            identity->add_output(outputName);
+            // Rename the expression output tensor to the desired output name
+            // Find the node that produces exprTensor and rename its output
+            for (int j = graph->node_size() - 1; j >= 0; j--) {
+                auto* node = graph->mutable_node(j);
+                for (int k = 0; k < node->output_size(); k++) {
+                    if (node->output(k) == exprTensor) {
+                        node->set_output(k, outputName);
+                        goto found;
+                    }
+                }
+            }
+            found:;
         }
     }
 
