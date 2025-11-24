@@ -56,8 +56,15 @@ int main(int argc, char* argv[]) {
     std::string testDir = "test/testfiles";
 
     if (argc > 1) {
-        // Parse specified file and generate FMU
+        // Parse command line arguments
         std::string filepath = argv[1];
+        std::string outputDir;
+
+        // Check for --output-dir option
+        if (argc > 3 && std::string(argv[2]) == "--output-dir") {
+            outputDir = argv[3];
+        }
+
         std::cout << "Parsing: " << filepath << std::endl;
 
         std::ifstream stream(filepath);
@@ -92,9 +99,31 @@ int main(int argc, char* argv[]) {
         std::cout << "  Model: " << info.modelName << std::endl;
         std::cout << "  Variables: " << info.variables.size() << std::endl;
 
+        // Determine output directory
+        std::string outputPath;
+        if (!outputDir.empty()) {
+            // Use specified output directory
+            fs::create_directories(outputDir);
+            outputPath = outputDir + "/" + info.modelName + "_fmu";
+        } else {
+            // Auto-detect: if input is from testfiles, output to sibling output/ directory
+            fs::path inputPath(filepath);
+            fs::path absInputPath = fs::absolute(inputPath);
+
+            if (absInputPath.string().find("/testfiles/") != std::string::npos) {
+                // Replace /testfiles/ with /output/ in the path
+                fs::path inputDir = absInputPath.parent_path();
+                fs::path outputBaseDir = inputDir.parent_path() / "output";
+                fs::create_directories(outputBaseDir);
+                outputPath = (outputBaseDir / (info.modelName + "_fmu")).string();
+            } else {
+                // Regular file: output to current directory
+                outputPath = info.modelName + "_fmu";
+            }
+        }
+
         // Generate FMU
         std::cout << "\nGenerating FMU..." << std::endl;
-        std::string outputPath = info.modelName + "_fmu";
         lacemodelica::FMUGenerator generator;
         bool success = generator.generateFMU(info, outputPath);
 

@@ -153,3 +153,29 @@ target_link_libraries(lacemodelica
     ONNX::onnx_proto
     protobuf::libprotobuf
 )
+
+# Testing
+enable_testing()
+
+# Find all test files
+file(GLOB TEST_FILES "${CMAKE_SOURCE_DIR}/test/testfiles/*.bmo")
+
+# Create a test for each .bmo file
+foreach(TEST_FILE ${TEST_FILES})
+    get_filename_component(TEST_NAME ${TEST_FILE} NAME_WE)
+    add_test(
+        NAME parse_${TEST_NAME}
+        COMMAND lacemodelica ${TEST_FILE}
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    )
+endforeach()
+
+# Add Python FMU import test (runs independently, expects FMUs to exist)
+find_package(Python3 COMPONENTS Interpreter)
+if(Python3_FOUND)
+    add_test(
+        NAME fmu_import_test
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/test/test_fmu_import.py
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    )
+endif()

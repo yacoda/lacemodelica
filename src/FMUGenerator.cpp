@@ -126,6 +126,8 @@ bool FMUGenerator::generateModelDescription(const ModelInfo& info, const std::st
     for (const auto& var : info.getDerivatives()) {
         XMLElement* derivative = doc.NewElement("ContinuousStateDerivative");
         derivative->SetAttribute("valueReference", var.valueReference);
+        // Add empty dependencies for now (TODO: track actual dependencies from equations)
+        derivative->SetAttribute("dependencies", "");
         modelStructure->InsertEndChild(derivative);
     }
 

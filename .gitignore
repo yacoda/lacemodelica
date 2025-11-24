@@ -3,6 +3,7 @@ build/
 dist/
 *_fmu/
 external_projects/
+test/output/
 
 # IDE
 .vscode/
