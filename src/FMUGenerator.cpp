@@ -83,6 +83,30 @@ bool FMUGenerator::generateModelDescription(const ModelInfo& info, const std::st
             varElem->SetAttribute("start", var.startValue.c_str());
         }
 
+        // Only set min attribute if it's a constant value
+        // Non-const min values are provided via ONNX outputs
+        if (!var.minValue.empty()) {
+            try {
+                std::stod(var.minValue);
+                // It's a constant, write to modelDescription.xml
+                varElem->SetAttribute("min", var.minValue.c_str());
+            } catch (...) {
+                // Non-const, will be provided via ONNX min[i] output
+            }
+        }
+
+        // Only set max attribute if it's a constant value
+        // Non-const max values are provided via ONNX outputs
+        if (!var.maxValue.empty()) {
+            try {
+                std::stod(var.maxValue);
+                // It's a constant, write to modelDescription.xml
+                varElem->SetAttribute("max", var.maxValue.c_str());
+            } catch (...) {
+                // Non-const, will be provided via ONNX max[i] output
+            }
+        }
+
         if (var.isDerivative && var.derivativeOf >= 0) {
             varElem->SetAttribute("derivative", var.derivativeOf);
         }

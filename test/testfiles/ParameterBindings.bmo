@@ -18,21 +18,38 @@ package 'ParameterBindings'
     parameter Real 'bounded_value'(min = 0.0, max = 100.0) = 'base_value' + 'scale';
     
     // Parameter with non-const binding and non-const min
-    parameter Real 'dynamic_bounded'(min = 'base_value') = 'base_value' * 3.0;
-    
+    parameter Real 'dynamic_bounded'(min = 'base_value', start= 'base_value' * 3.0);
+
+    // Parameter with non-const max only
+    parameter Real 'dynamic_max'(max = 'base_value' * 10.0) = 50.0;
+
+    // Parameter with both non-const min and max
+    parameter Real 'dynamic_both'(min = 'base_value', max = 'base_value' * 5.0) = 25.0;
+
+    // Parameter with const min and non-const max
+    parameter Real 'mixed_bounds_1'(min = 0.0, max = 'base_value' * 2.0) = 10.0;
+
+    // Parameter with non-const min and const max
+    parameter Real 'mixed_bounds_2'(min = 'base_value' / 2.0, max = 200.0) = 100.0;
+
+    // Parameter with const min/max (should stay in modelDescription only)
+    parameter Real 'const_bounds'(min = -100.0, max = 100.0) = 0.0;
+
     // Array parameter with non-const binding
     parameter Real 'array_param[1]' = 'base_value';
     parameter Real 'array_param[2]' = 'base_value' * 2.0;
     parameter Real 'array_param[3]' = 'base_value' * 3.0;
-    
+
     // State variables that use the parameters
     Real 'x'(start = scaled_value);
     Real 'y'(start = 0.0);
     Real 'z'(start = 0.0);
+    Real 'w'(start = 0.0);
 
   equation
     der('x') = 'scaled_value' * 'x';
     der('y') = 'bounded_value' - 'const_computed';
     der('z') = 'dynamic_bounded' + 'array_param[1]' + 'array_param[2]' + 'array_param[3]';
+    der('w') = 'dynamic_max' + 'dynamic_both' + 'mixed_bounds_1' + 'mixed_bounds_2' + 'const_bounds';
   end 'ParameterBindings';
 end 'ParameterBindings';

@@ -26,7 +26,11 @@ private:
     void processEquation(basemodelica::BaseModelicaParser::EquationContext* equation, std::vector<Equation>& target);
 
     std::string extractStartValue(basemodelica::BaseModelicaParser::ModificationContext* ctx);
+    std::string extractMinValue(basemodelica::BaseModelicaParser::ModificationContext* ctx);
+    std::string extractMaxValue(basemodelica::BaseModelicaParser::ModificationContext* ctx);
     antlr4::ParserRuleContext* extractBindingContext(basemodelica::BaseModelicaParser::ModificationContext* ctx);
+    antlr4::ParserRuleContext* extractMinContext(basemodelica::BaseModelicaParser::ModificationContext* ctx);
+    antlr4::ParserRuleContext* extractMaxContext(basemodelica::BaseModelicaParser::ModificationContext* ctx);
     bool isConstExpression(const std::string& expr);
     std::string extractDescription(basemodelica::BaseModelicaParser::CommentContext* ctx);
     std::vector<std::string> extractDimensions(basemodelica::BaseModelicaParser::DeclarationContext* ctx);

@@ -174,16 +174,144 @@ void ONNXGenerator::generateONNXModel(const ModelInfo& info, const std::string& 
 
             // Rename the expression output tensor to the desired output name
             // Find the node that produces exprTensor and rename its output
+            bool foundProducer = false;
             for (int j = graph->node_size() - 1; j >= 0; j--) {
                 auto* node = graph->mutable_node(j);
                 for (int k = 0; k < node->output_size(); k++) {
                     if (node->output(k) == exprTensor) {
                         node->set_output(k, outputName);
-                        goto found;
+                        foundProducer = true;
+                        break;
                     }
                 }
+                if (foundProducer) break;
             }
-            found:;
+
+            // If no node produces this tensor, it's a direct input reference
+            // Create an Identity node to connect it to the output
+            if (!foundProducer) {
+                auto* identity = graph->add_node();
+                identity->set_op_type("Identity");
+                identity->set_name("start_identity_" + std::to_string(inputIdx));
+                identity->add_input(exprTensor);
+                identity->add_output(outputName);
+            }
+        }
+    }
+
+    // Helper lambda to generate min/max outputs
+    auto generateBoundOutput = [&](size_t i, const Variable& var, antlr4::ParserRuleContext* context,
+                                     const std::string& boundType, const std::string& description) {
+        // Find the input index for this variable
+        auto it = varIndexToInputIndex.find(i);
+        if (it == varIndexToInputIndex.end()) {
+            std::cerr << "Warning: Could not find input index for variable " << var.name << std::endl;
+            return;
+        }
+        int inputIdx = it->second;
+
+        // Convert bound expression to ONNX
+        std::string exprTensor;
+        try {
+            exprTensor = convertExpression(context, graph, nodeCounter);
+        } catch (const std::exception& e) {
+            std::cerr << "Warning: Failed to convert " << boundType << " expression for " << var.name;
+            if (!var.sourceFile.empty()) {
+                std::cerr << " (" << var.sourceFile << ":" << var.sourceLine << ")";
+            }
+            std::cerr << ": " << e.what() << std::endl;
+            return;
+        }
+
+        // Create output for this bound using the input index
+        std::string outputName = boundType + "[" + std::to_string(inputIdx) + "]";
+        auto* output = graph->add_output();
+        output->set_name(outputName);
+        auto* output_type = output->mutable_type()->mutable_tensor_type();
+        output_type->set_elem_type(onnx::TensorProto::FLOAT);
+        auto* output_shape = output_type->mutable_shape();
+        output_shape->add_dim()->set_dim_value(1);
+
+        // Set doc_string to variable name for reference
+        output->set_doc_string(description + " for " + var.name);
+
+        // Add source location metadata
+        if (!var.sourceFile.empty()) {
+            auto* meta_file = output->add_metadata_props();
+            meta_file->set_key("source_file");
+            meta_file->set_value(var.sourceFile);
+
+            auto* meta_line = output->add_metadata_props();
+            meta_line->set_key("source_line");
+            meta_line->set_value(std::to_string(var.sourceLine));
+        }
+
+        // Add metadata linking to the variable
+        auto* meta_var = output->add_metadata_props();
+        meta_var->set_key("variable_name");
+        meta_var->set_value(var.name);
+
+        auto* meta_vr = output->add_metadata_props();
+        meta_vr->set_key("value_reference");
+        meta_vr->set_value(std::to_string(var.valueReference));
+
+        auto* meta_idx = output->add_metadata_props();
+        meta_idx->set_key("input_index");
+        meta_idx->set_value(std::to_string(inputIdx));
+
+        // Rename the expression output tensor to the desired output name
+        // Find the node that produces exprTensor and rename its output
+        bool foundProducer = false;
+        for (int j = graph->node_size() - 1; j >= 0; j--) {
+            auto* node = graph->mutable_node(j);
+            for (int k = 0; k < node->output_size(); k++) {
+                if (node->output(k) == exprTensor) {
+                    node->set_output(k, outputName);
+                    foundProducer = true;
+                    break;
+                }
+            }
+            if (foundProducer) break;
+        }
+
+        // If no node produces this tensor, it's a direct input reference
+        // Create an Identity node to connect it to the output
+        if (!foundProducer) {
+            auto* identity = graph->add_node();
+            identity->set_op_type("Identity");
+            identity->set_name(boundType + "_identity_" + std::to_string(inputIdx));
+            identity->add_input(exprTensor);
+            identity->add_output(outputName);
+        }
+    };
+
+    // Generate outputs for non-const min values
+    for (size_t i = 0; i < info.variables.size(); i++) {
+        const auto& var = info.variables[i];
+        if (var.minContext != nullptr && !var.minValue.empty()) {
+            // Check if it's non-const by trying to parse as double
+            try {
+                std::stod(var.minValue);
+                // It's a constant, skip ONNX generation
+            } catch (...) {
+                // Non-const, generate ONNX output
+                generateBoundOutput(i, var, var.minContext, "min", "Minimum value");
+            }
+        }
+    }
+
+    // Generate outputs for non-const max values
+    for (size_t i = 0; i < info.variables.size(); i++) {
+        const auto& var = info.variables[i];
+        if (var.maxContext != nullptr && !var.maxValue.empty()) {
+            // Check if it's non-const by trying to parse as double
+            try {
+                std::stod(var.maxValue);
+                // It's a constant, skip ONNX generation
+            } catch (...) {
+                // Non-const, generate ONNX output
+                generateBoundOutput(i, var, var.maxContext, "max", "Maximum value");
+            }
         }
     }
 

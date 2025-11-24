@@ -33,6 +33,8 @@ struct Variable {
     std::string variability;  // "fixed", "tunable", "continuous"
     std::string initial;  // "exact", "approx", "calculated"
     std::string startValue;
+    std::string minValue;
+    std::string maxValue;
     std::string description;  // Variable description from comment
     int valueReference;
     int derivativeOf = -1;  // valueReference of state if this is a derivative
@@ -42,6 +44,8 @@ struct Variable {
     std::string sourceFile;  // Source filename for debugging
     size_t sourceLine = 0;  // Source line number for debugging
     antlr4::ParserRuleContext* bindingContext = nullptr;  // AST node for binding expression
+    antlr4::ParserRuleContext* minContext = nullptr;  // AST node for min expression
+    antlr4::ParserRuleContext* maxContext = nullptr;  // AST node for max expression
 };
 
 class ModelInfo {

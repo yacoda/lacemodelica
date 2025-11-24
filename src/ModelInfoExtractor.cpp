@@ -111,11 +111,14 @@ void ModelInfoExtractor::extractVariables(basemodelica::BaseModelicaParser::Base
                     if (auto mod = compDecl->declaration()->modification()) {
                         var.startValue = extractStartValue(mod);
                         var.bindingContext = extractBindingContext(mod);
+                        var.minValue = extractMinValue(mod);
+                        var.minContext = extractMinContext(mod);
+                        var.maxValue = extractMaxValue(mod);
+                        var.maxContext = extractMaxContext(mod);
 
-                        // If this is a parameter with a binding expression that's not const,
+                        // If any variable has a non-const start/binding expression,
                         // it should have initial="calculated"
-                        if ((typePrefix.find("parameter") != std::string::npos) &&
-                            !var.startValue.empty() &&
+                        if (!var.startValue.empty() &&
                             !isConstExpression(var.startValue)) {
                             var.initial = "calculated";
                         }
@@ -235,6 +238,44 @@ std::string ModelInfoExtractor::extractStartValue(basemodelica::BaseModelicaPars
     return "";
 }
 
+std::string ModelInfoExtractor::extractMinValue(basemodelica::BaseModelicaParser::ModificationContext* ctx) {
+    if (ctx->classModification()) {
+        auto argList = ctx->classModification()->argumentList();
+        if (argList) {
+            for (auto arg : argList->argument()) {
+                if (auto elemMod = arg->elementModificationOrReplaceable()) {
+                    if (auto mod = elemMod->elementModification()) {
+                        std::string name = mod->name()->getText();
+                        if (name == "min" && mod->modification() && mod->modification()->expression()) {
+                            return mod->modification()->expression()->getText();
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return "";
+}
+
+std::string ModelInfoExtractor::extractMaxValue(basemodelica::BaseModelicaParser::ModificationContext* ctx) {
+    if (ctx->classModification()) {
+        auto argList = ctx->classModification()->argumentList();
+        if (argList) {
+            for (auto arg : argList->argument()) {
+                if (auto elemMod = arg->elementModificationOrReplaceable()) {
+                    if (auto mod = elemMod->elementModification()) {
+                        std::string name = mod->name()->getText();
+                        if (name == "max" && mod->modification() && mod->modification()->expression()) {
+                            return mod->modification()->expression()->getText();
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return "";
+}
+
 antlr4::ParserRuleContext* ModelInfoExtractor::extractBindingContext(basemodelica::BaseModelicaParser::ModificationContext* ctx) {
     if (ctx->expression()) {
         return ctx->expression();
@@ -257,6 +298,44 @@ antlr4::ParserRuleContext* ModelInfoExtractor::extractBindingContext(basemodelic
         }
     }
 
+    return nullptr;
+}
+
+antlr4::ParserRuleContext* ModelInfoExtractor::extractMinContext(basemodelica::BaseModelicaParser::ModificationContext* ctx) {
+    if (ctx->classModification()) {
+        auto argList = ctx->classModification()->argumentList();
+        if (argList) {
+            for (auto arg : argList->argument()) {
+                if (auto elemMod = arg->elementModificationOrReplaceable()) {
+                    if (auto mod = elemMod->elementModification()) {
+                        std::string name = mod->name()->getText();
+                        if (name == "min" && mod->modification() && mod->modification()->expression()) {
+                            return mod->modification()->expression();
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return nullptr;
+}
+
+antlr4::ParserRuleContext* ModelInfoExtractor::extractMaxContext(basemodelica::BaseModelicaParser::ModificationContext* ctx) {
+    if (ctx->classModification()) {
+        auto argList = ctx->classModification()->argumentList();
+        if (argList) {
+            for (auto arg : argList->argument()) {
+                if (auto elemMod = arg->elementModificationOrReplaceable()) {
+                    if (auto mod = elemMod->elementModification()) {
+                        std::string name = mod->name()->getText();
+                        if (name == "max" && mod->modification() && mod->modification()->expression()) {
+                            return mod->modification()->expression();
+                        }
+                    }
+                }
+            }
+        }
+    }
     return nullptr;
 }
 
