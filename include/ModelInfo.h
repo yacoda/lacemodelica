@@ -41,6 +41,7 @@ struct Variable {
     bool isDerivative = false;
     std::string sourceFile;  // Source filename for debugging
     size_t sourceLine = 0;  // Source line number for debugging
+    antlr4::ParserRuleContext* bindingContext = nullptr;  // AST node for binding expression
 };
 
 class ModelInfo {

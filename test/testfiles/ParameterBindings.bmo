@@ -1,0 +1,38 @@
+// SPDX-License-Identifier: MIT
+// Test file for parameter binding expressions
+
+//! base 0.1.0
+package 'ParameterBindings'
+  model 'ParameterBindings'
+    // Base parameters with const bindings
+    parameter Real 'base_value' = 10.0;
+    parameter Real 'scale' = 2.0;
+    
+    // Parameter with const binding expression
+    parameter Real 'const_computed' = 5.0;
+    
+    // Parameter with non-const binding expression
+    parameter Real 'scaled_value' = 'base_value' * 'scale';
+    
+    // Parameter with non-const binding and const min/max
+    parameter Real 'bounded_value'(min = 0.0, max = 100.0) = 'base_value' + 'scale';
+    
+    // Parameter with non-const binding and non-const min
+    parameter Real 'dynamic_bounded'(min = 'base_value') = 'base_value' * 3.0;
+    
+    // Array parameter with non-const binding
+    parameter Real 'array_param[1]' = 'base_value';
+    parameter Real 'array_param[2]' = 'base_value' * 2.0;
+    parameter Real 'array_param[3]' = 'base_value' * 3.0;
+    
+    // State variables that use the parameters
+    Real 'x'(start = 1.0);
+    Real 'y'(start = 0.0);
+    Real 'z'(start = 0.0);
+
+  equation
+    der('x') = 'scaled_value' * 'x';
+    der('y') = 'bounded_value' - 'const_computed';
+    der('z') = 'dynamic_bounded' + 'array_param[1]' + 'array_param[2]' + 'array_param[3]';
+  end 'ParameterBindings';
+end 'ParameterBindings';

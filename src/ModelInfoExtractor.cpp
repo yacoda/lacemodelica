@@ -107,9 +107,18 @@ void ModelInfoExtractor::extractVariables(basemodelica::BaseModelicaParser::Base
                     // Extract dimensions
                     var.dimensions = extractDimensions(compDecl->declaration());
 
-                    // Extract start value from modification
+                    // Extract start value and binding context from modification
                     if (auto mod = compDecl->declaration()->modification()) {
                         var.startValue = extractStartValue(mod);
+                        var.bindingContext = extractBindingContext(mod);
+
+                        // If this is a parameter with a binding expression that's not const,
+                        // it should have initial="calculated"
+                        if ((typePrefix.find("parameter") != std::string::npos) &&
+                            !var.startValue.empty() &&
+                            !isConstExpression(var.startValue)) {
+                            var.initial = "calculated";
+                        }
                     }
 
                     // Extract description from comment
@@ -224,6 +233,44 @@ std::string ModelInfoExtractor::extractStartValue(basemodelica::BaseModelicaPars
     }
 
     return "";
+}
+
+antlr4::ParserRuleContext* ModelInfoExtractor::extractBindingContext(basemodelica::BaseModelicaParser::ModificationContext* ctx) {
+    if (ctx->expression()) {
+        return ctx->expression();
+    }
+
+    // Check class modification for start= or similar
+    if (ctx->classModification()) {
+        auto argList = ctx->classModification()->argumentList();
+        if (argList) {
+            for (auto arg : argList->argument()) {
+                if (auto elemMod = arg->elementModificationOrReplaceable()) {
+                    if (auto mod = elemMod->elementModification()) {
+                        std::string name = mod->name()->getText();
+                        if (name == "start" && mod->modification() && mod->modification()->expression()) {
+                            return mod->modification()->expression();
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    return nullptr;
+}
+
+bool ModelInfoExtractor::isConstExpression(const std::string& expr) {
+    if (expr.empty()) {
+        return true;
+    }
+
+    try {
+        std::stod(expr);
+        return true;
+    } catch (...) {
+        return false;
+    }
 }
 
 std::string ModelInfoExtractor::extractDescription(basemodelica::BaseModelicaParser::CommentContext* ctx) {

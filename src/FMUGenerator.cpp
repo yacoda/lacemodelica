@@ -77,7 +77,9 @@ bool FMUGenerator::generateModelDescription(const ModelInfo& info, const std::st
             varElem->SetAttribute("initial", var.initial.c_str());
         }
 
-        if (!var.startValue.empty()) {
+        // Only set start attribute if initial is not "calculated"
+        // For calculated initial values, the value comes from ONNX outputs
+        if (!var.startValue.empty() && var.initial != "calculated") {
             varElem->SetAttribute("start", var.startValue.c_str());
         }
 

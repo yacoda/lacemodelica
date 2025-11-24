@@ -52,11 +52,19 @@ void ONNXGenerator::generateONNXModel(const ModelInfo& info, const std::string& 
     graph->set_name(info.modelName);
 
     // Create ONNX inputs for each variable and parameter (skip derivatives)
-    for (const auto& var : info.variables) {
+    // Track mapping from variable index to input index for start[] outputs
+    std::map<size_t, int> varIndexToInputIndex;
+    int inputIndex = 0;
+
+    for (size_t i = 0; i < info.variables.size(); i++) {
+        const auto& var = info.variables[i];
+
         // Skip derivative variables - der() will be an operator
         if (var.isDerivative) {
             continue;
         }
+
+        varIndexToInputIndex[i] = inputIndex++;
 
         auto* input = graph->add_input();
         input->set_name(var.name);
@@ -101,6 +109,77 @@ void ONNXGenerator::generateONNXModel(const ModelInfo& info, const std::string& 
 
     // Generate outputs for initial equations
     generateEquationOutputs(info.initialEquations, "init_eq", graph, nodeCounter);
+
+    // Generate outputs for calculated initial values (non-const parameter bindings)
+    for (size_t i = 0; i < info.variables.size(); i++) {
+        const auto& var = info.variables[i];
+
+        if (var.initial == "calculated" && var.bindingContext != nullptr) {
+            // Find the input index for this variable
+            auto it = varIndexToInputIndex.find(i);
+            if (it == varIndexToInputIndex.end()) {
+                std::cerr << "Warning: Could not find input index for variable " << var.name << std::endl;
+                continue;
+            }
+            int inputIdx = it->second;
+
+            // Convert binding expression to ONNX
+            std::string exprTensor;
+            try {
+                exprTensor = convertExpression(var.bindingContext, graph, nodeCounter);
+            } catch (const std::exception& e) {
+                std::cerr << "Warning: Failed to convert binding expression for " << var.name;
+                if (!var.sourceFile.empty()) {
+                    std::cerr << " (" << var.sourceFile << ":" << var.sourceLine << ")";
+                }
+                std::cerr << ": " << e.what() << std::endl;
+                continue;
+            }
+
+            // Create output for this binding using the input index
+            std::string outputName = "start[" + std::to_string(inputIdx) + "]";
+            auto* output = graph->add_output();
+            output->set_name(outputName);
+            auto* output_type = output->mutable_type()->mutable_tensor_type();
+            output_type->set_elem_type(onnx::TensorProto::FLOAT);
+            auto* output_shape = output_type->mutable_shape();
+            output_shape->add_dim()->set_dim_value(1);
+
+            // Set doc_string to variable name for reference
+            output->set_doc_string("Initial value for " + var.name);
+
+            // Add source location metadata
+            if (!var.sourceFile.empty()) {
+                auto* meta_file = output->add_metadata_props();
+                meta_file->set_key("source_file");
+                meta_file->set_value(var.sourceFile);
+
+                auto* meta_line = output->add_metadata_props();
+                meta_line->set_key("source_line");
+                meta_line->set_value(std::to_string(var.sourceLine));
+            }
+
+            // Add metadata linking to the variable
+            auto* meta_var = output->add_metadata_props();
+            meta_var->set_key("variable_name");
+            meta_var->set_value(var.name);
+
+            auto* meta_vr = output->add_metadata_props();
+            meta_vr->set_key("value_reference");
+            meta_vr->set_value(std::to_string(var.valueReference));
+
+            auto* meta_idx = output->add_metadata_props();
+            meta_idx->set_key("input_index");
+            meta_idx->set_value(std::to_string(inputIdx));
+
+            // Create Identity node to connect expression output to graph output
+            auto* identity = graph->add_node();
+            identity->set_op_type("Identity");
+            identity->set_name("start_" + std::to_string(inputIdx));
+            identity->add_input(exprTensor);
+            identity->add_output(outputName);
+        }
+    }
 
     // Serialize to file
     std::ofstream ofs(filepath, std::ios::binary);
