@@ -3,8 +3,8 @@
 // Copyright (c) Deltares
 
 //! base 0.1.0
-package 'Example'
-  model 'Example'
+package 'RTCToolsBasic'
+  model 'RTCToolsBasic'
     Real 'inflow.QOut.Q';
     Real 'inflow.Q';
     parameter Real 'inflow.Q_nominal' = 1.0;
@@ -29,5 +29,5 @@ package 'Example'
     'storage.Q_release' = 'Q_release';
     'inflow.Q' = 'Q_in';
     'V_storage' = 'storage.V';
-  end 'Example';
-end 'Example';
+  end 'RTCToolsBasic';
+end 'RTCToolsBasic';

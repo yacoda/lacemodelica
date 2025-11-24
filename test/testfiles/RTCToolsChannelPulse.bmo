@@ -3,8 +3,8 @@
 // Source: RTC-Tools (https://github.com/Deltares/rtc-tools)
 // Copyright (c) Deltares
 
-package 'Example'
-  model 'Example'
+package 'RTCToolsChannelPulse'
+  model 'RTCToolsChannelPulse'
     Real 'Channel.HQUp.H'(unit = "m", quantity = "Length") "Level above datum";
     Real 'Channel.HQUp.Q'(unit = "m3/s", quantity = "VolumeFlowRate") "Volume flow (positive inwards)";
     Real 'Channel.HQDown.H'(unit = "m", quantity = "Length") "Level above datum";
@@ -356,5 +356,5 @@ package 'Example'
     'Discharge.HQ.Q' + 'Discharge.Q' = 0.0;
     'Inflow_Q' = 'Discharge.Q';
     'Level_H' = 'Level.H';
-  end 'Example';
-end 'Example';
+  end 'RTCToolsChannelPulse';
+end 'RTCToolsChannelPulse';

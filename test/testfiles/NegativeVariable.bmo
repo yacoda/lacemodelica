@@ -3,10 +3,10 @@
 // Source: https://github.com/SciML/BaseModelica.jl
 
 //! base 0.1.0
-package 'Negate'
-  model 'Negate'
+package 'NegativeVariable'
+  model 'NegativeVariable'
     Real 'x';
   equation
     der('x') = -'x';
-  end 'Negate';
-end 'Negate';
+  end 'NegativeVariable';
+end 'NegativeVariable';
