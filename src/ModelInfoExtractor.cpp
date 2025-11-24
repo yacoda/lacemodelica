@@ -345,8 +345,14 @@ bool ModelInfoExtractor::isConstExpression(const std::string& expr) {
     }
 
     try {
-        std::stod(expr);
-        return true;
+        size_t pos = 0;
+        std::stod(expr, &pos);
+        // Check if the entire string was consumed (it's a pure number)
+        // Skip trailing whitespace
+        while (pos < expr.size() && std::isspace(expr[pos])) {
+            pos++;
+        }
+        return pos == expr.size();
     } catch (...) {
         return false;
     }
