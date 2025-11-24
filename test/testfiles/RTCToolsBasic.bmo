@@ -1,0 +1,33 @@
+// SPDX-License-Identifier: LGPL-3.0-or-later
+// Source: RTC-Tools (https://github.com/Deltares/rtc-tools)
+// Copyright (c) Deltares
+
+//! base 0.1.0
+package 'Example'
+  model 'Example'
+    Real 'inflow.QOut.Q';
+    Real 'inflow.Q';
+    parameter Real 'inflow.Q_nominal' = 1.0;
+    Real 'storage.QIn.Q';
+    Real 'storage.QOut.Q';
+    Real 'storage.Q_release';
+    Real 'storage.V';
+    parameter Real 'storage.Q_nominal';
+    Real 'outfall.QIn.Q';
+    Real 'outfall.Q';
+    parameter Real 'outfall.Q_nominal';
+    input Real 'Q_in';
+    input Real 'Q_release';
+    output Real 'V_storage'(unit = "m3", quantity = "Volume");
+  equation
+    'inflow.QOut.Q' = 'storage.QIn.Q';
+    'storage.QOut.Q' = 'outfall.QIn.Q';
+    'inflow.QOut.Q' / 'inflow.Q_nominal' = 'inflow.Q' / 'inflow.Q_nominal';
+    der('storage.V') = ('storage.QIn.Q' - 'storage.QOut.Q');
+    'storage.QOut.Q' = 'storage.Q_release';
+    'outfall.Q' / 'outfall.Q_nominal' = 'outfall.QIn.Q' / 'outfall.Q_nominal';
+    'storage.Q_release' = 'Q_release';
+    'inflow.Q' = 'Q_in';
+    'V_storage' = 'storage.V';
+  end 'Example';
+end 'Example';
