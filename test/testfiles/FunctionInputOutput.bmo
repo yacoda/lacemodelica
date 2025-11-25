@@ -7,8 +7,18 @@ package 'FunctionInputOutput'
     input Real 'c';
     output Real 'result';
   algorithm
-    'result' := 'a' * 'x' * 'x' + 'b' * 'x' + 'c';
+    'sub_result' := 'x' * 'x';
+    'sub_result' := 'sub_result'*'a';
+    'result' := 'sub_result' + 'b' * 'x' + 'c';
   end 'polynomial';
+
+  function 'foo'
+    input Real 'a';
+    input Real 'b';
+    output Real 'result';
+  algorithm
+    'result' := 'a' + 'b';
+  end 'foo';
 
   model 'FunctionInputOutput' "Model with function call"
     Real 'x'(start = 0.0);
@@ -18,6 +28,6 @@ package 'FunctionInputOutput'
     parameter Real 'c' = 3.0;
   equation
     der('x') = 0.5;
-    'y' = 'polynomial'('x', 'a', 'b', 'c');
+    'y' = 'foo'('polynomial'('x', 'a', 'b', 'c'),'x');
   end 'FunctionInputOutput';
 end 'FunctionInputOutput';

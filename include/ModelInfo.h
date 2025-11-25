@@ -48,6 +48,23 @@ struct Variable {
     antlr4::ParserRuleContext* maxContext = nullptr;  // AST node for max expression
 };
 
+struct Statement {
+    antlr4::ParserRuleContext* lhsContext;  // componentReference on left of :=
+    antlr4::ParserRuleContext* rhsContext;  // expression on right of :=
+    std::string sourceFile;
+    size_t sourceLine = 0;
+};
+
+struct Function {
+    std::string name;
+    std::string description;
+    std::vector<Variable> inputs;
+    std::vector<Variable> outputs;
+    std::vector<Statement> algorithmStatements;
+    std::string sourceFile;
+    size_t sourceLine = 0;
+};
+
 class ModelInfo {
 public:
     std::string packageName;
@@ -58,6 +75,8 @@ public:
     std::map<std::string, int> variableIndex;  // name -> index in variables
     std::vector<Equation> equations;
     std::vector<Equation> initialEquations;
+    std::vector<Function> functions;
+    std::map<std::string, int> functionIndex;  // name -> index in functions
 
     int nextValueReference = 1;
 
@@ -78,6 +97,27 @@ public:
         auto it = variableIndex.find(name);
         if (it != variableIndex.end()) {
             return &variables[it->second];
+        }
+        return nullptr;
+    }
+
+    void addFunction(const Function& func) {
+        functionIndex[func.name] = functions.size();
+        functions.push_back(func);
+    }
+
+    Function* findFunction(const std::string& name) {
+        auto it = functionIndex.find(name);
+        if (it != functionIndex.end()) {
+            return &functions[it->second];
+        }
+        return nullptr;
+    }
+
+    const Function* findFunction(const std::string& name) const {
+        auto it = functionIndex.find(name);
+        if (it != functionIndex.end()) {
+            return &functions[it->second];
         }
         return nullptr;
     }

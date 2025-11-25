@@ -10,6 +10,7 @@
 // Forward declare ONNX types
 namespace onnx {
     class GraphProto;
+    class ModelProto;
 }
 
 namespace lacemodelica {
@@ -28,46 +29,66 @@ private:
     static void generateEquationOutputs(
         const std::vector<Equation>& equations,
         const std::string& prefix,
+        const ModelInfo& info,
         onnx::GraphProto* graph,
         int& nodeCounter
+    );
+
+    // Create ONNX FunctionProto for a function with algorithm
+    static void createFunctionProto(
+        const Function& func,
+        const ModelInfo& info,
+        onnx::ModelProto* model
     );
 
     // Convert BaseModelica expression AST to ONNX nodes
     // Returns the name of the output tensor
     static std::string convertExpression(
         antlr4::ParserRuleContext* expr,
+        const ModelInfo& info,
         onnx::GraphProto* graph,
-        int& nodeCounter
+        int& nodeCounter,
+        const std::map<std::string, std::string>* variableMap = nullptr
     );
 
     static std::string convertSimpleExpression(
         basemodelica::BaseModelicaParser::SimpleExpressionContext* expr,
+        const ModelInfo& info,
         onnx::GraphProto* graph,
-        int& nodeCounter
+        int& nodeCounter,
+        const std::map<std::string, std::string>* variableMap = nullptr
     );
 
     static std::string convertArithmeticExpression(
         basemodelica::BaseModelicaParser::ArithmeticExpressionContext* expr,
+        const ModelInfo& info,
         onnx::GraphProto* graph,
-        int& nodeCounter
+        int& nodeCounter,
+        const std::map<std::string, std::string>* variableMap = nullptr
     );
 
     static std::string convertTerm(
         basemodelica::BaseModelicaParser::TermContext* expr,
+        const ModelInfo& info,
         onnx::GraphProto* graph,
-        int& nodeCounter
+        int& nodeCounter,
+        const std::map<std::string, std::string>* variableMap = nullptr
     );
 
     static std::string convertFactor(
         basemodelica::BaseModelicaParser::FactorContext* expr,
+        const ModelInfo& info,
         onnx::GraphProto* graph,
-        int& nodeCounter
+        int& nodeCounter,
+        const std::map<std::string, std::string>* variableMap = nullptr
     );
 
     static std::string convertPrimary(
         basemodelica::BaseModelicaParser::PrimaryContext* expr,
+        const ModelInfo& info,
         onnx::GraphProto* graph,
-        int& nodeCounter
+        int& nodeCounter,
+        const std::map<std::string, std::string>* variableMap = nullptr
     );
 };
 

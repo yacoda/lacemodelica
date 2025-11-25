@@ -21,6 +21,7 @@ private:
     void extractPackageAndModelName(basemodelica::BaseModelicaParser::BaseModelicaContext* ctx);
     void extractVariables(basemodelica::BaseModelicaParser::BaseModelicaContext* ctx);
     void extractEquations(basemodelica::BaseModelicaParser::BaseModelicaContext* ctx);
+    void extractFunctions(basemodelica::BaseModelicaParser::BaseModelicaContext* ctx);
     void identifyDerivatives();
 
     void processEquation(basemodelica::BaseModelicaParser::EquationContext* equation, std::vector<Equation>& target);

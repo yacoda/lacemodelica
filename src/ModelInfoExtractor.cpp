@@ -21,6 +21,7 @@ ModelInfo ModelInfoExtractor::extract(basemodelica::BaseModelicaParser::BaseMode
     extractPackageAndModelName(tree);
     extractVariables(tree);
     extractEquations(tree);
+    extractFunctions(tree);
     identifyDerivatives();
 
     return info;
@@ -408,6 +409,112 @@ std::vector<std::string> ModelInfoExtractor::extractDimensions(basemodelica::Bas
     }
 
     return dims;
+}
+
+void ModelInfoExtractor::extractFunctions(basemodelica::BaseModelicaParser::BaseModelicaContext* ctx) {
+    // Iterate through all class definitions to find functions
+    for (auto classDefCtx : ctx->classDefinition()) {
+        // Check if this is a function
+        auto classPrefixes = classDefCtx->classPrefixes();
+        if (!classPrefixes) continue;
+
+        std::string prefixText = classPrefixes->getText();
+        if (prefixText.find("function") == std::string::npos) {
+            continue;  // Not a function
+        }
+
+        // Extract function details
+        Function func;
+
+        auto classSpec = classDefCtx->classSpecifier();
+        if (!classSpec) continue;
+
+        auto longClassSpec = classSpec->longClassSpecifier();
+        if (!longClassSpec) continue;
+
+        // Get function name
+        if (longClassSpec->IDENT().size() > 0) {
+            func.name = stripQuotes(longClassSpec->IDENT(0)->getText());
+        }
+
+        // Get description from string comment
+        if (longClassSpec->stringComment()) {
+            func.description = longClassSpec->stringComment()->getText();
+            // Remove quotes
+            if (func.description.size() >= 2 &&
+                func.description.front() == '"' &&
+                func.description.back() == '"') {
+                func.description = func.description.substr(1, func.description.size() - 2);
+            }
+        }
+
+        func.sourceFile = sourceFile;
+        func.sourceLine = classDefCtx->getStart()->getLine();
+
+        // Extract function composition (inputs, outputs, algorithm)
+        auto composition = longClassSpec->composition();
+        if (!composition) continue;
+
+        // Extract input/output variables from genericElements
+        for (auto genericElem : composition->genericElement()) {
+            if (auto normalElem = genericElem->normalElement()) {
+                if (auto compClause = normalElem->componentClause()) {
+                    std::string typePrefix = "";
+                    if (compClause->typePrefix()) {
+                        typePrefix = compClause->typePrefix()->getText();
+                    }
+
+                    std::string typeSpec = compClause->typeSpecifier()->getText();
+
+                    for (auto compDecl : compClause->componentList()->componentDeclaration()) {
+                        Variable var;
+                        var.name = stripQuotes(compDecl->declaration()->IDENT()->getText());
+                        var.type = stripQuotes(typeSpec);
+                        var.sourceFile = sourceFile;
+                        var.sourceLine = compDecl->getStart()->getLine();
+
+                        // Determine if input or output
+                        if (typePrefix.find("input") != std::string::npos) {
+                            func.inputs.push_back(var);
+                        } else if (typePrefix.find("output") != std::string::npos) {
+                            func.outputs.push_back(var);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Extract algorithm statements
+        // Look for 'algorithm' keyword in composition
+        // According to grammar: composition has ('initial'? 'algorithm' (statement ';')*)*
+        // We need to access the raw children to find algorithm sections
+
+        // Use the composition context to find statement() nodes
+        for (auto statement : composition->statement()) {
+            Statement stmt;
+            stmt.sourceFile = sourceFile;
+            stmt.sourceLine = statement->getStart()->getLine();
+
+            // According to grammar line 184:
+            // statement: decoration? (componentReference (':=' expression | functionCallArgs) | ...)
+
+            // Check if this is an assignment statement (componentReference ':=' expression)
+            if (statement->componentReference() && statement->expression()) {
+                stmt.lhsContext = statement->componentReference();
+                stmt.rhsContext = statement->expression();
+                func.algorithmStatements.push_back(stmt);
+            }
+            // Note: We're skipping other statement types (function calls, if, for, while, etc.)
+            // These would need special handling in the future
+        }
+
+        info.addFunction(func);
+
+        std::cerr << "Extracted function: " << func.name
+                  << " with " << func.inputs.size() << " inputs, "
+                  << func.outputs.size() << " outputs, "
+                  << func.algorithmStatements.size() << " algorithm statements" << std::endl;
+    }
 }
 
 } // namespace lacemodelica

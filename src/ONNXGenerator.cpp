@@ -47,6 +47,11 @@ void ONNXGenerator::generateONNXModel(const ModelInfo& info, const std::string& 
     auto* opset = model.add_opset_import();
     opset->set_version(18);
 
+    // Add opset import for lacemodelica domain (for custom functions)
+    auto* lacemodelica_opset = model.add_opset_import();
+    lacemodelica_opset->set_domain("lacemodelica");
+    lacemodelica_opset->set_version(1);
+
     // Create the graph
     auto* graph = model.mutable_graph();
     graph->set_name(info.modelName);
@@ -101,14 +106,27 @@ void ONNXGenerator::generateONNXModel(const ModelInfo& info, const std::string& 
         }
     }
 
+    // Create ONNX FunctionProto for each function with algorithm
+    for (const auto& func : info.functions) {
+        if (!func.algorithmStatements.empty()) {
+            std::cerr << "Creating FunctionProto for: " << func.name << std::endl;
+            try {
+                createFunctionProto(func, info, &model);
+            } catch (const std::exception& e) {
+                std::cerr << "Warning: Failed to create FunctionProto for " << func.name
+                          << ": " << e.what() << std::endl;
+            }
+        }
+    }
+
     // Create ONNX outputs for equations
     int nodeCounter = 0;
 
     // Generate outputs for regular equations
-    generateEquationOutputs(info.equations, "eq", graph, nodeCounter);
+    generateEquationOutputs(info.equations, "eq", info, graph, nodeCounter);
 
     // Generate outputs for initial equations
-    generateEquationOutputs(info.initialEquations, "init_eq", graph, nodeCounter);
+    generateEquationOutputs(info.initialEquations, "init_eq", info, graph, nodeCounter);
 
     // Generate outputs for calculated initial values (non-const parameter bindings)
     for (size_t i = 0; i < info.variables.size(); i++) {
@@ -126,7 +144,7 @@ void ONNXGenerator::generateONNXModel(const ModelInfo& info, const std::string& 
             // Convert binding expression to ONNX
             std::string exprTensor;
             try {
-                exprTensor = convertExpression(var.bindingContext, graph, nodeCounter);
+                exprTensor = convertExpression(var.bindingContext, info, graph, nodeCounter);
             } catch (const std::exception& e) {
                 std::cerr << "Warning: Failed to convert binding expression for " << var.name;
                 if (!var.sourceFile.empty()) {
@@ -213,7 +231,7 @@ void ONNXGenerator::generateONNXModel(const ModelInfo& info, const std::string& 
         // Convert bound expression to ONNX
         std::string exprTensor;
         try {
-            exprTensor = convertExpression(context, graph, nodeCounter);
+            exprTensor = convertExpression(context, info, graph, nodeCounter);
         } catch (const std::exception& e) {
             std::cerr << "Warning: Failed to convert " << boundType << " expression for " << var.name;
             if (!var.sourceFile.empty()) {
@@ -352,6 +370,7 @@ void ONNXGenerator::generateManifest(const std::string& filepath) {
 void ONNXGenerator::generateEquationOutputs(
     const std::vector<Equation>& equations,
     const std::string& prefix,
+    const ModelInfo& info,
     onnx::GraphProto* graph,
     int& nodeCounter) {
 
@@ -370,7 +389,7 @@ void ONNXGenerator::generateEquationOutputs(
         try {
             // Convert LHS expression to ONNX graph
             try {
-                lhsTensor = convertExpression(eq.lhsContext, graph, nodeCounter);
+                lhsTensor = convertExpression(eq.lhsContext, info, graph, nodeCounter);
             } catch (const std::exception& e) {
                 std::cerr << "Error converting LHS of " << prefix << " equation " << i;
                 if (!eq.sourceFile.empty()) {
@@ -383,7 +402,7 @@ void ONNXGenerator::generateEquationOutputs(
 
             // Convert RHS expression to ONNX graph
             try {
-                rhsTensor = convertExpression(eq.rhsContext, graph, nodeCounter);
+                rhsTensor = convertExpression(eq.rhsContext, info, graph, nodeCounter);
             } catch (const std::exception& e) {
                 std::cerr << "Error converting RHS of " << prefix << " equation " << i;
                 if (!eq.sourceFile.empty()) {
@@ -435,12 +454,179 @@ void ONNXGenerator::generateEquationOutputs(
     }
 }
 
+// Helper function to add an Identity node if tensor name differs from desired name
+// Returns the final tensor name (either original or the new name after Identity)
+static std::string ensureTensorName(
+    onnx::FunctionProto* functionProto,
+    const std::string& tensorName,
+    const std::string& desiredName) {
+
+    if (tensorName == desiredName) {
+        return tensorName;  // No Identity needed
+    }
+
+    // Add Identity node to rename the tensor
+    auto* identityNode = functionProto->add_node();
+    identityNode->set_op_type("Identity");
+    identityNode->set_name("output_" + desiredName);
+    identityNode->add_input(tensorName);
+    identityNode->add_output(desiredName);
+
+    return desiredName;
+}
+
+void ONNXGenerator::createFunctionProto(
+    const Function& func,
+    const ModelInfo& info,
+    onnx::ModelProto* model) {
+
+    std::cerr << "Creating ONNX FunctionProto for '" << func.name << "'" << std::endl;
+
+    // Create a new FunctionProto
+    auto* functionProto = model->add_functions();
+    functionProto->set_name(func.name);
+    functionProto->set_domain("lacemodelica");
+
+    // Add function inputs
+    for (const auto& input : func.inputs) {
+        functionProto->add_input(input.name);
+    }
+
+    // Note: We'll add outputs AFTER processing statements,
+    // so we can use the actual tensor names produced
+
+    // Map from variable name to current ONNX tensor name
+    std::map<std::string, std::string> variableToTensor;
+
+    // Initialize map with function inputs (they map to themselves in the function scope)
+    for (const auto& input : func.inputs) {
+        variableToTensor[input.name] = input.name;
+    }
+
+    int nodeCounter = 0;
+
+    // Process each algorithm statement in order
+    for (size_t stmtIndex = 0; stmtIndex < func.algorithmStatements.size(); stmtIndex++) {
+        const auto& stmt = func.algorithmStatements[stmtIndex];
+
+        // Extract LHS variable name from componentReference
+        std::string lhsVarName = stmt.lhsContext->getText();
+        // Strip quotes if present
+        if (lhsVarName.size() >= 2 && lhsVarName.front() == '\'' && lhsVarName.back() == '\'') {
+            lhsVarName = lhsVarName.substr(1, lhsVarName.size() - 2);
+        }
+
+        std::cerr << "  Processing statement " << stmtIndex << ": " << lhsVarName << " := "
+                  << stmt.rhsContext->getText().substr(0, 50) << "..." << std::endl;
+
+        try {
+            // Remember the current node count to identify newly created nodes
+            int startNodeCount = functionProto->node_size();
+
+            // Create a temporary graph to build the expression nodes
+            // We'll add them to the function proto instead
+            onnx::GraphProto tempGraph;
+            std::string rhsTensor = convertExpression(stmt.rhsContext, info, &tempGraph, nodeCounter, &variableToTensor);
+
+            // Move nodes from tempGraph to functionProto
+            for (int i = 0; i < tempGraph.node_size(); i++) {
+                auto* node = functionProto->add_node();
+                node->CopyFrom(tempGraph.node(i));
+
+                // Add source location metadata
+                auto* meta_file = node->add_metadata_props();
+                meta_file->set_key("source_file");
+                meta_file->set_value(stmt.sourceFile);
+
+                auto* meta_line = node->add_metadata_props();
+                meta_line->set_key("source_line");
+                meta_line->set_value(std::to_string(stmt.sourceLine));
+
+                auto* meta_index = node->add_metadata_props();
+                meta_index->set_key("statement_index");
+                meta_index->set_value(std::to_string(stmtIndex));
+
+                auto* meta_lhs = node->add_metadata_props();
+                meta_lhs->set_key("lhs_variable");
+                meta_lhs->set_value(lhsVarName);
+            }
+
+            // Note: FunctionProto doesn't support initializers (constants)
+            // Constants should be represented as Constant nodes instead
+
+            // Store result in map
+            variableToTensor[lhsVarName] = rhsTensor;
+
+            std::cerr << "  Mapped " << lhsVarName << " -> " << rhsTensor << std::endl;
+
+        } catch (const std::exception& e) {
+            std::cerr << "Warning: Failed to convert statement for " << lhsVarName;
+            if (!stmt.sourceFile.empty()) {
+                std::cerr << " (" << stmt.sourceFile << ":" << stmt.sourceLine << ")";
+            }
+            std::cerr << ": " << e.what() << std::endl;
+            throw;
+        }
+    }
+
+    // Add function outputs with meaningful names
+    for (const auto& output : func.outputs) {
+        auto it = variableToTensor.find(output.name);
+        if (it == variableToTensor.end()) {
+            throw std::runtime_error("Output variable " + output.name + " not computed in algorithm");
+        }
+
+        std::string internalTensor = it->second;
+        std::string outputName = output.name;
+
+        // Ensure the tensor has the desired output name (adds Identity if needed)
+        std::string finalName = ensureTensorName(functionProto, internalTensor, outputName);
+
+        // Add the output variable name as the function output
+        functionProto->add_output(finalName);
+        std::cerr << "  Function output: " << finalName << std::endl;
+    }
+}
+
+// Helper function to collect all function arguments from recursive structure
+static std::vector<basemodelica::BaseModelicaParser::ExpressionContext*>
+collectFunctionArguments(basemodelica::BaseModelicaParser::FunctionArgumentsContext* funcArgs) {
+    std::vector<basemodelica::BaseModelicaParser::ExpressionContext*> arguments;
+
+    if (!funcArgs) {
+        return arguments;
+    }
+
+    // Get the first argument
+    auto firstExpr = funcArgs->expression();
+    if (firstExpr) {
+        arguments.push_back(firstExpr);
+    }
+
+    // Recursively collect remaining arguments
+    auto nonFirst = funcArgs->functionArgumentsNonFirst();
+    while (nonFirst) {
+        auto funcArg = nonFirst->functionArgument();
+        if (funcArg) {
+            auto expr = funcArg->expression();
+            if (expr) {
+                arguments.push_back(expr);
+            }
+        }
+        nonFirst = nonFirst->functionArgumentsNonFirst();
+    }
+
+    return arguments;
+}
+
 // Expression conversion functions
 
 std::string ONNXGenerator::convertExpression(
     antlr4::ParserRuleContext* expr,
+    const ModelInfo& info,
     onnx::GraphProto* graph,
-    int& nodeCounter) {
+    int& nodeCounter,
+    const std::map<std::string, std::string>* variableMap) {
 
     if (!expr) {
         throw std::runtime_error("Null expression context");
@@ -453,11 +639,11 @@ std::string ONNXGenerator::convertExpression(
         if (exprNoDecoration) {
             auto* simpleExpr = exprNoDecoration->simpleExpression();
             if (simpleExpr) {
-                return convertSimpleExpression(simpleExpr, graph, nodeCounter);
+                return convertSimpleExpression(simpleExpr, info, graph, nodeCounter, variableMap);
             }
         }
     } else if (auto* simpleExpr = dynamic_cast<basemodelica::BaseModelicaParser::SimpleExpressionContext*>(expr)) {
-        return convertSimpleExpression(simpleExpr, graph, nodeCounter);
+        return convertSimpleExpression(simpleExpr, info, graph, nodeCounter, variableMap);
     }
 
     // Fallback: return placeholder
@@ -466,8 +652,10 @@ std::string ONNXGenerator::convertExpression(
 
 std::string ONNXGenerator::convertSimpleExpression(
     basemodelica::BaseModelicaParser::SimpleExpressionContext* expr,
+    const ModelInfo& info,
     onnx::GraphProto* graph,
-    int& nodeCounter) {
+    int& nodeCounter,
+    const std::map<std::string, std::string>* variableMap) {
 
     // SimpleExpression: logicalExpression+
     // For now, assume single logical expression -> arithmetic expression
@@ -500,13 +688,15 @@ std::string ONNXGenerator::convertSimpleExpression(
         throw std::runtime_error("No arithmetic expression in relation");
     }
 
-    return convertArithmeticExpression(arithmeticExprs[0], graph, nodeCounter);
+    return convertArithmeticExpression(arithmeticExprs[0], info, graph, nodeCounter, variableMap);
 }
 
 std::string ONNXGenerator::convertArithmeticExpression(
     basemodelica::BaseModelicaParser::ArithmeticExpressionContext* expr,
+    const ModelInfo& info,
     onnx::GraphProto* graph,
-    int& nodeCounter) {
+    int& nodeCounter,
+    const std::map<std::string, std::string>* variableMap) {
 
     // ArithmeticExpression: addOperator? term (addOperator term)*
     auto terms = expr->term();
@@ -521,7 +711,7 @@ std::string ONNXGenerator::convertArithmeticExpression(
     size_t opIndex = 0;
 
     // Convert first term
-    std::string result = convertTerm(terms[termIndex++], graph, nodeCounter);
+    std::string result = convertTerm(terms[termIndex++], info, graph, nodeCounter, variableMap);
 
     // If we have more addOps than remaining terms, first addOp was a leading unary
     if (addOps.size() > terms.size() - 1) {
@@ -546,7 +736,7 @@ std::string ONNXGenerator::convertArithmeticExpression(
     // Process remaining terms with operators
     while (opIndex < addOps.size()) {
         std::string opText = addOps[opIndex]->getText();
-        std::string rightTensor = convertTerm(terms[termIndex], graph, nodeCounter);
+        std::string rightTensor = convertTerm(terms[termIndex], info, graph, nodeCounter, variableMap);
         termIndex++;
         opIndex++;
 
@@ -579,8 +769,10 @@ std::string ONNXGenerator::convertArithmeticExpression(
 
 std::string ONNXGenerator::convertTerm(
     basemodelica::BaseModelicaParser::TermContext* expr,
+    const ModelInfo& info,
     onnx::GraphProto* graph,
-    int& nodeCounter) {
+    int& nodeCounter,
+    const std::map<std::string, std::string>* variableMap) {
 
     // Term: factor (mulOperator factor)*
     auto factors = expr->factor();
@@ -591,12 +783,12 @@ std::string ONNXGenerator::convertTerm(
     }
 
     // Convert first factor
-    std::string result = convertFactor(factors[0], graph, nodeCounter);
+    std::string result = convertFactor(factors[0], info, graph, nodeCounter, variableMap);
 
     // Process remaining factors with operators
     for (size_t i = 0; i < mulOps.size(); i++) {
         std::string opText = mulOps[i]->getText();
-        std::string rightTensor = convertFactor(factors[i + 1], graph, nodeCounter);
+        std::string rightTensor = convertFactor(factors[i + 1], info, graph, nodeCounter, variableMap);
 
         // Create ONNX node for the operation
         auto* node = graph->add_node();
@@ -627,8 +819,10 @@ std::string ONNXGenerator::convertTerm(
 
 std::string ONNXGenerator::convertFactor(
     basemodelica::BaseModelicaParser::FactorContext* expr,
+    const ModelInfo& info,
     onnx::GraphProto* graph,
-    int& nodeCounter) {
+    int& nodeCounter,
+    const std::map<std::string, std::string>* variableMap) {
 
     // Factor: primary (('^' | '.^') primary)?
     auto primaries = expr->primary();
@@ -637,11 +831,11 @@ std::string ONNXGenerator::convertFactor(
         throw std::runtime_error("Empty factor");
     }
 
-    std::string result = convertPrimary(primaries[0], graph, nodeCounter);
+    std::string result = convertPrimary(primaries[0], info, graph, nodeCounter, variableMap);
 
     // Handle power operator if present
     if (primaries.size() > 1) {
-        std::string exponentTensor = convertPrimary(primaries[1], graph, nodeCounter);
+        std::string exponentTensor = convertPrimary(primaries[1], info, graph, nodeCounter, variableMap);
 
         auto* node = graph->add_node();
         std::string outputTensor = "tensor_" + std::to_string(nodeCounter++);
@@ -660,8 +854,10 @@ std::string ONNXGenerator::convertFactor(
 
 std::string ONNXGenerator::convertPrimary(
     basemodelica::BaseModelicaParser::PrimaryContext* expr,
+    const ModelInfo& info,
     onnx::GraphProto* graph,
-    int& nodeCounter) {
+    int& nodeCounter,
+    const std::map<std::string, std::string>* variableMap) {
 
     // Handle different primary types
 
@@ -688,6 +884,10 @@ std::string ONNXGenerator::convertPrimary(
         std::string funcName;
         if (expr->componentReference()) {
             funcName = expr->componentReference()->getText();
+            // Strip quotes if present
+            if (funcName.size() >= 2 && funcName.front() == '\'' && funcName.back() == '\'') {
+                funcName = funcName.substr(1, funcName.size() - 2);
+            }
             std::cerr << "DEBUG: Function call with componentReference: " << funcName << std::endl;
         } else {
             // For der(), initial(), pure() which are keywords
@@ -746,7 +946,7 @@ std::string ONNXGenerator::convertPrimary(
             }
 
             // Convert the first argument (for unary functions)
-            std::string argTensor = convertExpression(funcArgs->expression(), graph, nodeCounter);
+            std::string argTensor = convertExpression(funcArgs->expression(), info, graph, nodeCounter, variableMap);
 
             // Create ONNX node for the math function
             auto* node = graph->add_node();
@@ -756,6 +956,58 @@ std::string ONNXGenerator::convertPrimary(
             node->set_name(funcName + "_" + std::to_string(nodeCounter));
             node->add_input(argTensor);
             node->add_output(outputTensor);
+
+            return outputTensor;
+        }
+
+        // Check if this is a user-defined function with algorithm
+        const Function* func = info.findFunction(funcName);
+        if (func && !func->algorithmStatements.empty()) {
+            std::cerr << "DEBUG: Found user-defined function: " << funcName << std::endl;
+
+            // Get function arguments from call site
+            auto funcCallArgs = expr->functionCallArgs();
+            auto funcArgs = funcCallArgs->functionArguments();
+
+            if (!funcArgs) {
+                throw std::runtime_error("Function " + funcName + " requires arguments");
+            }
+
+            // Collect all function arguments
+            auto arguments = collectFunctionArguments(funcArgs);
+
+            // Check argument count
+            if (arguments.size() != func->inputs.size()) {
+                throw std::runtime_error("Function " + funcName + " expects " +
+                    std::to_string(func->inputs.size()) + " arguments, got " +
+                    std::to_string(arguments.size()));
+            }
+
+            // Convert each argument expression to get tensor names
+            std::vector<std::string> argTensors;
+            for (size_t i = 0; i < arguments.size(); i++) {
+                std::string argTensor = convertExpression(arguments[i], info, graph, nodeCounter, variableMap);
+                argTensors.push_back(argTensor);
+                std::cerr << "  Arg " << i << ": " << func->inputs[i].name << " = " << argTensor << std::endl;
+            }
+
+            // Create a function call node that references the FunctionProto
+            auto* node = graph->add_node();
+            std::string outputTensor = "tensor_" + std::to_string(nodeCounter++);
+
+            node->set_op_type(funcName);  // op_type is the function name
+            node->set_domain("lacemodelica");  // domain where the function is defined
+            node->set_name(funcName + "_call_" + std::to_string(nodeCounter));
+
+            // Add inputs (argument tensors)
+            for (const auto& argTensor : argTensors) {
+                node->add_input(argTensor);
+            }
+
+            // Add outputs (for now, assume single output)
+            node->add_output(outputTensor);
+
+            std::cerr << "  Created function call node: " << funcName << " -> " << outputTensor << std::endl;
 
             return outputTensor;
         }
@@ -770,6 +1022,12 @@ std::string ONNXGenerator::convertPrimary(
         if (varName.front() == '\'' && varName.back() == '\'') {
             varName = varName.substr(1, varName.size() - 2);
         }
+
+        // Check if variableMap exists and contains this variable
+        if (variableMap && variableMap->find(varName) != variableMap->end()) {
+            return variableMap->at(varName);
+        }
+
         return varName;  // Variable inputs are already in the graph
     }
 
@@ -779,7 +1037,7 @@ std::string ONNXGenerator::convertPrimary(
         auto outputList = expr->outputExpressionList();
         auto expressions = outputList->expression();
         if (!expressions.empty()) {
-            return convertExpression(expressions[0], graph, nodeCounter);
+            return convertExpression(expressions[0], info, graph, nodeCounter, variableMap);
         }
     }
 
