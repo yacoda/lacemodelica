@@ -1168,12 +1168,16 @@ std::string ONNXGenerator::convertPrimary(
                 if (node && node->children.empty()) {
                     isSimpleVariable = true;
                     varName = argExpr->getText();
+                    // Strip quotes if present
+                    if (varName.size() >= 2 && varName.front() == '\'' && varName.back() == '\'') {
+                        varName = varName.substr(1, varName.size() - 2);
+                    }
                 }
             }
 
             if (isSimpleVariable && derivativeInputs) {
-                // Create a derivative input name
-                std::string derInputName = "der(" + varName + ")";
+                // Create a derivative input name (use quotes for consistency with test format)
+                std::string derInputName = "der('" + varName + "')";
 
                 // Add to derivative inputs if not already present
                 if (derivativeInputs->find(derInputName) == derivativeInputs->end()) {
@@ -1182,6 +1186,13 @@ std::string ONNXGenerator::convertPrimary(
                     const Variable* var = info.findVariable(varName);
                     if (var) {
                         dimensions = var->dimensions;
+                        std::cerr << "DEBUG: der(" << varName << ") has " << dimensions.size() << " dimensions: ";
+                        for (const auto& d : dimensions) {
+                            std::cerr << d << " ";
+                        }
+                        std::cerr << std::endl;
+                    } else {
+                        std::cerr << "DEBUG: Could not find variable " << varName << " for der()" << std::endl;
                     }
                     (*derivativeInputs)[derInputName] = dimensions;
                 }
@@ -1297,18 +1308,90 @@ std::string ONNXGenerator::convertPrimary(
 
     // 3. Component reference (variable) - check AFTER function calls
     if (expr->componentReference()) {
-        std::string varName = expr->componentReference()->getText();
+        auto compRef = expr->componentReference();
+
+        // Get base variable name (first IDENT)
+        std::string varName = compRef->IDENT(0)->getText();
         // Strip quotes if present
-        if (varName.front() == '\'' && varName.back() == '\'') {
+        if (varName.size() >= 2 && varName.front() == '\'' && varName.back() == '\'') {
             varName = varName.substr(1, varName.size() - 2);
         }
 
-        // Check if variableMap exists and contains this variable
+        // Get the base tensor (from inputs or variableMap)
+        std::string baseTensor;
         if (variableMap && variableMap->find(varName) != variableMap->end()) {
-            return variableMap->at(varName);
+            baseTensor = variableMap->at(varName);
+        } else {
+            baseTensor = varName;  // Variable inputs are already in the graph
         }
 
-        return varName;  // Variable inputs are already in the graph
+        // Check for array subscripts
+        auto subscripts = compRef->arraySubscripts();
+        if (subscripts.empty()) {
+            // No subscripts, just return the variable
+            return baseTensor;
+        }
+
+        // Handle array indexing with subscripts
+        // Use GatherND for multi-dimensional indexing
+        auto arraySubscript = subscripts[0];  // First (and likely only) arraySubscripts
+        auto subscriptList = arraySubscript->subscript();
+
+        // Collect all indices (convert from 1-based Modelica to 0-based ONNX)
+        std::vector<int64_t> indices;
+        for (auto sub : subscriptList) {
+            // Check if it's a colon (full slice) or expression
+            if (sub->getText() == ":") {
+                throw std::runtime_error("Array slice ':' not yet supported in ONNX conversion");
+            }
+
+            // It's an expression - evaluate it
+            auto subExpr = sub->expression();
+            if (!subExpr) {
+                throw std::runtime_error("Invalid array subscript");
+            }
+
+            // Convert the subscript expression (should yield a constant)
+            std::string indexExpr = subExpr->getText();
+
+            // Try to parse as integer constant (Modelica uses 1-based indexing)
+            try {
+                int modelicaIndex = std::stoi(indexExpr);
+                int onnxIndex = modelicaIndex - 1;  // Convert to 0-based
+                indices.push_back(onnxIndex);
+            } catch (const std::exception& e) {
+                throw std::runtime_error("Array subscript must be constant integer, got: " + indexExpr);
+            }
+        }
+
+        // Create a Constant node for the indices tensor
+        auto* constNode = graph->add_node();
+        std::string indexTensor = "const_" + std::to_string(nodeCounter++);
+        constNode->set_op_type("Constant");
+        constNode->set_name(indexTensor);
+        constNode->add_output(indexTensor);
+
+        auto* attr = constNode->add_attribute();
+        attr->set_name("value");
+        attr->set_type(onnx::AttributeProto::TENSOR);
+        auto* t = attr->mutable_t();
+        t->set_data_type(onnx::TensorProto::INT64);
+        // Shape is [num_indices] for GatherND
+        t->add_dims(indices.size());
+        for (auto idx : indices) {
+            t->add_int64_data(idx);
+        }
+
+        // Create GatherND node to extract the element
+        auto* gatherNode = graph->add_node();
+        std::string outputTensor = "tensor_" + std::to_string(nodeCounter++);
+        gatherNode->set_op_type("GatherND");
+        gatherNode->set_name("GatherND_" + std::to_string(nodeCounter));
+        gatherNode->add_input(baseTensor);
+        gatherNode->add_input(indexTensor);
+        gatherNode->add_output(outputTensor);
+
+        return outputTensor;
     }
 
     // 4. Parenthesized expression

@@ -270,22 +270,56 @@ for i, node in enumerate(model.graph.node):
     print(f'      outputs: {list(node.output)}')
 print('\\n')
 
+# Get input shapes from model
+input_shapes = {}
+for inp in session.get_inputs():
+    input_shapes[inp.name] = [d if isinstance(d, int) else 1 for d in inp.shape]
+
 # Run all test cases
 passed = True
 for i, test_case in enumerate(test_cases, 1):
-    onnx_inputs = {k: np.array([v], dtype=np.float32) for k, v in test_case.items() if k in input_names}
+    onnx_inputs = {}
+    for k, v in test_case.items():
+        if k not in input_names:
+            continue
+        # Convert to numpy array with proper shape
+        if isinstance(v, list):
+            # Array input - reshape according to model expectations
+            arr = np.array(v, dtype=np.float32)
+            expected_shape = input_shapes.get(k, [1])
+            try:
+                arr = arr.reshape(expected_shape)
+            except:
+                print(f'Warning: Could not reshape {k} from {arr.shape} to {expected_shape}')
+            onnx_inputs[k] = arr
+        else:
+            # Scalar input
+            onnx_inputs[k] = np.array([v], dtype=np.float32)
     onnx_outputs = session.run(output_names, onnx_inputs)
     onnx_results = dict(zip(output_names, onnx_outputs))
     ref_results = ref_impl(test_case)
 
     for name in output_names:
         if name in ref_results:
-            onnx_val = onnx_results[name][0] if hasattr(onnx_results[name], '__len__') else onnx_results[name]
+            onnx_val = onnx_results[name]
             ref_val = ref_results[name]
-            diff = abs(onnx_val - ref_val)
-            if diff >= 1e-5:
-                print(f'Test {i} FAILED: {name}: ONNX={onnx_val}, Ref={ref_val}, Diff={diff}')
-                passed = False
+
+            # Handle both scalar and array outputs
+            if isinstance(ref_val, list):
+                # Array output - flatten ONNX result and compare
+                onnx_flat = onnx_val.flatten()
+                ref_flat = np.array(ref_val, dtype=np.float32)
+                diff = np.abs(onnx_flat - ref_flat)
+                if np.any(diff >= 1e-5):
+                    print(f'Test {i} FAILED: {name}: max diff={np.max(diff)}')
+                    passed = False
+            else:
+                # Scalar output
+                onnx_scalar = onnx_val[0] if hasattr(onnx_val, '__len__') else onnx_val
+                diff = abs(onnx_scalar - ref_val)
+                if diff >= 1e-5:
+                    print(f'Test {i} FAILED: {name}: ONNX={onnx_scalar}, Ref={ref_val}, Diff={diff}')
+                    passed = False
 
 if passed:
     print('All tests passed')
