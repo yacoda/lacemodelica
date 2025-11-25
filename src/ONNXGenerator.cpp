@@ -1081,6 +1081,17 @@ std::string ONNXGenerator::convertArithmeticExpression(
     return result;
 }
 
+// Helper function to check if a tensor represents a matrix (has 2 dimensions)
+static bool isMatrixVariable(const std::string& tensorName, const ModelInfo& info) {
+    // Check if tensor name matches a variable name
+    auto it = info.variableIndex.find(tensorName);
+    if (it != info.variableIndex.end()) {
+        const auto& var = info.variables[it->second];
+        return var.dimensions.size() == 2;
+    }
+    return false;
+}
+
 std::string ONNXGenerator::convertTerm(
     basemodelica::BaseModelicaParser::TermContext* expr,
     const ModelInfo& info,
@@ -1110,7 +1121,16 @@ std::string ONNXGenerator::convertTerm(
         std::string outputTensor = "tensor_" + std::to_string(nodeCounter++);
 
         if (opText == "*") {
-            node->set_op_type("Mul");
+            // Check if both operands are matrices (2D arrays)
+            // If so, use MatMul for matrix multiplication; otherwise use Mul
+            bool leftIsMatrix = isMatrixVariable(result, info);
+            bool rightIsMatrix = isMatrixVariable(rightTensor, info);
+
+            if (leftIsMatrix && rightIsMatrix) {
+                node->set_op_type("MatMul");
+            } else {
+                node->set_op_type("Mul");
+            }
         } else if (opText == "/") {
             node->set_op_type("Div");
         } else if (opText == ".*") {
