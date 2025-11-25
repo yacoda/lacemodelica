@@ -19,6 +19,7 @@ private:
     std::set<std::string> derivativeCalls;  // Track der() calls
 
     void extractPackageAndModelName(basemodelica::BaseModelicaParser::BaseModelicaContext* ctx);
+    void extractGlobalConstants(basemodelica::BaseModelicaParser::BaseModelicaContext* ctx);
     void extractVariables(basemodelica::BaseModelicaParser::BaseModelicaContext* ctx);
     void extractEquations(basemodelica::BaseModelicaParser::BaseModelicaContext* ctx);
     void extractFunctions(basemodelica::BaseModelicaParser::BaseModelicaContext* ctx);

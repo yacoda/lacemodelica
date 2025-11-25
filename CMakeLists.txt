@@ -223,6 +223,11 @@ if(Python3_FOUND)
         UnaryOps
     )
 
+    # Tests that are expected to fail (but we still want to run them)
+    set(ONNX_EXPECTED_FAILURES
+        DerExpression  # Uses custom Der operator for derivative of expressions
+    )
+
     # Create individual ONNX runtime validation tests for each model with reference
     foreach(TEST_NAME ${ONNX_REFERENCE_TESTS})
         add_test(
@@ -293,5 +298,12 @@ else:
         set_tests_properties(onnx_validate_${TEST_NAME} PROPERTIES
             LABELS "onnx;validation"
         )
+
+        # Mark expected failures
+        if(${TEST_NAME} IN_LIST ONNX_EXPECTED_FAILURES)
+            set_tests_properties(onnx_validate_${TEST_NAME} PROPERTIES
+                WILL_FAIL TRUE
+            )
+        endif()
     endforeach()
 endif()

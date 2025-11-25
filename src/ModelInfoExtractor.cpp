@@ -19,6 +19,7 @@ ModelInfo ModelInfoExtractor::extract(basemodelica::BaseModelicaParser::BaseMode
     this->sourceFile = sourceFile;
 
     extractPackageAndModelName(tree);
+    extractGlobalConstants(tree);
     extractVariables(tree);
     extractEquations(tree);
     extractFunctions(tree);
@@ -52,6 +53,39 @@ void ModelInfoExtractor::extractPackageAndModelName(basemodelica::BaseModelicaPa
         if (info.description.size() >= 2) {
             info.description = info.description.substr(1, info.description.size() - 2);
         }
+    }
+}
+
+void ModelInfoExtractor::extractGlobalConstants(basemodelica::BaseModelicaParser::BaseModelicaContext* ctx) {
+    // Extract package-level constants
+    for (auto globalConst : ctx->globalConstant()) {
+        Variable var;
+        var.name = stripQuotes(globalConst->declaration()->IDENT()->getText());
+        var.type = stripQuotes(globalConst->typeSpecifier()->getText());
+        var.causality = "parameter";
+        var.variability = "fixed";
+        var.initial = "exact";
+        var.valueReference = info.nextValueReference++;
+        var.sourceFile = sourceFile;
+        var.sourceLine = globalConst->getStart()->getLine();
+
+        // Extract value from modification
+        if (auto mod = globalConst->declaration()->modification()) {
+            var.startValue = extractStartValue(mod);
+            var.bindingContext = extractBindingContext(mod);
+        }
+
+        // Extract dimensions
+        if (globalConst->arraySubscripts()) {
+            // Handle array dimensions if needed
+        }
+
+        // Extract description from comment
+        if (globalConst->comment()) {
+            var.description = extractDescription(globalConst->comment());
+        }
+
+        info.addVariable(var);
     }
 }
 

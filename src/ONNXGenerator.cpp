@@ -58,7 +58,8 @@ void ONNXGenerator::generateONNXModel(const ModelInfo& info, const std::string& 
     auto* graph = model.mutable_graph();
     graph->set_name(info.modelName);
 
-    // Create ONNX inputs for each variable and parameter (skip derivatives)
+    // Create ONNX inputs for each variable and parameter (skip derivatives and constants)
+    // Constants with fixed variability become initializers instead
     // Track mapping from variable index to input index for start[] outputs
     std::map<size_t, int> varIndexToInputIndex;
     int inputIndex = 0;
@@ -69,6 +70,29 @@ void ONNXGenerator::generateONNXModel(const ModelInfo& info, const std::string& 
         // Skip derivative variables - der() will be an operator
         if (var.isDerivative) {
             continue;
+        }
+
+        // Constants with fixed variability become initializers, not inputs
+        if (var.variability == "fixed" && !var.startValue.empty()) {
+            auto* initializer = graph->add_initializer();
+            initializer->set_name(var.name);
+            initializer->set_data_type(onnx::TensorProto::FLOAT);
+
+            // Scalar: shape [1]
+            initializer->add_dims(1);
+
+            // Parse and store the constant value
+            try {
+                float value = std::stof(var.startValue);
+                initializer->add_float_data(value);
+            } catch (const std::exception& e) {
+                std::cerr << "Warning: Could not parse constant value for " << var.name
+                          << ": " << var.startValue << std::endl;
+                // Fallback to 0.0
+                initializer->add_float_data(0.0f);
+            }
+
+            continue;  // Don't add as input
         }
 
         varIndexToInputIndex[i] = inputIndex++;
