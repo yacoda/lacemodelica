@@ -1188,6 +1188,73 @@ std::string ONNXGenerator::convertFactor(
     return result;
 }
 
+// Helper function to navigate parse tree and extract ComponentReferenceContext
+static basemodelica::BaseModelicaParser::ComponentReferenceContext*
+extractComponentReference(antlr4::tree::ParseTree* node) {
+    basemodelica::BaseModelicaParser::ComponentReferenceContext* compRef = nullptr;
+
+    while (node && !compRef) {
+        auto* exprNode = dynamic_cast<basemodelica::BaseModelicaParser::ExpressionContext*>(node);
+        if (exprNode && exprNode->expressionNoDecoration()) {
+            node = exprNode->expressionNoDecoration();
+            continue;
+        }
+        auto* exprNoDecNode = dynamic_cast<basemodelica::BaseModelicaParser::ExpressionNoDecorationContext*>(node);
+        if (exprNoDecNode && exprNoDecNode->simpleExpression()) {
+            node = exprNoDecNode->simpleExpression();
+            continue;
+        }
+        auto* simpleExprNode = dynamic_cast<basemodelica::BaseModelicaParser::SimpleExpressionContext*>(node);
+        if (simpleExprNode && simpleExprNode->logicalExpression().size() > 0) {
+            node = simpleExprNode->logicalExpression(0);
+            continue;
+        }
+        auto* logicalExprNode = dynamic_cast<basemodelica::BaseModelicaParser::LogicalExpressionContext*>(node);
+        if (logicalExprNode && logicalExprNode->logicalTerm().size() > 0) {
+            node = logicalExprNode->logicalTerm(0);
+            continue;
+        }
+        auto* logicalTermNode = dynamic_cast<basemodelica::BaseModelicaParser::LogicalTermContext*>(node);
+        if (logicalTermNode && logicalTermNode->logicalFactor().size() > 0) {
+            node = logicalTermNode->logicalFactor(0);
+            continue;
+        }
+        auto* logicalFactorNode = dynamic_cast<basemodelica::BaseModelicaParser::LogicalFactorContext*>(node);
+        if (logicalFactorNode && logicalFactorNode->relation()) {
+            node = logicalFactorNode->relation();
+            continue;
+        }
+        auto* relationNode = dynamic_cast<basemodelica::BaseModelicaParser::RelationContext*>(node);
+        if (relationNode && relationNode->arithmeticExpression().size() > 0) {
+            node = relationNode->arithmeticExpression(0);
+            continue;
+        }
+        auto* arithExprNode = dynamic_cast<basemodelica::BaseModelicaParser::ArithmeticExpressionContext*>(node);
+        if (arithExprNode && arithExprNode->term().size() > 0) {
+            node = arithExprNode->term(0);
+            continue;
+        }
+        auto* termNode = dynamic_cast<basemodelica::BaseModelicaParser::TermContext*>(node);
+        if (termNode && termNode->factor().size() > 0) {
+            node = termNode->factor(0);
+            continue;
+        }
+        auto* factorNode = dynamic_cast<basemodelica::BaseModelicaParser::FactorContext*>(node);
+        if (factorNode && factorNode->primary().size() > 0) {
+            node = factorNode->primary(0);
+            continue;
+        }
+        auto* primaryNode = dynamic_cast<basemodelica::BaseModelicaParser::PrimaryContext*>(node);
+        if (primaryNode && primaryNode->componentReference()) {
+            compRef = primaryNode->componentReference();
+            break;
+        }
+        break;
+    }
+
+    return compRef;
+}
+
 std::string ONNXGenerator::convertPrimary(
     basemodelica::BaseModelicaParser::PrimaryContext* expr,
     const ModelInfo& info,
@@ -1276,6 +1343,102 @@ std::string ONNXGenerator::convertPrimary(
                     if (varName.size() >= 2 && varName.front() == '\'' && varName.back() == '\'') {
                         varName = varName.substr(1, varName.size() - 2);
                     }
+                }
+            }
+
+            // Check if the argument is an array element access like x[1]
+            // If so, treat der(x[1]) as der('x')[1]
+            basemodelica::BaseModelicaParser::ComponentReferenceContext* compRef = nullptr;
+            if (!isSimpleVariable) {
+                compRef = extractComponentReference(argExpr);
+            }
+
+            // If we found a componentReference with arraySubscripts, handle it specially
+            if (compRef && !compRef->arraySubscripts().empty()) {
+                // Extract base variable name
+                std::string baseVarName = compRef->IDENT(0)->getText();
+                if (baseVarName.size() >= 2 && baseVarName.front() == '\'' && baseVarName.back() == '\'') {
+                    baseVarName = baseVarName.substr(1, baseVarName.size() - 2);
+                }
+
+                if (derivativeInputs) {
+                    // Create a derivative input for the base array
+                    std::string derInputName = "der('" + baseVarName + "')";
+
+                    // Add to derivative inputs if not already present
+                    if (derivativeInputs->find(derInputName) == derivativeInputs->end()) {
+                        // Get dimensions from the variable info
+                        std::vector<std::string> dimensions;
+                        const Variable* var = info.findVariable(baseVarName);
+                        if (var) {
+                            dimensions = var->dimensions;
+                            std::cerr << "DEBUG: der(" << baseVarName << ") has " << dimensions.size() << " dimensions: ";
+                            for (const auto& d : dimensions) {
+                                std::cerr << d << " ";
+                            }
+                            std::cerr << std::endl;
+                        } else {
+                            std::cerr << "DEBUG: Could not find variable " << baseVarName << " for der()" << std::endl;
+                        }
+                        (*derivativeInputs)[derInputName] = dimensions;
+                    }
+
+                    // Now apply the same subscript operations to der('baseVarName')
+                    std::string baseTensor = derInputName;
+
+                    // Handle array indexing with subscripts (same logic as in componentReference handling)
+                    auto arraySubscript = compRef->arraySubscripts()[0];
+                    auto subscriptList = arraySubscript->subscript();
+
+                    // Collect all indices (convert from 1-based Modelica to 0-based ONNX)
+                    std::vector<int64_t> indices;
+                    for (auto sub : subscriptList) {
+                        if (sub->getText() == ":") {
+                            throw std::runtime_error("Array slice ':' not yet supported in der() subscript");
+                        }
+
+                        auto subExpr = sub->expression();
+                        if (!subExpr) {
+                            throw std::runtime_error("Invalid array subscript in der()");
+                        }
+
+                        std::string indexExpr = subExpr->getText();
+                        try {
+                            int modelicaIndex = std::stoi(indexExpr);
+                            int onnxIndex = modelicaIndex - 1;  // Convert to 0-based
+                            indices.push_back(onnxIndex);
+                        } catch (const std::exception& e) {
+                            throw std::runtime_error("Array subscript in der() must be constant integer, got: " + indexExpr);
+                        }
+                    }
+
+                    // Create a Constant node for the indices tensor
+                    auto* constNode = graph->add_node();
+                    std::string indexTensor = "const_" + std::to_string(nodeCounter++);
+                    constNode->set_op_type("Constant");
+                    constNode->set_name(indexTensor);
+                    constNode->add_output(indexTensor);
+
+                    auto* attr = constNode->add_attribute();
+                    attr->set_name("value");
+                    attr->set_type(onnx::AttributeProto::TENSOR);
+                    auto* tensorProto = attr->mutable_t();
+                    tensorProto->set_data_type(onnx::TensorProto::INT64);
+                    tensorProto->add_dims(indices.size());
+                    for (int64_t idx : indices) {
+                        tensorProto->add_int64_data(idx);
+                    }
+
+                    // Create GatherND node to extract the element from der('x')
+                    auto* gatherNode = graph->add_node();
+                    std::string outputTensor = "tensor_" + std::to_string(nodeCounter++);
+                    gatherNode->set_op_type("GatherND");
+                    gatherNode->set_name("GatherND_" + std::to_string(nodeCounter));
+                    gatherNode->add_input(baseTensor);
+                    gatherNode->add_input(indexTensor);
+                    gatherNode->add_output(outputTensor);
+
+                    return outputTensor;
                 }
             }
 
