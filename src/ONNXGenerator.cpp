@@ -105,21 +105,16 @@ void ONNXGenerator::generateONNXModel(const ModelInfo& info, const std::string& 
         auto* input_shape = input_type->mutable_shape();
 
         // Handle array dimensions
-        if (!var.dimensions.empty()) {
-            for (const auto& dim : var.dimensions) {
-                auto* shape_dim = input_shape->add_dim();
-                // Try to parse as integer, otherwise leave symbolic
-                try {
-                    shape_dim->set_dim_value(std::stoi(dim));
-                } catch (...) {
-                    shape_dim->set_dim_param(dim);
-                }
-            }
-        } else {
-            // Scalar: shape [1]
+        for (const auto& dim : var.dimensions) {
             auto* shape_dim = input_shape->add_dim();
-            shape_dim->set_dim_value(1);
+            // Try to parse as integer, otherwise leave symbolic
+            try {
+                shape_dim->set_dim_value(std::stoi(dim));
+            } catch (...) {
+                shape_dim->set_dim_param(dim);
+            }
         }
+        // Scalars: empty dimensions results in empty shape []
 
         // Add source location metadata
         if (!var.sourceFile.empty()) {
@@ -372,21 +367,16 @@ void ONNXGenerator::generateONNXModel(const ModelInfo& info, const std::string& 
         auto* input_shape = input_type->mutable_shape();
 
         // Handle array dimensions
-        if (!dimensions.empty()) {
-            for (const auto& dim : dimensions) {
-                auto* shape_dim = input_shape->add_dim();
-                // Try to parse as integer, otherwise leave symbolic
-                try {
-                    shape_dim->set_dim_value(std::stoi(dim));
-                } catch (...) {
-                    shape_dim->set_dim_param(dim);
-                }
-            }
-        } else {
-            // Scalar: shape [1]
+        for (const auto& dim : dimensions) {
             auto* shape_dim = input_shape->add_dim();
-            shape_dim->set_dim_value(1);
+            // Try to parse as integer, otherwise leave symbolic
+            try {
+                shape_dim->set_dim_value(std::stoi(dim));
+            } catch (...) {
+                shape_dim->set_dim_param(dim);
+            }
         }
+        // Scalars: empty dimensions results in empty shape []
     }
 
     // Infer shapes for all tensors in the graph
