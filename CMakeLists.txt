@@ -306,12 +306,25 @@ for i, test_case in enumerate(test_cases, 1):
 
             # Handle both scalar and array outputs
             if isinstance(ref_val, list):
-                # Array output - flatten ONNX result and compare
+                # Array output - check shape matches, then compare values
+                ref_arr = np.array(ref_val, dtype=np.float32)
+
+                # Check shapes match (both should be same shape, possibly with broadcasting)
+                onnx_shape = onnx_val.shape if hasattr(onnx_val, 'shape') else (1,)
+                ref_shape = ref_arr.shape
+
+                # ONNX shape should match reference shape when flattened
+                if onnx_val.size != ref_arr.size:
+                    print(f'Test {i} FAILED: {name}: shape mismatch ONNX={onnx_shape} ({onnx_val.size} elements) vs Ref={ref_shape} ({ref_arr.size} elements)')
+                    passed = False
+                    continue
+
+                # Compare values (reshape if needed)
                 onnx_flat = onnx_val.flatten()
-                ref_flat = np.array(ref_val, dtype=np.float32)
+                ref_flat = ref_arr.flatten()
                 diff = np.abs(onnx_flat - ref_flat)
                 if np.any(diff >= 1e-5):
-                    print(f'Test {i} FAILED: {name}: max diff={np.max(diff)}')
+                    print(f'Test {i} FAILED: {name}: max diff={np.max(diff)}, ONNX shape={onnx_shape}, Ref shape={ref_shape}')
                     passed = False
             else:
                 # Scalar output

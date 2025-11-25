@@ -6,6 +6,7 @@
 #define ONNX_NAMESPACE onnx
 #include <onnx/onnx_pb.h>
 #include <onnx/checker.h>
+#include <onnx/shape_inference/implementation.h>
 #include <tinyxml2.h>
 #include <fstream>
 #include <iostream>
@@ -388,6 +389,16 @@ void ONNXGenerator::generateONNXModel(const ModelInfo& info, const std::string& 
         }
     }
 
+    // Infer shapes for all tensors in the graph
+    std::cout << "Inferring shapes..." << std::endl;
+    try {
+        onnx::shape_inference::InferShapes(model);
+        std::cout << "Shape inference successful" << std::endl;
+    } catch (const std::exception& e) {
+        std::cerr << "Warning: Shape inference failed: " << e.what() << std::endl;
+        std::cerr << "Continuing with partial shape information..." << std::endl;
+    }
+
     // Validate ONNX model before serialization
     std::cout << "Validating ONNX model..." << std::endl;
     try {
@@ -502,8 +513,7 @@ void ONNXGenerator::generateEquationOutputs(
         eq_output->set_name(eqOutputName);
         auto* eq_type = eq_output->mutable_type()->mutable_tensor_type();
         eq_type->set_elem_type(onnx::TensorProto::FLOAT);  // Residual returns float
-        auto* eq_shape = eq_type->mutable_shape();
-        eq_shape->add_dim()->set_dim_value(1);
+        // Don't create shape - let shape inference fill it in
 
         // Set the string comment as doc_string on the output
         if (!eq.comment.empty()) {
