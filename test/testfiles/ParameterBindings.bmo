@@ -117,11 +117,22 @@ end 'ParameterBindings';
 //     # Equation 3: der('w') = 'dynamic_max' + 'dynamic_both' + 'mixed_bounds_1' + 'mixed_bounds_2' + 'const_bounds'
 //     outputs['eq[3]'] = np.array(der_w - (dynamic_max + dynamic_both + mixed_bounds_1 + mixed_bounds_2 + const_bounds))
 //
-//     # Start values (from start attributes)
-//     outputs['start[0]'] = np.array(scaled_value)  # x.start = scaled_value
-//     outputs['start[1]'] = np.array(0.0)  # y.start = 0.0
-//     outputs['start[2]'] = np.array(0.0)  # z.start = 0.0
-//     outputs['start[3]'] = np.array(0.0)  # w.start = 0.0
+//     # Start/binding values (using ONNX output indices matching variable references)
+//     outputs['start[3]'] = np.array(scaled_value)  # scaled_value binding = base_value * scale
+//     outputs['start[4]'] = np.array(bounded_value)  # bounded_value binding = base_value + scale
+//     outputs['start[5]'] = np.array(base_value * 3.0)  # dynamic_bounded.start = base_value * 3.0
+//     outputs['start[11]'] = np.array(array_param_1)  # array_param[1] binding = base_value
+//     outputs['start[12]'] = np.array(array_param_2)  # array_param[2] binding = base_value * 2.0
+//     outputs['start[13]'] = np.array(array_param_3)  # array_param[3] binding = base_value * 3.0
+//     outputs['start[14]'] = np.array(scaled_value)  # x.start = scaled_value
+//
+//     # Min/max values for parameters with non-const bounds
+//     outputs['min[5]'] = np.array(base_value)  # dynamic_bounded.min = base_value
+//     outputs['min[7]'] = np.array(base_value)  # dynamic_both.min = base_value
+//     outputs['min[9]'] = np.array(base_value / 2.0)  # mixed_bounds_2.min = base_value / 2.0
+//     outputs['max[6]'] = np.array(base_value * 10.0)  # dynamic_max.max = base_value * 10.0
+//     outputs['max[7]'] = np.array(base_value * 5.0)  # dynamic_both.max = base_value * 5.0
+//     outputs['max[8]'] = np.array(base_value * 2.0)  # mixed_bounds_1.max = base_value * 2.0
 //
 //     return outputs
 //
@@ -134,6 +145,11 @@ end 'ParameterBindings';
 //   "base_value": base_value,
 //   "scale": scale,
 //   "const_computed": np.array(5.0),
+//   "scaled_value": np.array(base_value * scale),
+//   "bounded_value": np.array(base_value + scale),
+//   "array_param[1]": np.array(base_value),
+//   "array_param[2]": np.array(base_value * 2.0),
+//   "array_param[3]": np.array(base_value * 3.0),
 //   "dynamic_bounded": np.array(30.0),
 //   "dynamic_max": np.array(50.0),
 //   "dynamic_both": np.array(25.0),
@@ -161,6 +177,11 @@ end 'ParameterBindings';
 //   "base_value": base_value,
 //   "scale": scale,
 //   "const_computed": np.array(5.0),
+//   "scaled_value": np.array(scaled_value),
+//   "bounded_value": np.array(base_value + scale),
+//   "array_param[1]": np.array(base_value),
+//   "array_param[2]": np.array(base_value * 2.0),
+//   "array_param[3]": np.array(base_value * 3.0),
 //   "dynamic_bounded": np.array(30.0),
 //   "dynamic_max": np.array(50.0),
 //   "dynamic_both": np.array(25.0),
@@ -188,6 +209,11 @@ end 'ParameterBindings';
 //   "base_value": base_value,
 //   "scale": scale,
 //   "const_computed": np.array(2.0),
+//   "scaled_value": np.array(scaled_value),
+//   "bounded_value": np.array(base_value + scale),
+//   "array_param[1]": np.array(base_value),
+//   "array_param[2]": np.array(base_value * 2.0),
+//   "array_param[3]": np.array(base_value * 3.0),
 //   "dynamic_bounded": np.array(15.0),
 //   "dynamic_max": np.array(25.0),
 //   "dynamic_both": np.array(12.5),
