@@ -19,3 +19,101 @@ package 'MatrixProduct'
 
   end 'MatrixProduct';
 end 'MatrixProduct';
+
+// @onnx-test-reference
+// Python reference implementation for ONNX runtime testing
+// def reference_implementation(inputs):
+//     import numpy as np
+//     outputs = {}
+//
+//     # Extract inputs (already numpy arrays)
+//     alpha = inputs['alpha']
+//     A = inputs['A']  # 3x4 matrix
+//     B = inputs['B']  # 4x2 matrix
+//     C = inputs['C']  # 3x2 matrix (result of A * B)
+//     der_A = inputs["der('A')"]  # 3x4 matrix
+//     der_B = inputs["der('B')"]  # 4x2 matrix
+//     y = inputs['y']  # scalar
+//
+//     # Equation 0: der(A) = -alpha * A => der(A) + alpha * A = 0
+//     outputs['eq[0]'] = der_A + alpha * A
+//
+//     # Equation 1: der(B) = -0.1 * B => der(B) + 0.1 * B = 0
+//     outputs['eq[1]'] = der_B + 0.1 * B
+//
+//     # Equation 2: C = A * B => C - A * B = 0 (matrix product)
+//     outputs['eq[2]'] = C - np.matmul(A, B)
+//
+//     # Equation 3: y = C[1,1] + C[2,2] + C[3,1] => y - (C[1,1] + C[2,2] + C[3,1]) = 0
+//     # Note: Modelica uses 1-based indexing, Python uses 0-based
+//     sum_val = C[0, 0] + C[1, 1] + C[2, 0]
+//     outputs['eq[3]'] = y - sum_val
+//
+//     # Initial values (start attributes)
+//     outputs['start[0]'] = np.zeros((3, 4))  # A's initial value
+//     outputs['start[1]'] = np.ones((4, 2))   # B's initial value
+//
+//     return outputs
+//
+// @onnx-test-case
+// # Test case 1: Random matrices (seed 42)
+// import numpy as np
+// rng = np.random.RandomState(42)
+// alpha = 0.5
+// A = rng.uniform(-1.0, 1.0, (3, 4))
+// B = rng.uniform(-1.0, 1.0, (4, 2))
+// C = np.matmul(A, B)
+// y = C[0, 0] + C[1, 1] + C[2, 0]
+// der_A = -alpha * A
+// der_B = -0.1 * B
+// {
+//   "alpha": np.array(0.5),
+//   "A": A,
+//   "B": B,
+//   "C": C,
+//   "y": np.array(y),
+//   "der('A')": der_A,
+//   "der('B')": der_B
+// }
+//
+// @onnx-test-case
+// # Test case 2: Random matrices (seed 123)
+// import numpy as np
+// rng = np.random.RandomState(123)
+// alpha = 0.5
+// A = rng.uniform(0.0, 2.0, (3, 4))
+// B = rng.uniform(-2.0, 0.0, (4, 2))
+// C = np.matmul(A, B)
+// y = C[0, 0] + C[1, 1] + C[2, 0]
+// der_A = -alpha * A
+// der_B = -0.1 * B
+// {
+//   "alpha": np.array(0.5),
+//   "A": A,
+//   "B": B,
+//   "C": C,
+//   "y": np.array(y),
+//   "der('A')": der_A,
+//   "der('B')": der_B
+// }
+//
+// @onnx-test-case
+// # Test case 3: Random matrices (seed 999)
+// import numpy as np
+// rng = np.random.RandomState(999)
+// alpha = 0.5
+// A = rng.uniform(-0.5, 0.5, (3, 4))
+// B = rng.uniform(0.5, 1.5, (4, 2))
+// C = np.matmul(A, B)
+// y = C[0, 0] + C[1, 1] + C[2, 0]
+// der_A = -alpha * A
+// der_B = -0.1 * B
+// {
+//   "alpha": np.array(0.5),
+//   "A": A,
+//   "B": B,
+//   "C": C,
+//   "y": np.array(y),
+//   "der('A')": der_A,
+//   "der('B')": der_B
+// }
