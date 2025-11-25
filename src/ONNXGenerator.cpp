@@ -2,6 +2,7 @@
 // Copyright (c) 2025 Joris Gillis, YACODA
 
 #include "ONNXGenerator.h"
+#include "ParseTreeNavigator.h"
 #define ONNX_ML 1
 #define ONNX_NAMESPACE onnx
 #include <onnx/onnx_pb.h>
@@ -468,50 +469,24 @@ void ONNXGenerator::generateEquationOutputs(
         }
 
         // Check if LHS is a tuple (outputExpressionList) for multi-output functions
-        // Navigate through: simpleExpression -> logicalExpression -> logicalTerm -> logicalFactor -> relation -> arithmeticExpression -> term -> factor -> primary
         bool isMultiOutput = false;
         std::vector<std::string> outputVarNames;
 
-        auto simpleExpr = dynamic_cast<basemodelica::BaseModelicaParser::SimpleExpressionContext*>(eq.lhsContext);
-        if (simpleExpr && simpleExpr->logicalExpression().size() > 0) {
-            auto logExpr = simpleExpr->logicalExpression(0);
-            if (logExpr && logExpr->logicalTerm().size() > 0) {
-                auto logTerm = logExpr->logicalTerm(0);
-                if (logTerm && logTerm->logicalFactor().size() > 0) {
-                    auto logFactor = logTerm->logicalFactor(0);
-                    if (logFactor && logFactor->relation()) {
-                        auto relation = logFactor->relation();
-                        if (relation && relation->arithmeticExpression().size() > 0) {
-                            auto arithExpr = relation->arithmeticExpression(0);
-                            if (arithExpr && arithExpr->term().size() > 0) {
-                                auto term = arithExpr->term(0);
-                                if (term && term->factor().size() > 0) {
-                                    auto factor = term->factor(0);
-                                    if (factor && factor->primary().size() > 0) {
-                                        auto primary = factor->primary(0);
-                                        if (primary && primary->outputExpressionList()) {
-                                            // This is a tuple output!
-                                            isMultiOutput = true;
-                                            auto outExprList = primary->outputExpressionList();
-                                            for (auto outExpr : outExprList->expression()) {
-                                                if (outExpr) {
-                                                    std::string varName = outExpr->getText();
-                                                    // Strip quotes
-                                                    if (varName.size() >= 2 && varName.front() == '\'' && varName.back() == '\'') {
-                                                        varName = varName.substr(1, varName.size() - 2);
-                                                    }
-                                                    outputVarNames.push_back(varName);
-                                                }
-                                            }
-                                            std::cerr << "DEBUG: Found multi-output equation with " << outputVarNames.size() << " outputs" << std::endl;
-                                        }
-                                    }
-                                }
-                            }
-                        }
+        // Use ParseTreeNavigator to find OutputExpressionList (replaces pyramid of dynamic_casts)
+        if (auto outExprList = ParseTreeNavigator::findOutputExpressionList(eq.lhsContext)) {
+            // This is a tuple output!
+            isMultiOutput = true;
+            for (auto outExpr : outExprList->expression()) {
+                if (outExpr) {
+                    std::string varName = outExpr->getText();
+                    // Strip quotes
+                    if (varName.size() >= 2 && varName.front() == '\'' && varName.back() == '\'') {
+                        varName = varName.substr(1, varName.size() - 2);
                     }
+                    outputVarNames.push_back(varName);
                 }
             }
+            std::cerr << "DEBUG: Found multi-output equation with " << outputVarNames.size() << " outputs" << std::endl;
         }
 
         if (isMultiOutput) {
@@ -1281,73 +1256,6 @@ std::string ONNXGenerator::convertFactor(
     return result;
 }
 
-// Helper function to navigate parse tree and extract ComponentReferenceContext
-static basemodelica::BaseModelicaParser::ComponentReferenceContext*
-extractComponentReference(antlr4::tree::ParseTree* node) {
-    basemodelica::BaseModelicaParser::ComponentReferenceContext* compRef = nullptr;
-
-    while (node && !compRef) {
-        auto* exprNode = dynamic_cast<basemodelica::BaseModelicaParser::ExpressionContext*>(node);
-        if (exprNode && exprNode->expressionNoDecoration()) {
-            node = exprNode->expressionNoDecoration();
-            continue;
-        }
-        auto* exprNoDecNode = dynamic_cast<basemodelica::BaseModelicaParser::ExpressionNoDecorationContext*>(node);
-        if (exprNoDecNode && exprNoDecNode->simpleExpression()) {
-            node = exprNoDecNode->simpleExpression();
-            continue;
-        }
-        auto* simpleExprNode = dynamic_cast<basemodelica::BaseModelicaParser::SimpleExpressionContext*>(node);
-        if (simpleExprNode && simpleExprNode->logicalExpression().size() > 0) {
-            node = simpleExprNode->logicalExpression(0);
-            continue;
-        }
-        auto* logicalExprNode = dynamic_cast<basemodelica::BaseModelicaParser::LogicalExpressionContext*>(node);
-        if (logicalExprNode && logicalExprNode->logicalTerm().size() > 0) {
-            node = logicalExprNode->logicalTerm(0);
-            continue;
-        }
-        auto* logicalTermNode = dynamic_cast<basemodelica::BaseModelicaParser::LogicalTermContext*>(node);
-        if (logicalTermNode && logicalTermNode->logicalFactor().size() > 0) {
-            node = logicalTermNode->logicalFactor(0);
-            continue;
-        }
-        auto* logicalFactorNode = dynamic_cast<basemodelica::BaseModelicaParser::LogicalFactorContext*>(node);
-        if (logicalFactorNode && logicalFactorNode->relation()) {
-            node = logicalFactorNode->relation();
-            continue;
-        }
-        auto* relationNode = dynamic_cast<basemodelica::BaseModelicaParser::RelationContext*>(node);
-        if (relationNode && relationNode->arithmeticExpression().size() > 0) {
-            node = relationNode->arithmeticExpression(0);
-            continue;
-        }
-        auto* arithExprNode = dynamic_cast<basemodelica::BaseModelicaParser::ArithmeticExpressionContext*>(node);
-        if (arithExprNode && arithExprNode->term().size() > 0) {
-            node = arithExprNode->term(0);
-            continue;
-        }
-        auto* termNode = dynamic_cast<basemodelica::BaseModelicaParser::TermContext*>(node);
-        if (termNode && termNode->factor().size() > 0) {
-            node = termNode->factor(0);
-            continue;
-        }
-        auto* factorNode = dynamic_cast<basemodelica::BaseModelicaParser::FactorContext*>(node);
-        if (factorNode && factorNode->primary().size() > 0) {
-            node = factorNode->primary(0);
-            continue;
-        }
-        auto* primaryNode = dynamic_cast<basemodelica::BaseModelicaParser::PrimaryContext*>(node);
-        if (primaryNode && primaryNode->componentReference()) {
-            compRef = primaryNode->componentReference();
-            break;
-        }
-        break;
-    }
-
-    return compRef;
-}
-
 std::string ONNXGenerator::convertPrimary(
     basemodelica::BaseModelicaParser::PrimaryContext* expr,
     const ModelInfo& info,
@@ -1443,7 +1351,8 @@ std::string ONNXGenerator::convertPrimary(
             // If so, treat der(x[1]) as der('x')[1]
             basemodelica::BaseModelicaParser::ComponentReferenceContext* compRef = nullptr;
             if (!isSimpleVariable) {
-                compRef = extractComponentReference(argExpr);
+                auto primary = ParseTreeNavigator::findPrimary(argExpr);
+                compRef = primary ? primary->componentReference() : nullptr;
             }
 
             // If we found a componentReference with arraySubscripts, handle it specially
@@ -1777,52 +1686,7 @@ std::vector<std::string> ONNXGenerator::convertMultiOutputFunctionCall(
 
     // Navigate the expression tree to find the function call
     // The RHS should be: expression -> ... -> primary -> componentReference + functionCallArgs
-    auto primary = extractComponentReference(expr);
-    if (!primary) {
-        throw std::runtime_error("Could not find function call in multi-output expression");
-    }
-
-    // Now navigate to find primary with componentReference and functionCallArgs
-    // Start from expr and navigate down to find a PrimaryContext
-    basemodelica::BaseModelicaParser::PrimaryContext* primaryCtx = nullptr;
-
-    // Try to cast expr itself
-    primaryCtx = dynamic_cast<basemodelica::BaseModelicaParser::PrimaryContext*>(expr);
-
-    // If not, navigate down through expression types
-    if (!primaryCtx) {
-        auto exprCtx = dynamic_cast<basemodelica::BaseModelicaParser::ExpressionContext*>(expr);
-        if (exprCtx && exprCtx->expressionNoDecoration()) {
-            auto exprNoDecCtx = exprCtx->expressionNoDecoration();
-            if (exprNoDecCtx && exprNoDecCtx->simpleExpression()) {
-                auto simpleExprCtx = exprNoDecCtx->simpleExpression();
-                if (simpleExprCtx && simpleExprCtx->logicalExpression().size() > 0) {
-                    auto logExprCtx = simpleExprCtx->logicalExpression(0);
-                    if (logExprCtx && logExprCtx->logicalTerm().size() > 0) {
-                        auto logTermCtx = logExprCtx->logicalTerm(0);
-                        if (logTermCtx && logTermCtx->logicalFactor().size() > 0) {
-                            auto logFactorCtx = logTermCtx->logicalFactor(0);
-                            if (logFactorCtx && logFactorCtx->relation()) {
-                                auto relationCtx = logFactorCtx->relation();
-                                if (relationCtx && relationCtx->arithmeticExpression().size() > 0) {
-                                    auto arithExprCtx = relationCtx->arithmeticExpression(0);
-                                    if (arithExprCtx && arithExprCtx->term().size() > 0) {
-                                        auto termCtx = arithExprCtx->term(0);
-                                        if (termCtx && termCtx->factor().size() > 0) {
-                                            auto factorCtx = termCtx->factor(0);
-                                            if (factorCtx && factorCtx->primary().size() > 0) {
-                                                primaryCtx = factorCtx->primary(0);
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
+    auto primaryCtx = ParseTreeNavigator::findPrimary(expr);
 
     if (!primaryCtx || !primaryCtx->componentReference() || !primaryCtx->functionCallArgs()) {
         throw std::runtime_error("Multi-output expression must be a function call");
