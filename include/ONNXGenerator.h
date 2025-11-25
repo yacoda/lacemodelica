@@ -31,7 +31,8 @@ private:
         const std::string& prefix,
         const ModelInfo& info,
         onnx::GraphProto* graph,
-        int& nodeCounter
+        int& nodeCounter,
+        std::map<std::string, std::vector<std::string>>& derivativeInputs
     );
 
     // Create ONNX FunctionProto for a function with algorithm
@@ -48,7 +49,8 @@ private:
         const ModelInfo& info,
         onnx::GraphProto* graph,
         int& nodeCounter,
-        const std::map<std::string, std::string>* variableMap = nullptr
+        const std::map<std::string, std::string>* variableMap = nullptr,
+        std::map<std::string, std::vector<std::string>>* derivativeInputs = nullptr
     );
 
     static std::string convertSimpleExpression(
@@ -56,7 +58,8 @@ private:
         const ModelInfo& info,
         onnx::GraphProto* graph,
         int& nodeCounter,
-        const std::map<std::string, std::string>* variableMap = nullptr
+        const std::map<std::string, std::string>* variableMap = nullptr,
+        std::map<std::string, std::vector<std::string>>* derivativeInputs = nullptr
     );
 
     static std::string convertIfExpression(
@@ -64,7 +67,8 @@ private:
         const ModelInfo& info,
         onnx::GraphProto* graph,
         int& nodeCounter,
-        const std::map<std::string, std::string>* variableMap = nullptr
+        const std::map<std::string, std::string>* variableMap = nullptr,
+        std::map<std::string, std::vector<std::string>>* derivativeInputs = nullptr
     );
 
     static std::string convertArithmeticExpression(
@@ -72,7 +76,8 @@ private:
         const ModelInfo& info,
         onnx::GraphProto* graph,
         int& nodeCounter,
-        const std::map<std::string, std::string>* variableMap = nullptr
+        const std::map<std::string, std::string>* variableMap = nullptr,
+        std::map<std::string, std::vector<std::string>>* derivativeInputs = nullptr
     );
 
     static std::string convertTerm(
@@ -80,7 +85,8 @@ private:
         const ModelInfo& info,
         onnx::GraphProto* graph,
         int& nodeCounter,
-        const std::map<std::string, std::string>* variableMap = nullptr
+        const std::map<std::string, std::string>* variableMap = nullptr,
+        std::map<std::string, std::vector<std::string>>* derivativeInputs = nullptr
     );
 
     static std::string convertFactor(
@@ -88,7 +94,8 @@ private:
         const ModelInfo& info,
         onnx::GraphProto* graph,
         int& nodeCounter,
-        const std::map<std::string, std::string>* variableMap = nullptr
+        const std::map<std::string, std::string>* variableMap = nullptr,
+        std::map<std::string, std::vector<std::string>>* derivativeInputs = nullptr
     );
 
     static std::string convertPrimary(
@@ -96,7 +103,8 @@ private:
         const ModelInfo& info,
         onnx::GraphProto* graph,
         int& nodeCounter,
-        const std::map<std::string, std::string>* variableMap = nullptr
+        const std::map<std::string, std::string>* variableMap = nullptr,
+        std::map<std::string, std::vector<std::string>>* derivativeInputs = nullptr
     );
 };
 

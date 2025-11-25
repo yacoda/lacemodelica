@@ -18,3 +18,64 @@ package 'NewtonCoolingBase'
     'm' * 'c_p' * der('T') = 'h' * 'A' * ('T_inf' - 'T') "Newton's law of cooling";
   end 'NewtonCoolingBase';
 end 'NewtonCoolingBase';
+
+// @onnx-test-reference
+// Python reference implementation for ONNX runtime testing
+// def reference_implementation(inputs):
+//     """
+//     Compute expected outputs for NewtonCoolingBase.
+//
+//     Equation: m * c_p * der(T) = h * A * (T_inf - T)
+//     Initial: T = T0
+//     """
+//     outputs = {}
+//
+//     # Extract inputs
+//     T_inf = inputs.get('T_inf', 25.0)
+//     T0 = inputs.get('T0', 90.0)
+//     h = inputs.get('h', 0.7)
+//     A = inputs.get('A', 1.0)
+//     m = inputs.get('m', 0.1)
+//     c_p = inputs.get('c_p', 1.2)
+//     T = inputs.get('T', 50.0)
+//     der_T = inputs.get("der('T')", 0.0)
+//
+//     # Compute equation residual: m * c_p * der(T) = h * A * (T_inf - T)
+//     # Rearranged: m * c_p * der(T) - h * A * (T_inf - T) = 0
+//     eq_0 = m * c_p * der_T - h * A * (T_inf - T)
+//     outputs['eq[0]'] = eq_0
+//
+//     # Initial equation: T = T0
+//     # Rearranged: T - T0 = 0
+//     outputs['init_eq[0]'] = T - T0
+//
+//     # Initial value (start[0] corresponds to T's initial value)
+//     outputs['start[0]'] = T0
+//
+//     return outputs
+//
+// @onnx-test-case
+// Test case 1: Default parameters at T=50, der(T)=0
+// {
+//   "T_inf": 25.0,
+//   "T0": 90.0,
+//   "h": 0.7,
+//   "A": 1.0,
+//   "m": 0.1,
+//   "c_p": 1.2,
+//   "T": 50.0,
+//   "der('T')": 0.0
+// }
+//
+// @onnx-test-case
+// Test case 2: Different temperature and derivative
+// {
+//   "T_inf": 25.0,
+//   "T0": 90.0,
+//   "h": 0.7,
+//   "A": 1.0,
+//   "m": 0.1,
+//   "c_p": 1.2,
+//   "T": 75.0,
+//   "der('T')": -2.9
+// }
