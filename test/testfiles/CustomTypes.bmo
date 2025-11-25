@@ -12,3 +12,68 @@ package 'CustomTypes'
     'i' = 'v' / 'R';
   end 'CustomTypes';
 end 'CustomTypes';
+
+// @onnx-test-reference
+// Python reference implementation for ONNX runtime testing
+// def reference_implementation(inputs):
+//     import numpy as np
+//     outputs = {}
+//
+//     # Extract inputs (already numpy scalars)
+//     v = inputs['v']
+//     i = inputs['i']
+//     R = inputs['R']
+//     der_v = inputs["der('v')"]
+//
+//     # Equation 0: der(v) = 1.0
+//     outputs['eq[0]'] = der_v - 1.0
+//
+//     # Equation 1: i = v / R => i - v / R = 0
+//     outputs['eq[1]'] = i - (v / R)
+//
+//     # Initial value
+//     outputs['start[0]'] = np.array(0.0)
+//
+//     return outputs
+//
+// @onnx-test-case
+// # Test case 1: v = 5.0, R = 10.0
+// import numpy as np
+// v = 5.0
+// R = 10.0
+// i = v / R
+// der_v = 1.0
+// {
+//   "v": np.array(v),
+//   "i": np.array(i),
+//   "R": np.array(R),
+//   "der('v')": np.array(der_v)
+// }
+//
+// @onnx-test-case
+// # Test case 2: v = 12.5, R = 10.0
+// import numpy as np
+// v = 12.5
+// R = 10.0
+// i = v / R
+// der_v = 1.0
+// {
+//   "v": np.array(v),
+//   "i": np.array(i),
+//   "R": np.array(R),
+//   "der('v')": np.array(der_v)
+// }
+//
+// @onnx-test-case
+// # Test case 3: v = -3.0, R = 10.0
+// import numpy as np
+// v = -3.0
+// R = 10.0
+// i = v / R
+// der_v = 1.0
+// {
+//   "v": np.array(v),
+//   "i": np.array(i),
+//   "R": np.array(R),
+//   "der('v')": np.array(der_v)
+// }
