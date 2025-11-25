@@ -13,3 +13,109 @@ package 'MultiDecl'
     der('z') = 'k3' * 'y' - 'k2' * 'z';
   end 'MultiDecl';
 end 'MultiDecl';
+
+// @onnx-test-reference
+// Python reference implementation for ONNX runtime testing
+// def reference_implementation(inputs):
+//     import numpy as np
+//     outputs = {}
+//
+//     # Extract inputs
+//     x = inputs['x']
+//     y = inputs['y']
+//     z = inputs['z']
+//     k1 = inputs['k1']
+//     k2 = inputs['k2']
+//     k3 = inputs['k3']
+//     der_x = inputs["der('x')"]
+//     der_y = inputs["der('y')"]
+//     der_z = inputs["der('z')"]
+//
+//     # Equation 0: der(x) = -k1*x + k2*y
+//     outputs['eq[0]'] = der_x - (-k1 * x + k2 * y)
+//
+//     # Equation 1: der(y) = k1*x - k3*y
+//     outputs['eq[1]'] = der_y - (k1 * x - k3 * y)
+//
+//     # Equation 2: der(z) = k3*y - k2*z
+//     outputs['eq[2]'] = der_z - (k3 * y - k2 * z)
+//
+//     # Initial equations
+//     outputs['init_eq[0]'] = x - 1.0
+//     outputs['init_eq[1]'] = y - 0.0
+//     outputs['init_eq[2]'] = z - 0.5
+//
+//     return outputs
+//
+// @onnx-test-case
+// # Test case 1: Initial conditions
+// import numpy as np
+// x = 1.0
+// y = 0.0
+// z = 0.5
+// k1 = 0.5
+// k2 = 0.3
+// k3 = 0.2
+// der_x = -k1 * x + k2 * y
+// der_y = k1 * x - k3 * y
+// der_z = k3 * y - k2 * z
+// {
+//   "x": np.array(x),
+//   "y": np.array(y),
+//   "z": np.array(z),
+//   "k1": np.array(k1),
+//   "k2": np.array(k2),
+//   "k3": np.array(k3),
+//   "der('x')": np.array(der_x),
+//   "der('y')": np.array(der_y),
+//   "der('z')": np.array(der_z)
+// }
+//
+// @onnx-test-case
+// # Test case 2: Mid-simulation state
+// import numpy as np
+// x = 0.6
+// y = 0.3
+// z = 0.4
+// k1 = 0.5
+// k2 = 0.3
+// k3 = 0.2
+// der_x = -k1 * x + k2 * y
+// der_y = k1 * x - k3 * y
+// der_z = k3 * y - k2 * z
+// {
+//   "x": np.array(x),
+//   "y": np.array(y),
+//   "z": np.array(z),
+//   "k1": np.array(k1),
+//   "k2": np.array(k2),
+//   "k3": np.array(k3),
+//   "der('x')": np.array(der_x),
+//   "der('y')": np.array(der_y),
+//   "der('z')": np.array(der_z)
+// }
+//
+// @onnx-test-case
+// # Test case 3: Different parameters
+// import numpy as np
+// x = 0.8
+// y = 0.2
+// z = 0.3
+// k1 = 1.0
+// k2 = 0.5
+// k3 = 0.4
+// der_x = -k1 * x + k2 * y
+// der_y = k1 * x - k3 * y
+// der_z = k3 * y - k2 * z
+// {
+//   "x": np.array(x),
+//   "y": np.array(y),
+//   "z": np.array(z),
+//   "k1": np.array(k1),
+//   "k2": np.array(k2),
+//   "k3": np.array(k3),
+//   "der('x')": np.array(der_x),
+//   "der('y')": np.array(der_y),
+//   "der('z')": np.array(der_z)
+// }
+//
