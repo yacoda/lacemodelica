@@ -23,58 +23,67 @@ end 'IfExpression';
 //       y = if x > threshold then x^2 else 0.5 * x
 //     Initial: x = 1.0
 //     """
+//     import numpy as np
 //     outputs = {}
 //
-//     # Extract inputs
-//     threshold = inputs.get('threshold', 0.5)
-//     x = inputs.get('x', 0.0)
-//     y = inputs.get('y', 0.0)
-//     der_x = inputs.get("der('x')", 0.0)
+//     # Extract inputs (already numpy scalars)
+//     threshold = inputs['threshold']
+//     x = inputs['x']
+//     y = inputs['y']
+//     der_x = inputs["der('x')"]
 //
 //     # Compute equation residuals
-//     # Equation 0: der(x) = -0.3 * x
-//     # Rearranged: der(x) - (-0.3 * x) = 0
-//     eq_0 = der_x - (-0.3 * x)
-//     outputs['eq[0]'] = eq_0
+//     outputs['eq[0]'] = der_x - (-0.3 * x)
 //
-//     # Equation 1: y = if x > threshold then x^2 else 0.5 * x
-//     # Rearranged: y - (if x > threshold then x^2 else 0.5 * x) = 0
 //     if_expr_value = x ** 2 if x > threshold else 0.5 * x
-//     eq_1 = y - if_expr_value
-//     outputs['eq[1]'] = eq_1
+//     outputs['eq[1]'] = y - if_expr_value
 //
-//     # Initial equation: x = 1.0
-//     # Rearranged: x - 1.0 = 0
+//     # Initial equation
 //     outputs['init_eq[0]'] = x - 1.0
 //
-//     # Initial value (start[0] corresponds to x's initial value)
-//     outputs['start[0]'] = 1.0
+//     # Initial value
+//     outputs['start[0]'] = np.array(1.0)
 //
 //     return outputs
 //
 // @onnx-test-case
-// Test case 1: x > threshold (true branch)
+// # Test case 1: x > threshold (true branch)
+// import numpy as np
+// threshold = 0.5
+// x = 0.8
+// y = x ** 2 if x > threshold else 0.5 * x
+// der_x = -0.3 * x
 // {
-//   "threshold": 0.5,
-//   "x": 0.8,
-//   "y": 0.64,
-//   "der('x')": -0.24
+//   "threshold": np.array(threshold),
+//   "x": np.array(x),
+//   "y": np.array(y),
+//   "der('x')": np.array(der_x)
 // }
 //
 // @onnx-test-case
-// Test case 2: x <= threshold (false branch)
+// # Test case 2: x <= threshold (false branch)
+// import numpy as np
+// threshold = 0.5
+// x = 0.3
+// y = x ** 2 if x > threshold else 0.5 * x
+// der_x = -0.3 * x
 // {
-//   "threshold": 0.5,
-//   "x": 0.3,
-//   "y": 0.15,
-//   "der('x')": -0.09
+//   "threshold": np.array(threshold),
+//   "x": np.array(x),
+//   "y": np.array(y),
+//   "der('x')": np.array(der_x)
 // }
 //
 // @onnx-test-case
-// Test case 3: x at boundary (x = threshold)
+// # Test case 3: x at boundary (x = threshold)
+// import numpy as np
+// threshold = 0.5
+// x = 0.5
+// y = x ** 2 if x > threshold else 0.5 * x
+// der_x = -0.3 * x
 // {
-//   "threshold": 0.5,
-//   "x": 0.5,
-//   "y": 0.25,
-//   "der('x')": -0.15
+//   "threshold": np.array(threshold),
+//   "x": np.array(x),
+//   "y": np.array(y),
+//   "der('x')": np.array(der_x)
 // }
