@@ -14,3 +14,80 @@ package 'RecordExample'
     'distance' = ('p.x' ^ 2 + 'p.y' ^ 2) ^ 0.5;
   end 'RecordExample';
 end 'RecordExample';
+
+// @onnx-test-reference
+// Python reference implementation for ONNX runtime testing
+// def reference_implementation(inputs):
+//     import numpy as np
+//     outputs = {}
+//
+//     # Extract inputs
+//     p_x = inputs['p.x']
+//     p_y = inputs['p.y']
+//     distance = inputs['distance']
+//     der_p_x = inputs["der('p.x')"]
+//     der_p_y = inputs["der('p.y')"]
+//
+//     # Equation 0: der(p.x) = -p.y
+//     outputs['eq[0]'] = der_p_x - (-p_y)
+//
+//     # Equation 1: der(p.y) = p.x
+//     outputs['eq[1]'] = der_p_y - p_x
+//
+//     # Equation 2: distance = (p.x^2 + p.y^2)^0.5
+//     outputs['eq[2]'] = distance - np.sqrt(p_x**2 + p_y**2)
+//
+//     # Initial values
+//     outputs['start[0]'] = np.array(1.0)
+//     outputs['start[1]'] = np.array(2.0)
+//
+//     return outputs
+//
+// @onnx-test-case
+// # Test case 1: p.x = 1.0, p.y = 2.0 (initial position)
+// import numpy as np
+// p_x = 1.0
+// p_y = 2.0
+// der_p_x = -p_y
+// der_p_y = p_x
+// distance = np.sqrt(p_x**2 + p_y**2)
+// {
+//   "p.x": np.array(p_x),
+//   "p.y": np.array(p_y),
+//   "distance": np.array(distance),
+//   "der('p.x')": np.array(der_p_x),
+//   "der('p.y')": np.array(der_p_y)
+// }
+//
+// @onnx-test-case
+// # Test case 2: p.x = 0.0, p.y = 1.0 (on circle)
+// import numpy as np
+// p_x = 0.0
+// p_y = 1.0
+// der_p_x = -p_y
+// der_p_y = p_x
+// distance = np.sqrt(p_x**2 + p_y**2)
+// {
+//   "p.x": np.array(p_x),
+//   "p.y": np.array(p_y),
+//   "distance": np.array(distance),
+//   "der('p.x')": np.array(der_p_x),
+//   "der('p.y')": np.array(der_p_y)
+// }
+//
+// @onnx-test-case
+// # Test case 3: p.x = 3.0, p.y = 4.0 (3-4-5 triangle)
+// import numpy as np
+// p_x = 3.0
+// p_y = 4.0
+// der_p_x = -p_y
+// der_p_y = p_x
+// distance = np.sqrt(p_x**2 + p_y**2)
+// {
+//   "p.x": np.array(p_x),
+//   "p.y": np.array(p_y),
+//   "distance": np.array(distance),
+//   "der('p.x')": np.array(der_p_x),
+//   "der('p.y')": np.array(der_p_y)
+// }
+//

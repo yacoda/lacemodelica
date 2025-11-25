@@ -31,3 +31,130 @@ package 'RTCToolsBasic'
     'V_storage' = 'storage.V';
   end 'RTCToolsBasic';
 end 'RTCToolsBasic';
+
+// @onnx-test-reference
+// Python reference implementation for ONNX runtime testing
+// def reference_implementation(inputs):
+//     import numpy as np
+//     outputs = {}
+//
+//     # Extract inputs
+//     Q_in = inputs['Q_in']
+//     Q_release = inputs['Q_release']
+//     V_storage = inputs['V_storage']
+//     inflow_QOut_Q = inputs['inflow.QOut.Q']
+//     inflow_Q = inputs['inflow.Q']
+//     inflow_Q_nominal = inputs['inflow.Q_nominal']
+//     storage_QIn_Q = inputs['storage.QIn.Q']
+//     storage_QOut_Q = inputs['storage.QOut.Q']
+//     storage_Q_release = inputs['storage.Q_release']
+//     storage_V = inputs['storage.V']
+//     storage_Q_nominal = inputs['storage.Q_nominal']
+//     outfall_QIn_Q = inputs['outfall.QIn.Q']
+//     outfall_Q = inputs['outfall.Q']
+//     outfall_Q_nominal = inputs['outfall.Q_nominal']
+//     der_storage_V = inputs["der('storage.V')"]
+//
+//     # Equation 0: inflow.QOut.Q = storage.QIn.Q
+//     outputs['eq[0]'] = inflow_QOut_Q - storage_QIn_Q
+//
+//     # Equation 1: storage.QOut.Q = outfall.QIn.Q
+//     outputs['eq[1]'] = storage_QOut_Q - outfall_QIn_Q
+//
+//     # Equation 2: inflow.QOut.Q / inflow.Q_nominal = inflow.Q / inflow.Q_nominal
+//     outputs['eq[2]'] = inflow_QOut_Q / inflow_Q_nominal - inflow_Q / inflow_Q_nominal
+//
+//     # Equation 3: der(storage.V) = (storage.QIn.Q - storage.QOut.Q)
+//     outputs['eq[3]'] = der_storage_V - (storage_QIn_Q - storage_QOut_Q)
+//
+//     # Equation 4: storage.QOut.Q = storage.Q_release
+//     outputs['eq[4]'] = storage_QOut_Q - storage_Q_release
+//
+//     # Equation 5: outfall.Q / outfall.Q_nominal = outfall.QIn.Q / outfall.Q_nominal
+//     outputs['eq[5]'] = outfall_Q / outfall_Q_nominal - outfall_QIn_Q / outfall_Q_nominal
+//
+//     # Equation 6: storage.Q_release = Q_release
+//     outputs['eq[6]'] = storage_Q_release - Q_release
+//
+//     # Equation 7: inflow.Q = Q_in
+//     outputs['eq[7]'] = inflow_Q - Q_in
+//
+//     # Equation 8: V_storage = storage.V
+//     outputs['eq[8]'] = V_storage - storage_V
+//
+//     return outputs
+//
+// @onnx-test-case
+// # Test case 1: Q_in = 10.0, Q_release = 5.0
+// import numpy as np
+// Q_in = 10.0
+// Q_release = 5.0
+// inflow_Q_nominal = 1.0
+// storage_Q_nominal = 1.0
+// outfall_Q_nominal = 1.0
+// # Derived values
+// inflow_Q = Q_in
+// inflow_QOut_Q = inflow_Q
+// storage_QIn_Q = inflow_QOut_Q
+// storage_Q_release = Q_release
+// storage_QOut_Q = storage_Q_release
+// outfall_QIn_Q = storage_QOut_Q
+// outfall_Q = outfall_QIn_Q
+// der_storage_V = storage_QIn_Q - storage_QOut_Q
+// storage_V = 100.0
+// V_storage = storage_V
+// {
+//   "Q_in": np.array(Q_in),
+//   "Q_release": np.array(Q_release),
+//   "V_storage": np.array(V_storage),
+//   "inflow.QOut.Q": np.array(inflow_QOut_Q),
+//   "inflow.Q": np.array(inflow_Q),
+//   "inflow.Q_nominal": np.array(inflow_Q_nominal),
+//   "storage.QIn.Q": np.array(storage_QIn_Q),
+//   "storage.QOut.Q": np.array(storage_QOut_Q),
+//   "storage.Q_release": np.array(storage_Q_release),
+//   "storage.V": np.array(storage_V),
+//   "storage.Q_nominal": np.array(storage_Q_nominal),
+//   "outfall.QIn.Q": np.array(outfall_QIn_Q),
+//   "outfall.Q": np.array(outfall_Q),
+//   "outfall.Q_nominal": np.array(outfall_Q_nominal),
+//   "der('storage.V')": np.array(der_storage_V)
+// }
+//
+// @onnx-test-case
+// # Test case 2: Q_in = 0.0, Q_release = 0.0
+// import numpy as np
+// Q_in = 0.0
+// Q_release = 0.0
+// inflow_Q_nominal = 1.0
+// storage_Q_nominal = 1.0
+// outfall_Q_nominal = 1.0
+// # Derived values
+// inflow_Q = Q_in
+// inflow_QOut_Q = inflow_Q
+// storage_QIn_Q = inflow_QOut_Q
+// storage_Q_release = Q_release
+// storage_QOut_Q = storage_Q_release
+// outfall_QIn_Q = storage_QOut_Q
+// outfall_Q = outfall_QIn_Q
+// der_storage_V = storage_QIn_Q - storage_QOut_Q
+// storage_V = 50.0
+// V_storage = storage_V
+// {
+//   "Q_in": np.array(Q_in),
+//   "Q_release": np.array(Q_release),
+//   "V_storage": np.array(V_storage),
+//   "inflow.QOut.Q": np.array(inflow_QOut_Q),
+//   "inflow.Q": np.array(inflow_Q),
+//   "inflow.Q_nominal": np.array(inflow_Q_nominal),
+//   "storage.QIn.Q": np.array(storage_QIn_Q),
+//   "storage.QOut.Q": np.array(storage_QOut_Q),
+//   "storage.Q_release": np.array(storage_Q_release),
+//   "storage.V": np.array(storage_V),
+//   "storage.Q_nominal": np.array(storage_Q_nominal),
+//   "outfall.QIn.Q": np.array(outfall_QIn_Q),
+//   "outfall.Q": np.array(outfall_Q),
+//   "outfall.Q_nominal": np.array(outfall_Q_nominal),
+//   "der('storage.V')": np.array(der_storage_V)
+// }
+//

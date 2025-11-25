@@ -17,8 +17,10 @@ private:
     ModelInfo info;
     std::string sourceFile;
     std::set<std::string> derivativeCalls;  // Track der() calls
+    std::map<std::string, std::vector<Variable>> recordDefinitions;  // Record type -> field variables
 
     void extractPackageAndModelName(basemodelica::BaseModelicaParser::BaseModelicaContext* ctx);
+    void extractRecordDefinitions(basemodelica::BaseModelicaParser::BaseModelicaContext* ctx);
     void extractGlobalConstants(basemodelica::BaseModelicaParser::BaseModelicaContext* ctx);
     void extractVariables(basemodelica::BaseModelicaParser::BaseModelicaContext* ctx);
     void extractEquations(basemodelica::BaseModelicaParser::BaseModelicaContext* ctx);

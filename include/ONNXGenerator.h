@@ -115,6 +115,16 @@ private:
         const std::map<std::string, std::string>* variableMap = nullptr,
         std::map<std::string, std::vector<std::string>>* derivativeInputs = nullptr
     );
+
+    // Convert multi-output function call
+    static std::vector<std::string> convertMultiOutputFunctionCall(
+        antlr4::ParserRuleContext* expr,
+        const ModelInfo& info,
+        onnx::GraphProto* graph,
+        int& nodeCounter,
+        std::map<std::string, std::vector<std::string>>* derivativeInputs,
+        size_t expectedOutputCount
+    );
 };
 
 } // namespace lacemodelica

@@ -21,3 +21,90 @@ package 'MultiOutputFunction'
     ('x', 'y') = 'polar_to_cartesian'('r', 'theta');
   end 'MultiOutputFunction';
 end 'MultiOutputFunction';
+
+// @onnx-test-reference
+// Python reference implementation for ONNX runtime testing
+// def reference_implementation(inputs):
+//     import numpy as np
+//     outputs = {}
+//
+//     # Extract inputs
+//     r = inputs['r']
+//     theta = inputs['theta']
+//     x = inputs['x']
+//     y = inputs['y']
+//     der_r = inputs["der('r')"]
+//     der_theta = inputs["der('theta')"]
+//
+//     # Equation 0: der(r) = 0.01
+//     outputs['eq[0]'] = der_r - 0.01
+//
+//     # Equation 1: der(theta) = 1.0
+//     outputs['eq[1]'] = der_theta - 1.0
+//
+//     # Equation 2: x = r * cos(theta)
+//     outputs['eq[2]'] = x - (r * np.cos(theta))
+//
+//     # Equation 3: y = r * sin(theta)
+//     outputs['eq[3]'] = y - (r * np.sin(theta))
+//
+//     # Initial values
+//     outputs['start[0]'] = np.array(1.0)
+//     outputs['start[1]'] = np.array(0.0)
+//
+//     return outputs
+//
+// @onnx-test-case
+// # Test case 1: r = 1.0, theta = 0.0 (initial values)
+// import numpy as np
+// r = 1.0
+// theta = 0.0
+// der_r = 0.01
+// der_theta = 1.0
+// x = r * np.cos(theta)
+// y = r * np.sin(theta)
+// {
+//   "r": np.array(r),
+//   "theta": np.array(theta),
+//   "x": np.array(x),
+//   "y": np.array(y),
+//   "der('r')": np.array(der_r),
+//   "der('theta')": np.array(der_theta)
+// }
+//
+// @onnx-test-case
+// # Test case 2: r = 2.0, theta = pi/4
+// import numpy as np
+// r = 2.0
+// theta = np.pi / 4
+// der_r = 0.01
+// der_theta = 1.0
+// x = r * np.cos(theta)
+// y = r * np.sin(theta)
+// {
+//   "r": np.array(r),
+//   "theta": np.array(theta),
+//   "x": np.array(x),
+//   "y": np.array(y),
+//   "der('r')": np.array(der_r),
+//   "der('theta')": np.array(der_theta)
+// }
+//
+// @onnx-test-case
+// # Test case 3: r = 3.0, theta = pi/2
+// import numpy as np
+// r = 3.0
+// theta = np.pi / 2
+// der_r = 0.01
+// der_theta = 1.0
+// x = r * np.cos(theta)
+// y = r * np.sin(theta)
+// {
+//   "r": np.array(r),
+//   "theta": np.array(theta),
+//   "x": np.array(x),
+//   "y": np.array(y),
+//   "der('r')": np.array(der_r),
+//   "der('theta')": np.array(der_theta)
+// }
+//

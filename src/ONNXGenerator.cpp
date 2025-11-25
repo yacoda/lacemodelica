@@ -467,6 +467,99 @@ void ONNXGenerator::generateEquationOutputs(
             std::cerr << "DEBUG: Equation " << i << " contains 'tan', RHS: " << rhsText.substr(0, 80) << "..." << std::endl;
         }
 
+        // Check if LHS is a tuple (outputExpressionList) for multi-output functions
+        // Navigate through: simpleExpression -> logicalExpression -> logicalTerm -> logicalFactor -> relation -> arithmeticExpression -> term -> factor -> primary
+        bool isMultiOutput = false;
+        std::vector<std::string> outputVarNames;
+
+        auto simpleExpr = dynamic_cast<basemodelica::BaseModelicaParser::SimpleExpressionContext*>(eq.lhsContext);
+        if (simpleExpr && simpleExpr->logicalExpression().size() > 0) {
+            auto logExpr = simpleExpr->logicalExpression(0);
+            if (logExpr && logExpr->logicalTerm().size() > 0) {
+                auto logTerm = logExpr->logicalTerm(0);
+                if (logTerm && logTerm->logicalFactor().size() > 0) {
+                    auto logFactor = logTerm->logicalFactor(0);
+                    if (logFactor && logFactor->relation()) {
+                        auto relation = logFactor->relation();
+                        if (relation && relation->arithmeticExpression().size() > 0) {
+                            auto arithExpr = relation->arithmeticExpression(0);
+                            if (arithExpr && arithExpr->term().size() > 0) {
+                                auto term = arithExpr->term(0);
+                                if (term && term->factor().size() > 0) {
+                                    auto factor = term->factor(0);
+                                    if (factor && factor->primary().size() > 0) {
+                                        auto primary = factor->primary(0);
+                                        if (primary && primary->outputExpressionList()) {
+                                            // This is a tuple output!
+                                            isMultiOutput = true;
+                                            auto outExprList = primary->outputExpressionList();
+                                            for (auto outExpr : outExprList->expression()) {
+                                                if (outExpr) {
+                                                    std::string varName = outExpr->getText();
+                                                    // Strip quotes
+                                                    if (varName.size() >= 2 && varName.front() == '\'' && varName.back() == '\'') {
+                                                        varName = varName.substr(1, varName.size() - 2);
+                                                    }
+                                                    outputVarNames.push_back(varName);
+                                                }
+                                            }
+                                            std::cerr << "DEBUG: Found multi-output equation with " << outputVarNames.size() << " outputs" << std::endl;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (isMultiOutput) {
+            // Handle multi-output function call
+            // RHS should be a function call that returns multiple outputs
+            std::vector<std::string> outputTensors = convertMultiOutputFunctionCall(eq.rhsContext, info, graph, nodeCounter, &derivativeInputs, outputVarNames.size());
+
+            if (outputTensors.size() != outputVarNames.size()) {
+                throw std::runtime_error("Multi-output function returned " + std::to_string(outputTensors.size()) +
+                                       " outputs, expected " + std::to_string(outputVarNames.size()));
+            }
+
+            // Create residual equations for each output
+            for (size_t j = 0; j < outputVarNames.size(); j++) {
+                std::string eqOutputName = prefix + "[" + std::to_string(i + j) + "]";
+                auto* node = graph->add_node();
+                node->set_op_type("Sub");
+                node->set_name("eq_residual_" + std::to_string(i + j));
+                node->add_input(outputVarNames[j]);
+                node->add_input(outputTensors[j]);
+                node->add_output(eqOutputName);
+
+                // Add to graph outputs
+                auto* output = graph->add_output();
+                output->set_name(eqOutputName);
+                auto* outputType = output->mutable_type();
+                auto* outputTensor = outputType->mutable_tensor_type();
+                outputTensor->set_elem_type(onnx::TensorProto::DOUBLE);
+                auto* outputShape = outputTensor->mutable_shape();
+                outputShape->clear_dim();
+
+                // Add metadata to output (not node attributes!)
+                if (!eq.sourceFile.empty()) {
+                    auto* meta_file = output->add_metadata_props();
+                    meta_file->set_key("source_file");
+                    meta_file->set_value(eq.sourceFile);
+
+                    auto* meta_line = output->add_metadata_props();
+                    meta_line->set_key("source_line");
+                    meta_line->set_value(std::to_string(eq.sourceLine));
+                }
+            }
+
+            // Skip to next iteration (we've handled multiple equations at once)
+            i += outputVarNames.size() - 1;
+            continue;
+        }
+
         std::string lhsTensor, rhsTensor;
         try {
             // Convert LHS expression to ONNX graph
@@ -1672,6 +1765,130 @@ std::string ONNXGenerator::convertPrimary(
     }
 
     throw std::runtime_error("Unsupported primary expression: " + expr->getText());
+}
+
+std::vector<std::string> ONNXGenerator::convertMultiOutputFunctionCall(
+    antlr4::ParserRuleContext* expr,
+    const ModelInfo& info,
+    onnx::GraphProto* graph,
+    int& nodeCounter,
+    std::map<std::string, std::vector<std::string>>* derivativeInputs,
+    size_t expectedOutputCount) {
+
+    // Navigate the expression tree to find the function call
+    // The RHS should be: expression -> ... -> primary -> componentReference + functionCallArgs
+    auto primary = extractComponentReference(expr);
+    if (!primary) {
+        throw std::runtime_error("Could not find function call in multi-output expression");
+    }
+
+    // Now navigate to find primary with componentReference and functionCallArgs
+    // Start from expr and navigate down to find a PrimaryContext
+    basemodelica::BaseModelicaParser::PrimaryContext* primaryCtx = nullptr;
+
+    // Try to cast expr itself
+    primaryCtx = dynamic_cast<basemodelica::BaseModelicaParser::PrimaryContext*>(expr);
+
+    // If not, navigate down through expression types
+    if (!primaryCtx) {
+        auto exprCtx = dynamic_cast<basemodelica::BaseModelicaParser::ExpressionContext*>(expr);
+        if (exprCtx && exprCtx->expressionNoDecoration()) {
+            auto exprNoDecCtx = exprCtx->expressionNoDecoration();
+            if (exprNoDecCtx && exprNoDecCtx->simpleExpression()) {
+                auto simpleExprCtx = exprNoDecCtx->simpleExpression();
+                if (simpleExprCtx && simpleExprCtx->logicalExpression().size() > 0) {
+                    auto logExprCtx = simpleExprCtx->logicalExpression(0);
+                    if (logExprCtx && logExprCtx->logicalTerm().size() > 0) {
+                        auto logTermCtx = logExprCtx->logicalTerm(0);
+                        if (logTermCtx && logTermCtx->logicalFactor().size() > 0) {
+                            auto logFactorCtx = logTermCtx->logicalFactor(0);
+                            if (logFactorCtx && logFactorCtx->relation()) {
+                                auto relationCtx = logFactorCtx->relation();
+                                if (relationCtx && relationCtx->arithmeticExpression().size() > 0) {
+                                    auto arithExprCtx = relationCtx->arithmeticExpression(0);
+                                    if (arithExprCtx && arithExprCtx->term().size() > 0) {
+                                        auto termCtx = arithExprCtx->term(0);
+                                        if (termCtx && termCtx->factor().size() > 0) {
+                                            auto factorCtx = termCtx->factor(0);
+                                            if (factorCtx && factorCtx->primary().size() > 0) {
+                                                primaryCtx = factorCtx->primary(0);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (!primaryCtx || !primaryCtx->componentReference() || !primaryCtx->functionCallArgs()) {
+        throw std::runtime_error("Multi-output expression must be a function call");
+    }
+
+    // Extract function name
+    auto compRef = primaryCtx->componentReference();
+    std::string funcName = compRef->IDENT(0)->getText();
+    if (funcName.size() >= 2 && funcName.front() == '\'' && funcName.back() == '\'') {
+        funcName = funcName.substr(1, funcName.size() - 2);
+    }
+
+    // Find the function definition
+    const Function* func = info.findFunction(funcName);
+    if (!func) {
+        throw std::runtime_error("Function not found: " + funcName);
+    }
+
+    if (func->outputs.size() != expectedOutputCount) {
+        throw std::runtime_error("Function " + funcName + " has " + std::to_string(func->outputs.size()) +
+                               " outputs, expected " + std::to_string(expectedOutputCount));
+    }
+
+    // Get function arguments
+    auto funcCallArgs = primaryCtx->functionCallArgs();
+    auto funcArgs = funcCallArgs->functionArguments();
+    if (!funcArgs) {
+        throw std::runtime_error("Function " + funcName + " requires arguments");
+    }
+
+    // Collect and convert arguments
+    auto arguments = collectFunctionArguments(funcArgs);
+    if (arguments.size() != func->inputs.size()) {
+        throw std::runtime_error("Function " + funcName + " expects " +
+            std::to_string(func->inputs.size()) + " arguments, got " +
+            std::to_string(arguments.size()));
+    }
+
+    std::vector<std::string> argTensors;
+    for (size_t i = 0; i < arguments.size(); i++) {
+        std::string argTensor = convertExpression(arguments[i], info, graph, nodeCounter, nullptr, derivativeInputs);
+        argTensors.push_back(argTensor);
+    }
+
+    // Create function call node with multiple outputs
+    auto* node = graph->add_node();
+    node->set_op_type(funcName);
+    node->set_domain("lacemodelica");
+    node->set_name(funcName + "_call_" + std::to_string(nodeCounter));
+
+    // Add inputs
+    for (const auto& argTensor : argTensors) {
+        node->add_input(argTensor);
+    }
+
+    // Add multiple outputs
+    std::vector<std::string> outputTensors;
+    for (size_t i = 0; i < expectedOutputCount; i++) {
+        std::string outputTensor = "tensor_" + std::to_string(nodeCounter++);
+        node->add_output(outputTensor);
+        outputTensors.push_back(outputTensor);
+    }
+
+    std::cerr << "DEBUG: Created multi-output function call: " << funcName << " with " << outputTensors.size() << " outputs" << std::endl;
+
+    return outputTensors;
 }
 
 } // namespace lacemodelica

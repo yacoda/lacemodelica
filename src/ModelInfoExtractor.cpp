@@ -19,6 +19,7 @@ ModelInfo ModelInfoExtractor::extract(basemodelica::BaseModelicaParser::BaseMode
     this->sourceFile = sourceFile;
 
     extractPackageAndModelName(tree);
+    extractRecordDefinitions(tree);
     extractGlobalConstants(tree);
     extractVariables(tree);
     extractEquations(tree);
@@ -52,6 +53,52 @@ void ModelInfoExtractor::extractPackageAndModelName(basemodelica::BaseModelicaPa
         // Remove quotes
         if (info.description.size() >= 2) {
             info.description = info.description.substr(1, info.description.size() - 2);
+        }
+    }
+}
+
+void ModelInfoExtractor::extractRecordDefinitions(basemodelica::BaseModelicaParser::BaseModelicaContext* ctx) {
+    // Look for record definitions in classDefinition elements at package level
+    for (auto classDef : ctx->classDefinition()) {
+        // Check if this is a record definition
+        if (classDef->classSpecifier() && classDef->classPrefixes()) {
+            std::string classPrefix = classDef->classPrefixes()->getText();
+            if (classPrefix.find("record") != std::string::npos) {
+                // This is a record definition
+                auto classSpec = classDef->classSpecifier();
+                std::string recordName;
+
+                // Get record name from longClassSpecifier
+                if (classSpec->longClassSpecifier() && classSpec->longClassSpecifier()->IDENT().size() > 0) {
+                    recordName = stripQuotes(classSpec->longClassSpecifier()->IDENT(0)->getText());
+
+                    std::vector<Variable> fields;
+
+                    // Extract field variables from composition
+                    if (classSpec->longClassSpecifier()->composition()) {
+                        auto composition = classSpec->longClassSpecifier()->composition();
+
+                        for (auto genericElem : composition->genericElement()) {
+                            if (auto normalElem = genericElem->normalElement()) {
+                                if (auto compClause = normalElem->componentClause()) {
+                                    std::string fieldType = stripQuotes(compClause->typeSpecifier()->getText());
+
+                                    for (auto compDecl : compClause->componentList()->componentDeclaration()) {
+                                        Variable field;
+                                        field.name = stripQuotes(compDecl->declaration()->IDENT()->getText());
+                                        field.type = fieldType;
+                                        fields.push_back(field);
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if (!fields.empty()) {
+                        recordDefinitions[recordName] = fields;
+                    }
+                }
+            }
         }
     }
 }
@@ -164,7 +211,57 @@ void ModelInfoExtractor::extractVariables(basemodelica::BaseModelicaParser::Base
                         var.description = extractDescription(compDecl->comment());
                     }
 
-                    info.addVariable(var);
+                    // Check if this is a record type and flatten it
+                    auto recordIt = recordDefinitions.find(var.type);
+                    if (recordIt != recordDefinitions.end()) {
+                        // This is a record type - flatten into individual fields
+                        const std::vector<Variable>& fields = recordIt->second;
+
+                        // Parse field modifications from the record instance modification
+                        std::map<std::string, std::string> fieldStartValues;
+                        if (auto mod = compDecl->declaration()->modification()) {
+                            // Look for class modifications like p(x(start = 1.0), y(start = 2.0))
+                            if (mod->classModification() && mod->classModification()->argumentList()) {
+                                for (auto arg : mod->classModification()->argumentList()->argument()) {
+                                    if (auto elemModOrRepl = arg->elementModificationOrReplaceable()) {
+                                        auto elemMod = elemModOrRepl->elementModification();
+                                        if (elemMod) {
+                                            if (elemMod->name()) {
+                                                std::string fieldName = stripQuotes(elemMod->name()->getText());
+                                                if (elemMod->modification()) {
+                                                    std::string fieldStart = extractStartValue(elemMod->modification());
+                                                    if (!fieldStart.empty()) {
+                                                        fieldStartValues[fieldName] = fieldStart;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Create flattened variables for each field
+                        for (const Variable& field : fields) {
+                            Variable flatVar = var;  // Copy base properties
+                            flatVar.name = var.name + "." + field.name;
+                            flatVar.type = field.type;
+                            flatVar.valueReference = info.nextValueReference++;
+
+                            // Apply field-specific start value if present
+                            auto fieldStartIt = fieldStartValues.find(field.name);
+                            if (fieldStartIt != fieldStartValues.end()) {
+                                flatVar.startValue = fieldStartIt->second;
+                            } else {
+                                flatVar.startValue = "";
+                            }
+
+                            info.addVariable(flatVar);
+                        }
+                    } else {
+                        // Not a record type, add normally
+                        info.addVariable(var);
+                    }
                 }
             }
         }
