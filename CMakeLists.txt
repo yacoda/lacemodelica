@@ -191,4 +191,94 @@ if(Python3_FOUND)
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
     )
     set_tests_properties(fmu_import_test PROPERTIES LABELS "integration")
+
+    # Add ONNX runtime validation test
+    add_test(
+        NAME onnx_runtime_test
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/test/test_onnx_runtime.py
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    )
+    set_tests_properties(onnx_runtime_test PROPERTIES
+        LABELS "onnx;validation"
+        DEPENDS "generate_NewtonCoolingBase"
+    )
+
+    # List of test files with ONNX reference implementations
+    set(ONNX_REFERENCE_TESTS
+        NewtonCoolingBase
+        ArithmeticOps
+        Comparisons
+        DerExpression
+        DerVariable
+        ElementWiseProduct
+        GlobalConst
+        IfExpression
+        InputOutput
+        LogicalOps
+        NegativeVariable
+        NestedIf
+        ParameterBindings
+        Precedence
+        TrigFunctions
+        UnaryOps
+    )
+
+    # Create individual ONNX runtime validation tests for each model with reference
+    foreach(TEST_NAME ${ONNX_REFERENCE_TESTS})
+        add_test(
+            NAME onnx_validate_${TEST_NAME}
+            COMMAND ${Python3_EXECUTABLE} -c "
+import sys
+sys.path.insert(0, '${CMAKE_SOURCE_DIR}/test')
+from test_onnx_runtime import parse_onnx_test_from_bmo, Path
+import onnxruntime as ort
+import numpy as np
+
+# Parse .bmo file
+bmo_path = Path('${CMAKE_SOURCE_DIR}/test/testfiles/${TEST_NAME}.bmo')
+ref_impl, test_cases = parse_onnx_test_from_bmo(bmo_path)
+
+if not ref_impl or not test_cases:
+    print(f'No reference found in {bmo_path}')
+    sys.exit(1)
+
+# Load ONNX model
+onnx_path = Path('${CMAKE_SOURCE_DIR}/test/output/${TEST_NAME}_fmu/extra/org.lacemodelica.ls-onnx-serialization/model.onnx')
+if not onnx_path.exists():
+    print(f'ONNX file not found: {onnx_path}')
+    sys.exit(1)
+
+session = ort.InferenceSession(str(onnx_path))
+input_names = [inp.name for inp in session.get_inputs()]
+output_names = [out.name for out in session.get_outputs()]
+
+# Run all test cases
+passed = True
+for i, test_case in enumerate(test_cases, 1):
+    onnx_inputs = {k: np.array([v], dtype=np.float32) for k, v in test_case.items() if k in input_names}
+    onnx_outputs = session.run(output_names, onnx_inputs)
+    onnx_results = dict(zip(output_names, onnx_outputs))
+    ref_results = ref_impl(test_case)
+
+    for name in output_names:
+        if name in ref_results:
+            onnx_val = onnx_results[name][0] if hasattr(onnx_results[name], '__len__') else onnx_results[name]
+            ref_val = ref_results[name]
+            diff = abs(onnx_val - ref_val)
+            if diff >= 1e-5:
+                print(f'Test {i} FAILED: {name}: ONNX={onnx_val}, Ref={ref_val}, Diff={diff}')
+                passed = False
+
+if passed:
+    print('All tests passed')
+    sys.exit(0)
+else:
+    sys.exit(1)
+"
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        )
+        set_tests_properties(onnx_validate_${TEST_NAME} PROPERTIES
+            LABELS "onnx;validation"
+        )
+    endforeach()
 endif()
