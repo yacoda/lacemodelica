@@ -10,3 +10,45 @@ package 'NegativeVariable'
     der('x') = -'x';
   end 'NegativeVariable';
 end 'NegativeVariable';
+
+// @onnx-test-reference
+// Python reference implementation for ONNX runtime testing
+// def reference_implementation(inputs):
+//     """
+//     Compute expected outputs for NegativeVariable.
+//
+//     Equation: der(x) = -x
+//     """
+//     outputs = {}
+//
+//     # Extract inputs
+//     x = inputs.get('x', 1.0)
+//     der_x = inputs.get("der('x')", 0.0)
+//
+//     # Compute equation residual: der(x) = -x
+//     # Rearranged: der(x) - (-x) = 0 or der(x) + x = 0
+//     eq_0 = der_x - (-x)
+//     outputs['eq[0]'] = eq_0
+//
+//     return outputs
+//
+// @onnx-test-case
+// Test case 1: x=1.0, der(x)=-1.0 (should satisfy equation perfectly)
+// {
+//   "x": 1.0,
+//   "der('x')": -1.0
+// }
+//
+// @onnx-test-case
+// Test case 2: x=2.5, der(x)=-2.5 (should satisfy equation perfectly)
+// {
+//   "x": 2.5,
+//   "der('x')": -2.5
+// }
+//
+// @onnx-test-case
+// Test case 3: Negative x value, x=-3.0, der(x)=3.0
+// {
+//   "x": -3.0,
+//   "der('x')": 3.0
+// }

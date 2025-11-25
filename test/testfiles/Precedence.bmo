@@ -14,3 +14,94 @@ package 'Precedence'
     'v' = ('x' * 'y') / (('x' + 1.0) * ('y' + 1.0));
   end 'Precedence';
 end 'Precedence';
+
+// @onnx-test-reference
+// Python reference implementation for ONNX runtime testing
+// def reference_implementation(inputs):
+//     """
+//     Compute expected outputs for Precedence model.
+//
+//     Equations:
+//       der(x) = 0.1
+//       der(y) = -0.2
+//       z = x + y * 2.0
+//       w = (x + y) * 2.0
+//       v = (x * y) / ((x + 1.0) * (y + 1.0))
+//     """
+//     outputs = {}
+//
+//     # Extract inputs
+//     x = inputs.get('x', 1.0)
+//     y = inputs.get('y', 2.0)
+//     z = inputs.get('z', 0.0)
+//     w = inputs.get('w', 0.0)
+//     v = inputs.get('v', 0.0)
+//     der_x = inputs.get("der('x')", 0.0)
+//     der_y = inputs.get("der('y')", 0.0)
+//
+//     # Compute equation residuals (LHS - RHS = 0)
+//
+//     # Equation 0: der(x) = 0.1
+//     # Rearranged: der(x) - 0.1 = 0
+//     outputs['eq[0]'] = der_x - 0.1
+//
+//     # Equation 1: der(y) = -0.2
+//     # Rearranged: der(y) - (-0.2) = 0
+//     outputs['eq[1]'] = der_y - (-0.2)
+//
+//     # Equation 2: z = x + y * 2.0
+//     # Tests multiplication has higher precedence than addition
+//     # Rearranged: z - (x + y * 2.0) = 0
+//     outputs['eq[2]'] = z - (x + y * 2.0)
+//
+//     # Equation 3: w = (x + y) * 2.0
+//     # Tests parentheses override default precedence
+//     # Rearranged: w - ((x + y) * 2.0) = 0
+//     outputs['eq[3]'] = w - ((x + y) * 2.0)
+//
+//     # Equation 4: v = (x * y) / ((x + 1.0) * (y + 1.0))
+//     # Tests complex expression with multiplication and division
+//     # Rearranged: v - (x * y) / ((x + 1.0) * (y + 1.0)) = 0
+//     outputs['eq[4]'] = v - (x * y) / ((x + 1.0) * (y + 1.0))
+//
+//     # Initial values (start attributes)
+//     outputs['start[0]'] = 1.0  # x.start
+//     outputs['start[1]'] = 2.0  # y.start
+//
+//     return outputs
+//
+// @onnx-test-case
+// Test case 1: Initial state values
+// {
+//   "x": 1.0,
+//   "y": 2.0,
+//   "z": 5.0,
+//   "w": 6.0,
+//   "v": 0.3333333333333333,
+//   "der('x')": 0.1,
+//   "der('y')": -0.2
+// }
+//
+// @onnx-test-case
+// Test case 2: Different state after time evolution
+// {
+//   "x": 2.5,
+//   "y": 1.0,
+//   "z": 4.5,
+//   "w": 7.0,
+//   "v": 0.35714285714285715,
+//   "der('x')": 0.1,
+//   "der('y')": -0.2
+// }
+//
+// @onnx-test-case
+// Test case 3: Edge case with negative values
+// {
+//   "x": 0.5,
+//   "y": -1.5,
+//   "z": -2.5,
+//   "w": -2.0,
+//   "v": 1.0,
+//   "der('x')": 0.1,
+//   "der('y')": -0.2
+// }

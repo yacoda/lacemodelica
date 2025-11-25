@@ -10,3 +10,68 @@ package 'InputOutput'
     'y' = 'gain' * 'x';
   end 'InputOutput';
 end 'InputOutput';
+
+// @onnx-test-reference
+// Python reference implementation for ONNX runtime testing
+// def reference_implementation(inputs):
+//     """
+//     Compute expected outputs for InputOutput.
+//
+//     Equations:
+//       der(x) = -x + u
+//       y = gain * x
+//     Initial: x(start = 1.0)
+//     """
+//     outputs = {}
+//
+//     # Extract inputs
+//     u = inputs.get('u', 0.0)
+//     x = inputs.get('x', 1.0)
+//     der_x = inputs.get("der('x')", 0.0)
+//     gain = inputs.get('gain', 2.0)
+//     y = inputs.get('y', 2.0)
+//
+//     # Compute equation residual 1: der(x) = -x + u
+//     # Rearranged: der(x) + x - u = 0
+//     eq_0 = der_x + x - u
+//     outputs['eq[0]'] = eq_0
+//
+//     # Compute equation residual 2: y = gain * x
+//     # Rearranged: y - gain * x = 0
+//     eq_1 = y - gain * x
+//     outputs['eq[1]'] = eq_1
+//
+//     # Initial value (start[0] corresponds to x's initial value)
+//     outputs['start[0]'] = 1.0
+//
+//     return outputs
+//
+// @onnx-test-case
+// Test case 1: Default parameters at equilibrium with u=1.0
+// {
+//   "u": 1.0,
+//   "x": 1.0,
+//   "der('x')": 0.0,
+//   "gain": 2.0,
+//   "y": 2.0
+// }
+//
+// @onnx-test-case
+// Test case 2: Non-equilibrium state with u=2.0
+// {
+//   "u": 2.0,
+//   "x": 0.5,
+//   "der('x')": 1.5,
+//   "gain": 2.0,
+//   "y": 1.0
+// }
+//
+// @onnx-test-case
+// Test case 3: Different gain parameter
+// {
+//   "u": 0.0,
+//   "x": 2.0,
+//   "der('x')": -2.0,
+//   "gain": 3.0,
+//   "y": 6.0
+// }

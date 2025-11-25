@@ -12,3 +12,86 @@ package 'DerVariable'
     'dy_dt' = der('y');
   end 'DerVariable';
 end 'DerVariable';
+
+// @onnx-test-reference
+// Python reference implementation for ONNX runtime testing
+// def reference_implementation(inputs):
+//     """
+//     Compute expected outputs for DerVariable.
+//
+//     Equations:
+//       der(x) = -0.5 * x + y
+//       der(y) = x - 0.3 * y
+//       dx_dt = der(x)
+//       dy_dt = der(y)
+//     """
+//     outputs = {}
+//
+//     # Extract inputs
+//     x = inputs.get('x', 1.0)
+//     y = inputs.get('y', 2.0)
+//     dx_dt = inputs.get('dx_dt', 0.0)
+//     dy_dt = inputs.get('dy_dt', 0.0)
+//     der_x = inputs.get("der('x')", 0.0)
+//     der_y = inputs.get("der('y')", 0.0)
+//
+//     # Compute equation residuals (LHS - RHS = 0)
+//
+//     # Equation 0: der(x) = -0.5 * x + y
+//     # Rearranged: der(x) - (-0.5 * x + y) = 0
+//     eq_0 = der_x - (-0.5 * x + y)
+//     outputs['eq[0]'] = eq_0
+//
+//     # Equation 1: der(y) = x - 0.3 * y
+//     # Rearranged: der(y) - (x - 0.3 * y) = 0
+//     eq_1 = der_y - (x - 0.3 * y)
+//     outputs['eq[1]'] = eq_1
+//
+//     # Equation 2: dx_dt = der(x)
+//     # Rearranged: dx_dt - der(x) = 0
+//     eq_2 = dx_dt - der_x
+//     outputs['eq[2]'] = eq_2
+//
+//     # Equation 3: dy_dt = der(y)
+//     # Rearranged: dy_dt - der(y) = 0
+//     eq_3 = dy_dt - der_y
+//     outputs['eq[3]'] = eq_3
+//
+//     # Initial values
+//     outputs['start[0]'] = 1.0  # x start value
+//     outputs['start[1]'] = 2.0  # y start value
+//
+//     return outputs
+//
+// @onnx-test-case
+// Test case 1: Default start values with zero derivatives
+// {
+//   "x": 1.0,
+//   "y": 2.0,
+//   "dx_dt": 0.0,
+//   "dy_dt": 0.0,
+//   "der('x')": 0.0,
+//   "der('y')": 0.0
+// }
+//
+// @onnx-test-case
+// Test case 2: Non-equilibrium state with computed derivatives
+// {
+//   "x": 2.0,
+//   "y": 1.0,
+//   "dx_dt": 0.0,
+//   "dy_dt": 1.7,
+//   "der('x')": 0.0,
+//   "der('y')": 1.7
+// }
+//
+// @onnx-test-case
+// Test case 3: Different state values with matching derivatives
+// {
+//   "x": 3.0,
+//   "y": 4.0,
+//   "dx_dt": 2.5,
+//   "dy_dt": 1.8,
+//   "der('x')": 2.5,
+//   "der('y')": 1.8
+// }

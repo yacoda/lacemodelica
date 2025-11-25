@@ -53,3 +53,140 @@ package 'ParameterBindings'
     der('w') = 'dynamic_max' + 'dynamic_both' + 'mixed_bounds_1' + 'mixed_bounds_2' + 'const_bounds';
   end 'ParameterBindings';
 end 'ParameterBindings';
+
+// @onnx-test-reference
+// Python reference implementation for ONNX runtime testing
+// def reference_implementation(inputs):
+//     """
+//     Compute expected outputs for ParameterBindings.
+//
+//     Equations:
+//       der('x') = 'scaled_value' * 'x'
+//       der('y') = 'bounded_value' - 'const_computed'
+//       der('z') = 'dynamic_bounded' + 'array_param[1]' + 'array_param[2]' + 'array_param[3]'
+//       der('w') = 'dynamic_max' + 'dynamic_both' + 'mixed_bounds_1' + 'mixed_bounds_2' + 'const_bounds'
+//
+//     Parameter bindings:
+//       scaled_value = base_value * scale
+//       bounded_value = base_value + scale
+//       array_param[1] = base_value
+//       array_param[2] = base_value * 2.0
+//       array_param[3] = base_value * 3.0
+//     """
+//     outputs = {}
+//
+//     # Extract base parameters
+//     base_value = inputs.get('base_value', 10.0)
+//     scale = inputs.get('scale', 2.0)
+//     const_computed = inputs.get('const_computed', 5.0)
+//     dynamic_bounded = inputs.get('dynamic_bounded', 30.0)
+//     dynamic_max = inputs.get('dynamic_max', 50.0)
+//     dynamic_both = inputs.get('dynamic_both', 25.0)
+//     mixed_bounds_1 = inputs.get('mixed_bounds_1', 10.0)
+//     mixed_bounds_2 = inputs.get('mixed_bounds_2', 100.0)
+//     const_bounds = inputs.get('const_bounds', 0.0)
+//
+//     # Compute derived parameters (parameter bindings)
+//     scaled_value = base_value * scale
+//     bounded_value = base_value + scale
+//     array_param_1 = base_value
+//     array_param_2 = base_value * 2.0
+//     array_param_3 = base_value * 3.0
+//
+//     # Extract state variables and derivatives
+//     x = inputs.get('x', 0.0)
+//     y = inputs.get('y', 0.0)
+//     z = inputs.get('z', 0.0)
+//     w = inputs.get('w', 0.0)
+//     der_x = inputs.get("der('x')", 0.0)
+//     der_y = inputs.get("der('y')", 0.0)
+//     der_z = inputs.get("der('z')", 0.0)
+//     der_w = inputs.get("der('w')", 0.0)
+//
+//     # Compute equation residuals (LHS - RHS = 0)
+//     # Equation 0: der('x') = 'scaled_value' * 'x'
+//     outputs['eq[0]'] = der_x - scaled_value * x
+//
+//     # Equation 1: der('y') = 'bounded_value' - 'const_computed'
+//     outputs['eq[1]'] = der_y - (bounded_value - const_computed)
+//
+//     # Equation 2: der('z') = 'dynamic_bounded' + 'array_param[1]' + 'array_param[2]' + 'array_param[3]'
+//     outputs['eq[2]'] = der_z - (dynamic_bounded + array_param_1 + array_param_2 + array_param_3)
+//
+//     # Equation 3: der('w') = 'dynamic_max' + 'dynamic_both' + 'mixed_bounds_1' + 'mixed_bounds_2' + 'const_bounds'
+//     outputs['eq[3]'] = der_w - (dynamic_max + dynamic_both + mixed_bounds_1 + mixed_bounds_2 + const_bounds)
+//
+//     # Start values (from start attributes)
+//     outputs['start[0]'] = scaled_value  # x.start = scaled_value
+//     outputs['start[1]'] = 0.0  # y.start = 0.0
+//     outputs['start[2]'] = 0.0  # z.start = 0.0
+//     outputs['start[3]'] = 0.0  # w.start = 0.0
+//
+//     return outputs
+//
+// @onnx-test-case
+// Test case 1: Default parameters with zero states and derivatives
+// {
+//   "base_value": 10.0,
+//   "scale": 2.0,
+//   "const_computed": 5.0,
+//   "dynamic_bounded": 30.0,
+//   "dynamic_max": 50.0,
+//   "dynamic_both": 25.0,
+//   "mixed_bounds_1": 10.0,
+//   "mixed_bounds_2": 100.0,
+//   "const_bounds": 0.0,
+//   "x": 0.0,
+//   "y": 0.0,
+//   "z": 0.0,
+//   "w": 0.0,
+//   "der('x')": 0.0,
+//   "der('y')": 0.0,
+//   "der('z')": 0.0,
+//   "der('w')": 0.0
+// }
+//
+// @onnx-test-case
+// Test case 2: Non-zero states with computed derivatives
+// {
+//   "base_value": 10.0,
+//   "scale": 2.0,
+//   "const_computed": 5.0,
+//   "dynamic_bounded": 30.0,
+//   "dynamic_max": 50.0,
+//   "dynamic_both": 25.0,
+//   "mixed_bounds_1": 10.0,
+//   "mixed_bounds_2": 100.0,
+//   "const_bounds": 0.0,
+//   "x": 1.5,
+//   "y": 3.0,
+//   "z": 5.0,
+//   "w": 10.0,
+//   "der('x')": 30.0,
+//   "der('y')": 7.0,
+//   "der('z')": 90.0,
+//   "der('w')": 185.0
+// }
+//
+// @onnx-test-case
+// Test case 3: Modified base parameters with different bindings
+// {
+//   "base_value": 5.0,
+//   "scale": 3.0,
+//   "const_computed": 2.0,
+//   "dynamic_bounded": 15.0,
+//   "dynamic_max": 25.0,
+//   "dynamic_both": 12.5,
+//   "mixed_bounds_1": 5.0,
+//   "mixed_bounds_2": 50.0,
+//   "const_bounds": 1.0,
+//   "x": 2.0,
+//   "y": 1.0,
+//   "z": 2.5,
+//   "w": 5.0,
+//   "der('x')": 30.0,
+//   "der('y')": 6.0,
+//   "der('z')": 55.0,
+//   "der('w')": 93.5
+// }
+//

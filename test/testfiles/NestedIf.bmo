@@ -10,3 +10,97 @@ package 'NestedIf'
     'output' = 'mode' * 'x';
   end 'NestedIf';
 end 'NestedIf';
+
+// @onnx-test-reference
+// Python reference implementation for ONNX runtime testing
+// def reference_implementation(inputs):
+//     """
+//     Compute expected outputs for NestedIf.
+//
+//     Equations:
+//       der(x) = 1.0
+//       mode = if x < 0.3 then 1.0 elseif x < 0.6 then 2.0 elseif x < 0.9 then 3.0 else 4.0
+//       output = mode * x
+//     """
+//     outputs = {}
+//
+//     # Extract inputs
+//     x = inputs.get('x', 0.0)
+//     der_x = inputs.get("der('x')", 0.0)
+//     mode = inputs.get('mode', 0.0)
+//     output = inputs.get('output', 0.0)
+//
+//     # Equation 0: der(x) = 1.0
+//     # Rearranged: der(x) - 1.0 = 0
+//     eq_0 = der_x - 1.0
+//     outputs['eq[0]'] = eq_0
+//
+//     # Equation 1: mode = if x < 0.3 then 1.0 elseif x < 0.6 then 2.0 elseif x < 0.9 then 3.0 else 4.0
+//     # Evaluate nested if-then-else expression
+//     if x < 0.3:
+//         mode_expected = 1.0
+//     elif x < 0.6:
+//         mode_expected = 2.0
+//     elif x < 0.9:
+//         mode_expected = 3.0
+//     else:
+//         mode_expected = 4.0
+//
+//     # Rearranged: mode - mode_expected = 0
+//     eq_1 = mode - mode_expected
+//     outputs['eq[1]'] = eq_1
+//
+//     # Equation 2: output = mode * x
+//     # Rearranged: output - mode * x = 0
+//     eq_2 = output - mode * x
+//     outputs['eq[2]'] = eq_2
+//
+//     # Initial value (start[0] corresponds to x's initial value)
+//     outputs['start[0]'] = 0.0
+//
+//     return outputs
+//
+// @onnx-test-case
+// Test case 1: x < 0.3 (first branch, mode = 1.0)
+// {
+//   "x": 0.15,
+//   "der('x')": 1.0,
+//   "mode": 1.0,
+//   "output": 0.15
+// }
+//
+// @onnx-test-case
+// Test case 2: 0.3 <= x < 0.6 (second branch, mode = 2.0)
+// {
+//   "x": 0.45,
+//   "der('x')": 1.0,
+//   "mode": 2.0,
+//   "output": 0.9
+// }
+//
+// @onnx-test-case
+// Test case 3: 0.6 <= x < 0.9 (third branch, mode = 3.0)
+// {
+//   "x": 0.75,
+//   "der('x')": 1.0,
+//   "mode": 3.0,
+//   "output": 2.25
+// }
+//
+// @onnx-test-case
+// Test case 4: x >= 0.9 (else branch, mode = 4.0)
+// {
+//   "x": 1.2,
+//   "der('x')": 1.0,
+//   "mode": 4.0,
+//   "output": 4.8
+// }
+//
+// @onnx-test-case
+// Test case 5: Boundary case at x = 0.3 (second branch, mode = 2.0)
+// {
+//   "x": 0.3,
+//   "der('x')": 1.0,
+//   "mode": 2.0,
+//   "output": 0.6
+// }

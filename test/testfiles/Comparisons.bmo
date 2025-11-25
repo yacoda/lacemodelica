@@ -14,3 +14,108 @@ package 'Comparisons'
     'ne' = 'x' <> 'ref';
   end 'Comparisons';
 end 'Comparisons';
+
+// @onnx-test-reference
+// Python reference implementation for ONNX runtime testing
+// def reference_implementation(inputs):
+//     """
+//     Compute expected outputs for Comparisons.
+//
+//     Equations:
+//       der(x) = 0.1
+//       lt = x < ref
+//       le = x <= ref
+//       gt = x > ref
+//       ge = x >= ref
+//       eq = x == ref
+//       ne = x <> ref
+//     """
+//     outputs = {}
+//
+//     # Extract inputs
+//     ref = inputs.get('ref', 0.5)
+//     x = inputs.get('x', 0.0)
+//     der_x = inputs.get("der('x')", 0.0)
+//     lt = inputs.get('lt', False)
+//     le = inputs.get('le', False)
+//     gt = inputs.get('gt', False)
+//     ge = inputs.get('ge', False)
+//     eq = inputs.get('eq', False)
+//     ne = inputs.get('ne', False)
+//
+//     # Compute equation residuals (LHS - RHS = 0)
+//
+//     # Equation 0: der(x) = 0.1
+//     # Rearranged: der(x) - 0.1 = 0
+//     outputs['eq[0]'] = der_x - 0.1
+//
+//     # Equation 1: lt = x < ref
+//     # Rearranged: lt - (x < ref) = 0
+//     outputs['eq[1]'] = float(lt) - float(x < ref)
+//
+//     # Equation 2: le = x <= ref
+//     # Rearranged: le - (x <= ref) = 0
+//     outputs['eq[2]'] = float(le) - float(x <= ref)
+//
+//     # Equation 3: gt = x > ref
+//     # Rearranged: gt - (x > ref) = 0
+//     outputs['eq[3]'] = float(gt) - float(x > ref)
+//
+//     # Equation 4: ge = x >= ref
+//     # Rearranged: ge - (x >= ref) = 0
+//     outputs['eq[4]'] = float(ge) - float(x >= ref)
+//
+//     # Equation 5: eq = x == ref
+//     # Rearranged: eq - (x == ref) = 0
+//     outputs['eq[5]'] = float(eq) - float(x == ref)
+//
+//     # Equation 6: ne = x <> ref
+//     # Rearranged: ne - (x != ref) = 0
+//     outputs['eq[6]'] = float(ne) - float(x != ref)
+//
+//     # Initial value (start[0] corresponds to x's initial value)
+//     outputs['start[0]'] = 0.0
+//
+//     return outputs
+//
+// @onnx-test-case
+// Test case 1: x below reference value (0.3 < 0.5)
+// {
+//   "ref": 0.5,
+//   "x": 0.3,
+//   "der('x')": 0.1,
+//   "lt": true,
+//   "le": true,
+//   "gt": false,
+//   "ge": false,
+//   "eq": false,
+//   "ne": true
+// }
+//
+// @onnx-test-case
+// Test case 2: x above reference value (0.8 > 0.5)
+// {
+//   "ref": 0.5,
+//   "x": 0.8,
+//   "der('x')": 0.1,
+//   "lt": false,
+//   "le": false,
+//   "gt": true,
+//   "ge": true,
+//   "eq": false,
+//   "ne": true
+// }
+//
+// @onnx-test-case
+// Test case 3: x equal to reference value (0.5 == 0.5)
+// {
+//   "ref": 0.5,
+//   "x": 0.5,
+//   "der('x')": 0.1,
+//   "lt": false,
+//   "le": true,
+//   "gt": false,
+//   "ge": true,
+//   "eq": true,
+//   "ne": false
+// }

@@ -10,3 +10,69 @@ package 'UnaryOps'
     'z' = -(('x' + 1.0) * 'y');
   end 'UnaryOps';
 end 'UnaryOps';
+
+// @onnx-test-reference
+// Python reference implementation for ONNX runtime testing
+// def reference_implementation(inputs):
+//     """
+//     Compute expected outputs for UnaryOps.
+//
+//     Equations:
+//       der(x) = +0.5
+//       y = -x
+//       z = -((x + 1.0) * y)
+//     """
+//     outputs = {}
+//
+//     # Extract inputs
+//     x = inputs.get('x', 1.0)
+//     der_x = inputs.get("der('x')", 0.0)
+//     y = inputs.get('y', 0.0)
+//     z = inputs.get('z', 0.0)
+//
+//     # Equation 1: der(x) = +0.5
+//     # Rearranged: der(x) - 0.5 = 0
+//     eq_0 = der_x - (+0.5)
+//     outputs['eq[0]'] = eq_0
+//
+//     # Equation 2: y = -x
+//     # Rearranged: y - (-x) = 0
+//     eq_1 = y - (-x)
+//     outputs['eq[1]'] = eq_1
+//
+//     # Equation 3: z = -((x + 1.0) * y)
+//     # Rearranged: z - (-((x + 1.0) * y)) = 0
+//     eq_2 = z - (-((x + 1.0) * y))
+//     outputs['eq[2]'] = eq_2
+//
+//     # Start value for x
+//     outputs['start[0]'] = 1.0
+//
+//     return outputs
+//
+// @onnx-test-case
+// Test case 1: x=2.0, y=-2.0, z=6.0, der(x)=0.5
+// {
+//   "x": 2.0,
+//   "der('x')": 0.5,
+//   "y": -2.0,
+//   "z": 6.0
+// }
+//
+// @onnx-test-case
+// Test case 2: x=3.5, y=-3.5, z=15.75, der(x)=0.5
+// {
+//   "x": 3.5,
+//   "der('x')": 0.5,
+//   "y": -3.5,
+//   "z": 15.75
+// }
+//
+// @onnx-test-case
+// Test case 3: x=-1.0, y=1.0, z=0.0, der(x)=0.5
+// {
+//   "x": -1.0,
+//   "der('x')": 0.5,
+//   "y": 1.0,
+//   "z": 0.0
+// }

@@ -11,3 +11,70 @@ package 'IfExpression'
     'y' = if 'x' > 'threshold' then 'x' ^ 2 else 0.5 * 'x';
   end 'IfExpression';
 end 'IfExpression';
+
+// @onnx-test-reference
+// Python reference implementation for ONNX runtime testing
+// def reference_implementation(inputs):
+//     """
+//     Compute expected outputs for IfExpression.
+//
+//     Equations:
+//       der(x) = -0.3 * x
+//       y = if x > threshold then x^2 else 0.5 * x
+//     Initial: x = 1.0
+//     """
+//     outputs = {}
+//
+//     # Extract inputs
+//     threshold = inputs.get('threshold', 0.5)
+//     x = inputs.get('x', 0.0)
+//     y = inputs.get('y', 0.0)
+//     der_x = inputs.get("der('x')", 0.0)
+//
+//     # Compute equation residuals
+//     # Equation 0: der(x) = -0.3 * x
+//     # Rearranged: der(x) - (-0.3 * x) = 0
+//     eq_0 = der_x - (-0.3 * x)
+//     outputs['eq[0]'] = eq_0
+//
+//     # Equation 1: y = if x > threshold then x^2 else 0.5 * x
+//     # Rearranged: y - (if x > threshold then x^2 else 0.5 * x) = 0
+//     if_expr_value = x ** 2 if x > threshold else 0.5 * x
+//     eq_1 = y - if_expr_value
+//     outputs['eq[1]'] = eq_1
+//
+//     # Initial equation: x = 1.0
+//     # Rearranged: x - 1.0 = 0
+//     outputs['init_eq[0]'] = x - 1.0
+//
+//     # Initial value (start[0] corresponds to x's initial value)
+//     outputs['start[0]'] = 1.0
+//
+//     return outputs
+//
+// @onnx-test-case
+// Test case 1: x > threshold (true branch)
+// {
+//   "threshold": 0.5,
+//   "x": 0.8,
+//   "y": 0.64,
+//   "der('x')": -0.24
+// }
+//
+// @onnx-test-case
+// Test case 2: x <= threshold (false branch)
+// {
+//   "threshold": 0.5,
+//   "x": 0.3,
+//   "y": 0.15,
+//   "der('x')": -0.09
+// }
+//
+// @onnx-test-case
+// Test case 3: x at boundary (x = threshold)
+// {
+//   "threshold": 0.5,
+//   "x": 0.5,
+//   "y": 0.25,
+//   "der('x')": -0.15
+// }
