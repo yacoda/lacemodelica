@@ -274,16 +274,23 @@ def test_newton_cooling_base():
                     onnx_val = np.array(onnx_results[name])
                     ref_val = np.array(ref_results[name])
 
-                    # Handle both scalars and arrays (use 1e-4 tolerance for float32 precision)
-                    if onnx_val.shape == () and ref_val.shape == ():
-                        # Both are scalars
+                    # Handle boolean and numeric comparisons
+                    if onnx_val.dtype == np.bool_ or ref_val.dtype == np.bool_:
+                        # Boolean comparison - check exact equality
+                        matches = np.all(onnx_val == ref_val)
+                        match = "✓" if matches else "✗"
+                        print(f"      {name}: ONNX={onnx_val}, Ref={ref_val} {match}")
+                        if not matches:
+                            passed = False
+                    elif onnx_val.shape == () and ref_val.shape == ():
+                        # Both are numeric scalars
                         diff = abs(float(onnx_val) - float(ref_val))
                         match = "✓" if diff < 1e-4 else "✗"
                         print(f"      {name}: ONNX={float(onnx_val):.6f}, Ref={float(ref_val):.6f}, Diff={diff:.2e} {match}")
                         if diff >= 1e-4:
                             passed = False
                     elif onnx_val.shape == ref_val.shape:
-                        # Both are arrays with same shape
+                        # Both are numeric arrays with same shape
                         diff = np.max(np.abs(onnx_val - ref_val))
                         match = "✓" if diff < 1e-4 else "✗"
                         print(f"      {name} {onnx_val.shape}: Max diff={diff:.2e} {match}")

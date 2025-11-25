@@ -305,12 +305,19 @@ for i, test_case in enumerate(test_cases, 1):
                 passed = False
                 continue
 
-            # Compare values (use 1e-4 tolerance to account for float32 precision loss)
-            diff = np.abs(onnx_val - ref_val)
-            max_diff = np.max(diff) if diff.size > 0 else abs(diff)
-            if max_diff >= 1e-4:
-                print(f'Test {i} FAILED: {name}: max diff={max_diff:.2e}, shapes={onnx_val.shape}')
-                passed = False
+            # Compare values (handle both boolean and numeric)
+            if onnx_val.dtype == np.bool_ or ref_val.dtype == np.bool_:
+                # Boolean comparison - check exact equality
+                if not np.all(onnx_val == ref_val):
+                    print(f'Test {i} FAILED: {name}: boolean mismatch ONNX={onnx_val} vs Ref={ref_val}')
+                    passed = False
+            else:
+                # Numeric comparison - use 1e-4 tolerance to account for float32 precision loss
+                diff = np.abs(onnx_val - ref_val)
+                max_diff = np.max(diff) if diff.size > 0 else abs(diff)
+                if max_diff >= 1e-4:
+                    print(f'Test {i} FAILED: {name}: max diff={max_diff:.2e}, shapes={onnx_val.shape}')
+                    passed = False
 
 if passed:
     print('All tests passed')
