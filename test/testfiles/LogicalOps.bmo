@@ -28,75 +28,93 @@ end 'LogicalOps';
 //       isPositive = (y > 0.0) or (x > 0.5)
 //       control = if inRange and not isPositive then 1.0 else 0.0
 //     """
+//     import numpy as np
 //     outputs = {}
 //
-//     # Extract inputs
-//     x = inputs.get('x', 0.0)
-//     y = inputs.get('y', 1.0)
-//     der_x = inputs.get("der('x')", 0.0)
-//     der_y = inputs.get("der('y')", 0.0)
-//     inRange = inputs.get('inRange', False)
-//     isPositive = inputs.get('isPositive', False)
-//     control = inputs.get('control', 0.0)
+//     # Extract inputs (already numpy scalars)
+//     x = inputs['x']
+//     y = inputs['y']
+//     der_x = inputs["der('x')"]
+//     der_y = inputs["der('y')"]
+//     inRange = inputs['inRange']
+//     isPositive = inputs['isPositive']
+//     control = inputs['control']
 //
 //     # Compute equation residuals
-//     # Equation 0: der(x) = 0.5 -> der(x) - 0.5 = 0
 //     outputs['eq[0]'] = der_x - 0.5
-//
-//     # Equation 1: der(y) = -0.3 * y -> der(y) - (-0.3 * y) = 0
 //     outputs['eq[1]'] = der_y - (-0.3 * y)
 //
-//     # Equation 2: inRange = (x >= 0.0) and (x <= 1.0)
-//     # For boolean equations, convert to float: bool_var - expected_value = 0
 //     expected_inRange = (x >= 0.0) and (x <= 1.0)
 //     outputs['eq[2]'] = float(inRange) - float(expected_inRange)
 //
-//     # Equation 3: isPositive = (y > 0.0) or (x > 0.5)
 //     expected_isPositive = (y > 0.0) or (x > 0.5)
 //     outputs['eq[3]'] = float(isPositive) - float(expected_isPositive)
 //
-//     # Equation 4: control = if inRange and not isPositive then 1.0 else 0.0
 //     expected_control = 1.0 if (inRange and not isPositive) else 0.0
 //     outputs['eq[4]'] = control - expected_control
 //
 //     # Start values
-//     outputs['start[0]'] = 0.0  # x start value
-//     outputs['start[1]'] = 1.0  # y start value
+//     outputs['start[0]'] = np.array(0.0)
+//     outputs['start[1]'] = np.array(1.0)
 //
 //     return outputs
 //
 // @onnx-test-case
-// Test case 1: x=0.5, y=0.8, both in range and positive
+// # Test case 1: x=0.5, y=0.8, both in range and positive
+// import numpy as np
+// x = 0.5
+// y = 0.8
+// der_x = 0.5
+// der_y = -0.3 * y
+// inRange = (x >= 0.0) and (x <= 1.0)
+// isPositive = (y > 0.0) or (x > 0.5)
+// control = 1.0 if (inRange and not isPositive) else 0.0
 // {
-//   "x": 0.5,
-//   "y": 0.8,
-//   "der('x')": 0.5,
-//   "der('y')": -0.24,
-//   "inRange": true,
-//   "isPositive": true,
-//   "control": 0.0
+//   "x": np.array(x),
+//   "y": np.array(y),
+//   "der('x')": np.array(der_x),
+//   "der('y')": np.array(der_y),
+//   "inRange": np.array(inRange),
+//   "isPositive": np.array(isPositive),
+//   "control": np.array(control)
 // }
 //
 // @onnx-test-case
-// Test case 2: x=0.3, y=-0.5, in range but not positive
+// # Test case 2: x=0.3, y=-0.5, in range but not positive
+// import numpy as np
+// x = 0.3
+// y = -0.5
+// der_x = 0.5
+// der_y = -0.3 * y
+// inRange = (x >= 0.0) and (x <= 1.0)
+// isPositive = (y > 0.0) or (x > 0.5)
+// control = 1.0 if (inRange and not isPositive) else 0.0
 // {
-//   "x": 0.3,
-//   "y": -0.5,
-//   "der('x')": 0.5,
-//   "der('y')": 0.15,
-//   "inRange": true,
-//   "isPositive": false,
-//   "control": 1.0
+//   "x": np.array(x),
+//   "y": np.array(y),
+//   "der('x')": np.array(der_x),
+//   "der('y')": np.array(der_y),
+//   "inRange": np.array(inRange),
+//   "isPositive": np.array(isPositive),
+//   "control": np.array(control)
 // }
 //
 // @onnx-test-case
-// Test case 3: x=1.5, y=0.2, out of range but positive
+// # Test case 3: x=1.5, y=0.2, out of range but positive
+// import numpy as np
+// x = 1.5
+// y = 0.2
+// der_x = 0.5
+// der_y = -0.3 * y
+// inRange = (x >= 0.0) and (x <= 1.0)
+// isPositive = (y > 0.0) or (x > 0.5)
+// control = 1.0 if (inRange and not isPositive) else 0.0
 // {
-//   "x": 1.5,
-//   "y": 0.2,
-//   "der('x')": 0.5,
-//   "der('y')": -0.06,
-//   "inRange": false,
-//   "isPositive": true,
-//   "control": 0.0
+//   "x": np.array(x),
+//   "y": np.array(y),
+//   "der('x')": np.array(der_x),
+//   "der('y')": np.array(der_y),
+//   "inRange": np.array(inRange),
+//   "isPositive": np.array(isPositive),
+//   "control": np.array(control)
 // }
