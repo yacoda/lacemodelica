@@ -590,6 +590,10 @@ void ONNXGenerator::createFunctionProto(
     functionProto->set_name(func.name);
     functionProto->set_domain("lacemodelica");  // Custom domain for user functions
 
+    // Add opset import for standard ONNX operators used in the function
+    auto* func_opset = functionProto->add_opset_import();
+    func_opset->set_version(18);  // Default domain (empty string)
+
     // Add function inputs
     for (const auto& input : func.inputs) {
         functionProto->add_input(input.name);
