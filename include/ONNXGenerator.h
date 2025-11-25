@@ -59,6 +59,14 @@ private:
         const std::map<std::string, std::string>* variableMap = nullptr
     );
 
+    static std::string convertIfExpression(
+        basemodelica::BaseModelicaParser::IfExpressionContext* expr,
+        const ModelInfo& info,
+        onnx::GraphProto* graph,
+        int& nodeCounter,
+        const std::map<std::string, std::string>* variableMap = nullptr
+    );
+
     static std::string convertArithmeticExpression(
         basemodelica::BaseModelicaParser::ArithmeticExpressionContext* expr,
         const ModelInfo& info,

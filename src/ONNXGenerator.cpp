@@ -5,6 +5,7 @@
 #define ONNX_ML 1
 #define ONNX_NAMESPACE onnx
 #include <onnx/onnx_pb.h>
+#include <onnx/checker.h>
 #include <tinyxml2.h>
 #include <fstream>
 #include <iostream>
@@ -333,6 +334,15 @@ void ONNXGenerator::generateONNXModel(const ModelInfo& info, const std::string& 
         }
     }
 
+    // Validate ONNX model before serialization
+    std::cout << "Validating ONNX model..." << std::endl;
+    try {
+        onnx::checker::check_model(model);
+        std::cout << "ONNX model validation successful" << std::endl;
+    } catch (const onnx::checker::ValidationError& e) {
+        throw std::runtime_error(std::string("ONNX validation failed: ") + e.what());
+    }
+
     // Serialize to file
     std::ofstream ofs(filepath, std::ios::binary);
     if (!ofs) {
@@ -634,13 +644,30 @@ std::string ONNXGenerator::convertExpression(
 
     // Try to cast to specific expression types
     if (auto* exprCtx = dynamic_cast<basemodelica::BaseModelicaParser::ExpressionContext*>(expr)) {
-        // Expression -> ExpressionNoDecoration -> SimpleExpression
+        // Expression -> ExpressionNoDecoration -> (IfExpression | SimpleExpression)
         auto* exprNoDecoration = exprCtx->expressionNoDecoration();
         if (exprNoDecoration) {
+            // Check for if expression first
+            auto* ifExpr = exprNoDecoration->ifExpression();
+            if (ifExpr) {
+                return convertIfExpression(ifExpr, info, graph, nodeCounter, variableMap);
+            }
+
             auto* simpleExpr = exprNoDecoration->simpleExpression();
             if (simpleExpr) {
                 return convertSimpleExpression(simpleExpr, info, graph, nodeCounter, variableMap);
             }
+        }
+    } else if (auto* exprNoDecoration = dynamic_cast<basemodelica::BaseModelicaParser::ExpressionNoDecorationContext*>(expr)) {
+        // Handle ExpressionNoDecoration directly (e.g., from if expression conditions)
+        auto* ifExpr = exprNoDecoration->ifExpression();
+        if (ifExpr) {
+            return convertIfExpression(ifExpr, info, graph, nodeCounter, variableMap);
+        }
+
+        auto* simpleExpr = exprNoDecoration->simpleExpression();
+        if (simpleExpr) {
+            return convertSimpleExpression(simpleExpr, info, graph, nodeCounter, variableMap);
         }
     } else if (auto* simpleExpr = dynamic_cast<basemodelica::BaseModelicaParser::SimpleExpressionContext*>(expr)) {
         return convertSimpleExpression(simpleExpr, info, graph, nodeCounter, variableMap);
@@ -648,6 +675,88 @@ std::string ONNXGenerator::convertExpression(
 
     // Fallback: return placeholder
     throw std::runtime_error("Unsupported expression type: " + expr->getText());
+}
+
+std::string ONNXGenerator::convertIfExpression(
+    basemodelica::BaseModelicaParser::IfExpressionContext* expr,
+    const ModelInfo& info,
+    onnx::GraphProto* graph,
+    int& nodeCounter,
+    const std::map<std::string, std::string>* variableMap) {
+
+    std::cerr << "Converting if expression" << std::endl;
+
+    // Get all expressions: [condition, then, [elseif cond, elseif then]*, else]
+    auto expressions = expr->expressionNoDecoration();
+
+    // Need at least 3: if condition, then branch, else branch
+    if (expressions.size() < 3) {
+        throw std::runtime_error("Invalid if expression structure");
+    }
+
+    // For now, handle simple if-then-else (no elseif)
+    if (expressions.size() > 3) {
+        // Has elseif clauses - would need nested If nodes
+        throw std::runtime_error("elseif clauses not yet supported in if expressions");
+    }
+
+    // Convert condition expression (should produce boolean tensor)
+    std::string condTensor = convertExpression(expressions[0], info, graph, nodeCounter, variableMap);
+
+    // Create then branch as a subgraph
+    // Note: If subgraphs have zero inputs - they access parent scope variables directly
+    onnx::GraphProto thenBranch;
+    thenBranch.set_name("then_branch");
+    int thenCounter = 0;
+    std::string thenResult = convertExpression(expressions[1], info, &thenBranch, thenCounter, variableMap);
+
+    // Add output to then branch
+    auto* thenOutput = thenBranch.add_output();
+    thenOutput->set_name(thenResult);
+    auto* thenType = thenOutput->mutable_type()->mutable_tensor_type();
+    thenType->set_elem_type(onnx::TensorProto::FLOAT);
+    auto* thenShape = thenType->mutable_shape();
+    thenShape->add_dim()->set_dim_value(1);
+
+    // Create else branch as a subgraph
+    // Note: If subgraphs have zero inputs - they access parent scope variables directly
+    onnx::GraphProto elseBranch;
+    elseBranch.set_name("else_branch");
+    int elseCounter = 0;
+    std::string elseResult = convertExpression(expressions[2], info, &elseBranch, elseCounter, variableMap);
+
+    // Add output to else branch
+    auto* elseOutput = elseBranch.add_output();
+    elseOutput->set_name(elseResult);
+    auto* elseType = elseOutput->mutable_type()->mutable_tensor_type();
+    elseType->set_elem_type(onnx::TensorProto::FLOAT);
+    auto* elseShape = elseType->mutable_shape();
+    elseShape->add_dim()->set_dim_value(1);
+
+    // Create If node
+    auto* ifNode = graph->add_node();
+    std::string outputTensor = "tensor_" + std::to_string(nodeCounter++);
+
+    ifNode->set_op_type("If");
+    ifNode->set_name("If_" + std::to_string(nodeCounter));
+    ifNode->add_input(condTensor);
+    ifNode->add_output(outputTensor);
+
+    // Add then_branch attribute
+    auto* thenAttr = ifNode->add_attribute();
+    thenAttr->set_name("then_branch");
+    thenAttr->set_type(onnx::AttributeProto::GRAPH);
+    thenAttr->mutable_g()->CopyFrom(thenBranch);
+
+    // Add else_branch attribute
+    auto* elseAttr = ifNode->add_attribute();
+    elseAttr->set_name("else_branch");
+    elseAttr->set_type(onnx::AttributeProto::GRAPH);
+    elseAttr->mutable_g()->CopyFrom(elseBranch);
+
+    std::cerr << "Created If node with output: " << outputTensor << std::endl;
+
+    return outputTensor;
 }
 
 std::string ONNXGenerator::convertSimpleExpression(
@@ -688,6 +797,48 @@ std::string ONNXGenerator::convertSimpleExpression(
         throw std::runtime_error("No arithmetic expression in relation");
     }
 
+    // Check if there's a relational operator (comparison)
+    if (arithmeticExprs.size() > 1) {
+        // There's a comparison operator
+        auto relOp = relation->relationalOperator();
+        if (!relOp) {
+            throw std::runtime_error("Multiple arithmetic expressions but no relational operator");
+        }
+
+        // Convert left and right operands
+        std::string leftTensor = convertArithmeticExpression(arithmeticExprs[0], info, graph, nodeCounter, variableMap);
+        std::string rightTensor = convertArithmeticExpression(arithmeticExprs[1], info, graph, nodeCounter, variableMap);
+
+        // Create comparison node
+        auto* node = graph->add_node();
+        std::string outputTensor = "tensor_" + std::to_string(nodeCounter++);
+
+        std::string opText = relOp->getText();
+        if (opText == ">") {
+            node->set_op_type("Greater");
+        } else if (opText == "<") {
+            node->set_op_type("Less");
+        } else if (opText == ">=") {
+            node->set_op_type("GreaterOrEqual");
+        } else if (opText == "<=") {
+            node->set_op_type("LessOrEqual");
+        } else if (opText == "==") {
+            node->set_op_type("Equal");
+        } else if (opText == "<>") {
+            node->set_op_type("Not");  // Not equal - would need special handling
+        } else {
+            throw std::runtime_error("Unsupported relational operator: " + opText);
+        }
+
+        node->set_name(node->op_type() + "_" + std::to_string(nodeCounter));
+        node->add_input(leftTensor);
+        node->add_input(rightTensor);
+        node->add_output(outputTensor);
+
+        return outputTensor;
+    }
+
+    // No comparison, just return the arithmetic expression
     return convertArithmeticExpression(arithmeticExprs[0], info, graph, nodeCounter, variableMap);
 }
 
@@ -919,6 +1070,7 @@ std::string ONNXGenerator::convertPrimary(
             std::string outputTensor = "tensor_" + std::to_string(nodeCounter++);
 
             node->set_op_type("Der");
+            node->set_domain("lacemodelica");  // Custom operator in our domain
             node->set_name("Der_" + std::to_string(nodeCounter));
             node->add_input(varName);  // Input is the variable itself
             node->add_output(outputTensor);
