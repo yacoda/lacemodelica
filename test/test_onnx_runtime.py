@@ -11,6 +11,8 @@ import sys
 from pathlib import Path
 import numpy as np
 import onnxruntime as ort
+import onnx
+from onnx import TensorProto
 import json
 import re
 
@@ -120,6 +122,49 @@ def parse_onnx_test_from_bmo(bmo_path):
     return reference_implementation, test_cases
 
 
+def convert_float64_to_float32(model):
+    """
+    Convert all DOUBLE (float64) types in ONNX model to FLOAT (float32).
+
+    This is needed because ONNX Runtime's CPUExecutionProvider doesn't support
+    float64 for trigonometric operators (Sin, Cos, Tan, etc).
+
+    Args:
+        model: ONNX ModelProto
+
+    Returns:
+        Modified ONNX ModelProto with float32 types
+    """
+    # Convert graph inputs
+    for input in model.graph.input:
+        if input.type.tensor_type.elem_type == TensorProto.DOUBLE:
+            input.type.tensor_type.elem_type = TensorProto.FLOAT
+
+    # Convert graph outputs
+    for output in model.graph.output:
+        if output.type.tensor_type.elem_type == TensorProto.DOUBLE:
+            output.type.tensor_type.elem_type = TensorProto.FLOAT
+
+    # Convert initializers
+    for init in model.graph.initializer:
+        if init.data_type == TensorProto.DOUBLE:
+            # Get the data as float64
+            data = onnx.numpy_helper.to_array(init)
+            # Convert to float32
+            data_f32 = data.astype(np.float32)
+            # Replace the initializer
+            new_init = onnx.numpy_helper.from_array(data_f32, init.name)
+            init.CopyFrom(new_init)
+
+    # Convert value_info
+    for value_info in model.graph.value_info:
+        if value_info.type.HasField('tensor_type'):
+            if value_info.type.tensor_type.elem_type == TensorProto.DOUBLE:
+                value_info.type.tensor_type.elem_type = TensorProto.FLOAT
+
+    return model
+
+
 def test_newton_cooling_base():
     """Test NewtonCoolingBase ONNX model against Python reference."""
     print("Testing NewtonCoolingBase...", end=" ", flush=True)
@@ -159,8 +204,10 @@ def test_newton_cooling_base():
         return None
 
     try:
-        # Load ONNX model
-        session = ort.InferenceSession(str(onnx_path))
+        # Load ONNX model and convert float64 to float32 for compatibility
+        model = onnx.load(str(onnx_path))
+        model = convert_float64_to_float32(model)
+        session = ort.InferenceSession(model.SerializeToString())
 
         # Get input/output names
         input_names = [inp.name for inp in session.get_inputs()]
@@ -179,14 +226,14 @@ def test_newton_cooling_base():
                 if key in input_names:
                     # Handle different input types
                     if isinstance(value, np.ndarray):
-                        # Already a numpy array, use as-is with correct dtype
-                        onnx_inputs[key] = value.astype(np.float64)
+                        # Already a numpy array, use as-is with correct dtype (float32 for ONNX Runtime compatibility)
+                        onnx_inputs[key] = value.astype(np.float32)
                     elif isinstance(value, (list, tuple)):
                         # Convert list to numpy array
-                        onnx_inputs[key] = np.array(value, dtype=np.float64)
+                        onnx_inputs[key] = np.array(value, dtype=np.float32)
                     else:
                         # Scalar value - keep as rank-0 array
-                        onnx_inputs[key] = np.array(value, dtype=np.float64)
+                        onnx_inputs[key] = np.array(value, dtype=np.float32)
 
             # Run ONNX model
             onnx_outputs = session.run(output_names, onnx_inputs)

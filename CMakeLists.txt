@@ -235,8 +235,9 @@ if(Python3_FOUND)
             COMMAND ${Python3_EXECUTABLE} -c "
 import sys
 sys.path.insert(0, '${CMAKE_SOURCE_DIR}/test')
-from test_onnx_runtime import parse_onnx_test_from_bmo, Path
+from test_onnx_runtime import parse_onnx_test_from_bmo, convert_float64_to_float32, Path
 import onnxruntime as ort
+import onnx
 import numpy as np
 
 # Parse .bmo file
@@ -247,13 +248,15 @@ if not ref_impl or not test_cases:
     print(f'No reference found in {bmo_path}')
     sys.exit(1)
 
-# Load ONNX model
+# Load ONNX model and convert float64 to float32 for compatibility
 onnx_path = Path('${CMAKE_SOURCE_DIR}/test/output/${TEST_NAME}_fmu/extra/org.lacemodelica.ls-onnx-serialization/model.onnx')
 if not onnx_path.exists():
     print(f'ONNX file not found: {onnx_path}')
     sys.exit(1)
 
-session = ort.InferenceSession(str(onnx_path))
+model = onnx.load(str(onnx_path))
+model = convert_float64_to_float32(model)
+session = ort.InferenceSession(model.SerializeToString())
 input_names = [inp.name for inp in session.get_inputs()]
 output_names = [out.name for out in session.get_outputs()]
 
@@ -282,8 +285,8 @@ for i, test_case in enumerate(test_cases, 1):
     for k, v in test_case.items():
         if k not in input_names:
             continue
-        # All inputs are numpy arrays - convert to float64
-        onnx_inputs[k] = v.astype(np.float64)
+        # All inputs are numpy arrays - convert to float32 to match model
+        onnx_inputs[k] = v.astype(np.float32)
     onnx_outputs = session.run(output_names, onnx_inputs)
     onnx_results = dict(zip(output_names, onnx_outputs))
     ref_results = ref_impl(test_case)
