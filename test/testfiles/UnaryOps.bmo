@@ -22,57 +22,66 @@ end 'UnaryOps';
 //       y = -x
 //       z = -((x + 1.0) * y)
 //     """
+//     import numpy as np
 //     outputs = {}
 //
-//     # Extract inputs
-//     x = inputs.get('x', 1.0)
-//     der_x = inputs.get("der('x')", 0.0)
-//     y = inputs.get('y', 0.0)
-//     z = inputs.get('z', 0.0)
+//     # Extract inputs (already numpy scalars)
+//     x = inputs['x']
+//     der_x = inputs["der('x')"]
+//     y = inputs['y']
+//     z = inputs['z']
 //
-//     # Equation 1: der(x) = +0.5
-//     # Rearranged: der(x) - 0.5 = 0
-//     eq_0 = der_x - (+0.5)
-//     outputs['eq[0]'] = eq_0
+//     # Compute equation residuals
+//     outputs['eq[0]'] = der_x - 0.5
+//     outputs['eq[1]'] = y - (-x)
+//     outputs['eq[2]'] = z - (-((x + 1.0) * y))
 //
-//     # Equation 2: y = -x
-//     # Rearranged: y - (-x) = 0
-//     eq_1 = y - (-x)
-//     outputs['eq[1]'] = eq_1
-//
-//     # Equation 3: z = -((x + 1.0) * y)
-//     # Rearranged: z - (-((x + 1.0) * y)) = 0
-//     eq_2 = z - (-((x + 1.0) * y))
-//     outputs['eq[2]'] = eq_2
-//
-//     # Start value for x
-//     outputs['start[0]'] = 1.0
+//     # Start value
+//     outputs['start[0]'] = np.array(1.0)
 //
 //     return outputs
 //
 // @onnx-test-case
-// Test case 1: x=2.0, y=-2.0, z=6.0, der(x)=0.5
+// # Test case 1: Random value (seed 42)
+// import numpy as np
+// rng = np.random.RandomState(42)
+// x = rng.uniform(-5.0, 5.0)
+// der_x = 0.5
+// y = -x
+// z = -((x + 1.0) * y)
 // {
-//   "x": 2.0,
-//   "der('x')": 0.5,
-//   "y": -2.0,
-//   "z": 6.0
+//   "x": np.array(x),
+//   "der('x')": np.array(der_x),
+//   "y": np.array(y),
+//   "z": np.array(z)
 // }
 //
 // @onnx-test-case
-// Test case 2: x=3.5, y=-3.5, z=15.75, der(x)=0.5
+// # Test case 2: Random value (seed 123)
+// import numpy as np
+// rng = np.random.RandomState(123)
+// x = rng.uniform(-10.0, 10.0)
+// der_x = 0.5
+// y = -x
+// z = -((x + 1.0) * y)
 // {
-//   "x": 3.5,
-//   "der('x')": 0.5,
-//   "y": -3.5,
-//   "z": 15.75
+//   "x": np.array(x),
+//   "der('x')": np.array(der_x),
+//   "y": np.array(y),
+//   "z": np.array(z)
 // }
 //
 // @onnx-test-case
-// Test case 3: x=-1.0, y=1.0, z=0.0, der(x)=0.5
+// # Test case 3: Random value (seed 999)
+// import numpy as np
+// rng = np.random.RandomState(999)
+// x = rng.uniform(-2.0, 2.0)
+// der_x = 0.5
+// y = -x
+// z = -((x + 1.0) * y)
 // {
-//   "x": -1.0,
-//   "der('x')": 0.5,
-//   "y": 1.0,
-//   "z": 0.0
+//   "x": np.array(x),
+//   "der('x')": np.array(der_x),
+//   "y": np.array(y),
+//   "z": np.array(z)
 // }

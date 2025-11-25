@@ -77,20 +77,28 @@ void ONNXGenerator::generateONNXModel(const ModelInfo& info, const std::string& 
         if (var.variability == "fixed" && !var.startValue.empty()) {
             auto* initializer = graph->add_initializer();
             initializer->set_name(var.name);
-            initializer->set_data_type(onnx::TensorProto::FLOAT);
+            initializer->set_data_type(onnx::TensorProto::DOUBLE);
 
-            // Scalar: shape [1]
-            initializer->add_dims(1);
+            // Add dimensions (empty for scalars)
+            for (const auto& dim : var.dimensions) {
+                try {
+                    initializer->add_dims(std::stoi(dim));
+                } catch (...) {
+                    // If dimension is symbolic, can't use as initializer
+                    std::cerr << "Warning: Cannot create initializer for " << var.name
+                              << " with symbolic dimension " << dim << std::endl;
+                }
+            }
 
             // Parse and store the constant value
             try {
-                float value = std::stof(var.startValue);
-                initializer->add_float_data(value);
+                double value = std::stod(var.startValue);
+                initializer->add_double_data(value);
             } catch (const std::exception& e) {
                 std::cerr << "Warning: Could not parse constant value for " << var.name
                           << ": " << var.startValue << std::endl;
                 // Fallback to 0.0
-                initializer->add_float_data(0.0f);
+                initializer->add_double_data(0.0);
             }
 
             continue;  // Don't add as input
@@ -101,7 +109,7 @@ void ONNXGenerator::generateONNXModel(const ModelInfo& info, const std::string& 
         auto* input = graph->add_input();
         input->set_name(var.name);
         auto* input_type = input->mutable_type()->mutable_tensor_type();
-        input_type->set_elem_type(onnx::TensorProto::FLOAT);
+        input_type->set_elem_type(onnx::TensorProto::DOUBLE);
         auto* input_shape = input_type->mutable_shape();
 
         // Handle array dimensions
@@ -184,7 +192,7 @@ void ONNXGenerator::generateONNXModel(const ModelInfo& info, const std::string& 
             auto* output = graph->add_output();
             output->set_name(outputName);
             auto* output_type = output->mutable_type()->mutable_tensor_type();
-            output_type->set_elem_type(onnx::TensorProto::FLOAT);
+            output_type->set_elem_type(onnx::TensorProto::DOUBLE);
             auto* output_shape = output_type->mutable_shape();
             output_shape->add_dim()->set_dim_value(1);
 
@@ -271,7 +279,7 @@ void ONNXGenerator::generateONNXModel(const ModelInfo& info, const std::string& 
         auto* output = graph->add_output();
         output->set_name(outputName);
         auto* output_type = output->mutable_type()->mutable_tensor_type();
-        output_type->set_elem_type(onnx::TensorProto::FLOAT);
+        output_type->set_elem_type(onnx::TensorProto::DOUBLE);
         auto* output_shape = output_type->mutable_shape();
         output_shape->add_dim()->set_dim_value(1);
 
@@ -363,7 +371,7 @@ void ONNXGenerator::generateONNXModel(const ModelInfo& info, const std::string& 
         auto* input = graph->add_input();
         input->set_name(derName);
         auto* input_type = input->mutable_type()->mutable_tensor_type();
-        input_type->set_elem_type(onnx::TensorProto::FLOAT);
+        input_type->set_elem_type(onnx::TensorProto::DOUBLE);
         auto* input_shape = input_type->mutable_shape();
 
         // Handle array dimensions
@@ -502,7 +510,7 @@ void ONNXGenerator::generateEquationOutputs(
         auto* eq_output = graph->add_output();
         eq_output->set_name(eqOutputName);
         auto* eq_type = eq_output->mutable_type()->mutable_tensor_type();
-        eq_type->set_elem_type(onnx::TensorProto::FLOAT);  // Residual returns float
+        eq_type->set_elem_type(onnx::TensorProto::DOUBLE);  // Residual returns float64
         // Don't create shape - let shape inference fill it in
 
         // Set the string comment as doc_string on the output
@@ -776,7 +784,7 @@ std::string ONNXGenerator::convertIfExpression(
     auto* thenOutput = thenBranch.add_output();
     thenOutput->set_name(thenResult);
     auto* thenType = thenOutput->mutable_type()->mutable_tensor_type();
-    thenType->set_elem_type(onnx::TensorProto::FLOAT);
+    thenType->set_elem_type(onnx::TensorProto::DOUBLE);
     auto* thenShape = thenType->mutable_shape();
     thenShape->add_dim()->set_dim_value(1);
 
@@ -791,7 +799,7 @@ std::string ONNXGenerator::convertIfExpression(
     auto* elseOutput = elseBranch.add_output();
     elseOutput->set_name(elseResult);
     auto* elseType = elseOutput->mutable_type()->mutable_tensor_type();
-    elseType->set_elem_type(onnx::TensorProto::FLOAT);
+    elseType->set_elem_type(onnx::TensorProto::DOUBLE);
     auto* elseShape = elseType->mutable_shape();
     elseShape->add_dim()->set_dim_value(1);
 
@@ -1098,13 +1106,13 @@ std::string ONNXGenerator::convertPrimary(
     if (expr->UNSIGNED_NUMBER()) {
         std::string value = expr->UNSIGNED_NUMBER()->getText();
 
-        // Create constant tensor
+        // Create constant tensor (scalar - empty dims for rank 0)
         auto* constant = graph->add_initializer();
         std::string constName = "const_" + std::to_string(nodeCounter++);
         constant->set_name(constName);
-        constant->set_data_type(onnx::TensorProto::FLOAT);
-        constant->add_dims(1);
-        constant->add_float_data(std::stof(value));
+        constant->set_data_type(onnx::TensorProto::DOUBLE);
+        // Scalars have empty dims (rank 0)
+        constant->add_double_data(std::stod(value));
 
         return constName;
     }

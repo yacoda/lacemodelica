@@ -35,82 +35,94 @@ end 'ElementWiseProduct';
 //     import numpy as np
 //     outputs = {}
 //
-//     # Extract inputs
-//     alpha = inputs.get('alpha', 0.5)
-//
-//     # A, B, C are 3x4 matrices - get them as flat arrays and reshape
-//     A_flat = inputs.get('A', [1.0] * 12)
-//     B_flat = inputs.get('B', [2.0] * 12)
-//     C_flat = inputs.get('C', [0.0] * 12)
-//
-//     der_A_flat = inputs.get("der('A')", [0.0] * 12)
-//     der_B_flat = inputs.get("der('B')", [0.0] * 12)
-//
-//     # Reshape to 3x4 matrices (row-major order)
-//     A = np.array(A_flat).reshape(3, 4)
-//     B = np.array(B_flat).reshape(3, 4)
-//     C = np.array(C_flat).reshape(3, 4)
-//     der_A = np.array(der_A_flat).reshape(3, 4)
-//     der_B = np.array(der_B_flat).reshape(3, 4)
-//
-//     y = inputs.get('y', 0.0)
+//     # Extract inputs (already numpy arrays)
+//     alpha = inputs['alpha']
+//     A = inputs['A']  # 3x4 matrix
+//     B = inputs['B']  # 3x4 matrix
+//     C = inputs['C']  # 3x4 matrix
+//     der_A = inputs["der('A')"]  # 3x4 matrix
+//     der_B = inputs["der('B')"]  # 3x4 matrix
+//     y = inputs['y']  # scalar
 //
 //     # Equation 0: der(A) = -alpha * A => der(A) + alpha * A = 0
-//     eq_0_residual = der_A + alpha * A
-//     outputs['eq[0]'] = eq_0_residual.flatten().tolist()
+//     outputs['eq[0]'] = der_A + alpha * A
 //
 //     # Equation 1: der(B) = -0.1 * B => der(B) + 0.1 * B = 0
-//     eq_1_residual = der_B + 0.1 * B
-//     outputs['eq[1]'] = eq_1_residual.flatten().tolist()
+//     outputs['eq[1]'] = der_B + 0.1 * B
 //
 //     # Equation 2: C = A .* B => C - A .* B = 0
-//     eq_2_residual = C - A * B  # element-wise multiplication in numpy
-//     outputs['eq[2]'] = eq_2_residual.flatten().tolist()
+//     outputs['eq[2]'] = C - A * B
 //
 //     # Equation 3: y = C[1,1] + C[2,2] + C[3,3] => y - (C[1,1] + C[2,2] + C[3,3]) = 0
 //     # Note: Modelica uses 1-based indexing, Python uses 0-based
 //     diagonal_sum = C[0, 0] + C[1, 1] + C[2, 2]
-//     eq_3_residual = y - diagonal_sum
-//     outputs['eq[3]'] = eq_3_residual
+//     outputs['eq[3]'] = y - diagonal_sum
 //
 //     # Initial values (start attributes)
-//     outputs['start[0]'] = [1.0] * 12  # A's initial value
-//     outputs['start[1]'] = [2.0] * 12  # B's initial value
+//     outputs['start[0]'] = np.full((3, 4), 1.0)  # A's initial value
+//     outputs['start[1]'] = np.full((3, 4), 2.0)  # B's initial value
 //
 //     return outputs
 //
 // @onnx-test-case
-// Test case 1: Initial state at t=0 with zero derivatives
+// # Test case 1: Random matrices (seed 42)
+// import numpy as np
+// rng = np.random.RandomState(42)
+// alpha = 0.5
+// A = rng.uniform(0.5, 1.5, (3, 4))
+// B = rng.uniform(1.5, 2.5, (3, 4))
+// C = A * B
+// y = C[0, 0] + C[1, 1] + C[2, 2]
+// der_A = -alpha * A
+// der_B = -0.1 * B
 // {
-//   "alpha": 0.5,
-//   "A": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
-//   "B": [2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0],
-//   "C": [2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0],
-//   "y": 6.0,
-//   "der('A')": [-0.5, -0.5, -0.5, -0.5, -0.5, -0.5, -0.5, -0.5, -0.5, -0.5, -0.5, -0.5],
-//   "der('B')": [-0.2, -0.2, -0.2, -0.2, -0.2, -0.2, -0.2, -0.2, -0.2, -0.2, -0.2, -0.2]
+//   "alpha": np.array(0.5),
+//   "A": A,
+//   "B": B,
+//   "C": C,
+//   "y": np.array(y),
+//   "der('A')": der_A,
+//   "der('B')": der_B
 // }
 //
 // @onnx-test-case
-// Test case 2: Evolved state with non-uniform matrices
+// # Test case 2: Random matrices (seed 123)
+// import numpy as np
+// rng = np.random.RandomState(123)
+// alpha = 0.5
+// A = rng.uniform(0.1, 1.0, (3, 4))
+// B = rng.uniform(1.0, 3.0, (3, 4))
+// C = A * B
+// y = C[0, 0] + C[1, 1] + C[2, 2]
+// der_A = -alpha * A
+// der_B = -0.1 * B
 // {
-//   "alpha": 0.5,
-//   "A": [0.8, 0.7, 0.6, 0.5, 0.9, 0.85, 0.75, 0.65, 1.0, 0.95, 0.88, 0.77],
-//   "B": [1.8, 1.7, 1.6, 1.5, 1.9, 1.85, 1.75, 1.65, 2.0, 1.95, 1.88, 1.77],
-//   "C": [1.44, 1.19, 0.96, 0.75, 1.71, 1.5725, 1.3125, 1.0725, 2.0, 1.8525, 1.6544, 1.3629],
-//   "y": 4.8825,
-//   "der('A')": [-0.4, -0.35, -0.3, -0.25, -0.45, -0.425, -0.375, -0.325, -0.5, -0.475, -0.44, -0.385],
-//   "der('B')": [-0.18, -0.17, -0.16, -0.15, -0.19, -0.185, -0.175, -0.165, -0.2, -0.195, -0.188, -0.177]
+//   "alpha": np.array(0.5),
+//   "A": A,
+//   "B": B,
+//   "C": C,
+//   "y": np.array(y),
+//   "der('A')": der_A,
+//   "der('B')": der_B
 // }
 //
 // @onnx-test-case
-// Test case 3: Zero matrices
+// # Test case 3: Random matrices (seed 999)
+// import numpy as np
+// rng = np.random.RandomState(999)
+// alpha = 0.5
+// A = rng.uniform(-1.0, 1.0, (3, 4))
+// B = rng.uniform(-2.0, 2.0, (3, 4))
+// C = A * B
+// y = C[0, 0] + C[1, 1] + C[2, 2]
+// der_A = -alpha * A
+// der_B = -0.1 * B
 // {
-//   "alpha": 0.5,
-//   "A": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-//   "B": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-//   "C": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-//   "y": 0.0,
-//   "der('A')": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-//   "der('B')": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+//   "alpha": np.array(0.5),
+//   "A": A,
+//   "B": B,
+//   "C": C,
+//   "y": np.array(y),
+//   "der('A')": der_A,
+//   "der('B')": der_B
 // }

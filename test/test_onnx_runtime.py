@@ -60,22 +60,62 @@ def parse_onnx_test_from_bmo(bmo_path):
     reference_implementation = namespace.get('reference_implementation')
 
     # Extract test cases
-    test_case_pattern = r'// @onnx-test-case\n// .*\n((?:// .*\n)+)'
+    test_case_pattern = r'// @onnx-test-case\n((?:// .*\n)+)'
     test_cases = []
 
     for match in re.finditer(test_case_pattern, content):
-        # Extract JSON by removing comment prefixes
-        json_lines = []
+        # Extract content by removing comment prefixes
+        lines = []
         for line in match.group(1).split('\n'):
             if line.startswith('// '):
-                json_lines.append(line[3:])
+                lines.append(line[3:])
             elif line == '//':
-                json_lines.append('')
+                lines.append('')
 
-        json_str = '\n'.join(json_lines).strip()
-        if json_str:
-            test_case = json.loads(json_str)
-            test_cases.append(test_case)
+        content_str = '\n'.join(lines).strip()
+        if not content_str:
+            continue
+
+        # Try to detect if this is Python code or JSON
+        # Python code will have 'import' or variable assignments before '{'
+        if 'import numpy' in content_str or '\n' in content_str.split('{')[0]:
+            # This is Python code that generates the test case
+            try:
+                namespace = {}
+                exec(content_str, namespace)
+                # The dict should be the last expression or stored in the namespace
+                # Extract the dictionary from the namespace
+                for key, value in namespace.items():
+                    if isinstance(value, dict) and not key.startswith('_'):
+                        test_case = value
+                        break
+                else:
+                    # Try to eval the last line that contains a dict
+                    dict_match = re.search(r'(\{[^}]+\})\s*$', content_str, re.DOTALL)
+                    if dict_match:
+                        test_case = eval(dict_match.group(1), namespace)
+                    else:
+                        continue
+
+                # Convert numpy arrays to proper format
+                converted_case = {}
+                for key, value in test_case.items():
+                    if hasattr(value, 'shape'):  # numpy array
+                        converted_case[key] = value
+                    else:
+                        converted_case[key] = np.array(value)
+                test_cases.append(converted_case)
+            except Exception as e:
+                print(f"Warning: Failed to parse Python test case: {e}")
+                continue
+        else:
+            # This is JSON
+            try:
+                test_case = json.loads(content_str)
+                test_cases.append(test_case)
+            except json.JSONDecodeError:
+                print(f"Warning: Failed to parse JSON test case")
+                continue
 
     return reference_implementation, test_cases
 
@@ -137,7 +177,16 @@ def test_newton_cooling_base():
             onnx_inputs = {}
             for key, value in test_case.items():
                 if key in input_names:
-                    onnx_inputs[key] = np.array([value], dtype=np.float32)
+                    # Handle different input types
+                    if isinstance(value, np.ndarray):
+                        # Already a numpy array, use as-is with correct dtype
+                        onnx_inputs[key] = value.astype(np.float64)
+                    elif isinstance(value, (list, tuple)):
+                        # Convert list to numpy array
+                        onnx_inputs[key] = np.array(value, dtype=np.float64)
+                    else:
+                        # Scalar value - keep as rank-0 array
+                        onnx_inputs[key] = np.array(value, dtype=np.float64)
 
             # Run ONNX model
             onnx_outputs = session.run(output_names, onnx_inputs)
@@ -158,12 +207,27 @@ def test_newton_cooling_base():
 
             for name in output_names:
                 if name in ref_results:
-                    onnx_val = onnx_results[name][0] if hasattr(onnx_results[name], '__len__') else onnx_results[name]
-                    ref_val = ref_results[name]
-                    diff = abs(onnx_val - ref_val)
-                    match = "✓" if diff < 1e-5 else "✗"
-                    print(f"      {name}: ONNX={onnx_val:.6f}, Ref={ref_val:.6f}, Diff={diff:.2e} {match}")
-                    if diff >= 1e-5:
+                    onnx_val = np.array(onnx_results[name])
+                    ref_val = np.array(ref_results[name])
+
+                    # Handle both scalars and arrays
+                    if onnx_val.shape == () and ref_val.shape == ():
+                        # Both are scalars
+                        diff = abs(float(onnx_val) - float(ref_val))
+                        match = "✓" if diff < 1e-5 else "✗"
+                        print(f"      {name}: ONNX={float(onnx_val):.6f}, Ref={float(ref_val):.6f}, Diff={diff:.2e} {match}")
+                        if diff >= 1e-5:
+                            passed = False
+                    elif onnx_val.shape == ref_val.shape:
+                        # Both are arrays with same shape
+                        diff = np.max(np.abs(onnx_val - ref_val))
+                        match = "✓" if diff < 1e-5 else "✗"
+                        print(f"      {name} {onnx_val.shape}: Max diff={diff:.2e} {match}")
+                        if diff >= 1e-5:
+                            passed = False
+                    else:
+                        # Shape mismatch
+                        print(f"      {name}: Shape mismatch - ONNX={onnx_val.shape}, Ref={ref_val.shape} ✗")
                         passed = False
 
         if passed:

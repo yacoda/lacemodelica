@@ -28,67 +28,84 @@ end 'ArithmeticOps';
 //       sqrt_approx = x^0.5
 //       complex = (x + 1)^2 / ((x - 0.5)^2 + 1)
 //     """
+//     import numpy as np
 //     outputs = {}
 //
-//     # Extract inputs
-//     x = inputs.get('x', 1.0)
-//     der_x = inputs.get("der('x')", 0.0)
-//     squared = inputs.get('squared', 0.0)
-//     cubed = inputs.get('cubed', 0.0)
-//     sqrt_approx = inputs.get('sqrt_approx', 0.0)
-//     complex_val = inputs.get('complex', 0.0)
+//     # Extract inputs (already numpy scalars)
+//     x = inputs['x']
+//     der_x = inputs["der('x')"]
+//     squared = inputs['squared']
+//     cubed = inputs['cubed']
+//     sqrt_approx = inputs['sqrt_approx']
+//     complex_val = inputs['complex']
 //
 //     # Compute equation residuals (LHS - RHS = 0)
-//     # Equation 0: der(x) = 0.1 => der(x) - 0.1 = 0
 //     outputs['eq[0]'] = der_x - 0.1
-//
-//     # Equation 1: squared = x^2 => squared - x^2 = 0
 //     outputs['eq[1]'] = squared - (x ** 2)
-//
-//     # Equation 2: cubed = x^3 => cubed - x^3 = 0
 //     outputs['eq[2]'] = cubed - (x ** 3)
-//
-//     # Equation 3: sqrt_approx = x^0.5 => sqrt_approx - x^0.5 = 0
 //     outputs['eq[3]'] = sqrt_approx - (x ** 0.5)
 //
-//     # Equation 4: complex = (x + 1)^2 / ((x - 0.5)^2 + 1) => complex - (x + 1)^2 / ((x - 0.5)^2 + 1) = 0
 //     expected_complex = ((x + 1.0) ** 2) / (((x - 0.5) ** 2) + 1.0)
 //     outputs['eq[4]'] = complex_val - expected_complex
 //
-//     # Initial value (start[0] corresponds to x's initial value)
-//     outputs['start[0]'] = 1.0
+//     # Initial value
+//     outputs['start[0]'] = np.array(1.0)
 //
 //     return outputs
 //
 // @onnx-test-case
-// Test case 1: x=2.0 with consistent algebraic variable values
+// # Test case 1: Random value (seed 42)
+// import numpy as np
+// rng = np.random.RandomState(42)
+// x = rng.uniform(1.0, 5.0)
+// der_x = 0.1
+// squared = x ** 2
+// cubed = x ** 3
+// sqrt_approx = x ** 0.5
+// complex_val = ((x + 1.0) ** 2) / (((x - 0.5) ** 2) + 1.0)
 // {
-//   "x": 2.0,
-//   "der('x')": 0.1,
-//   "squared": 4.0,
-//   "cubed": 8.0,
-//   "sqrt_approx": 1.4142135623730951,
-//   "complex": 2.7692307692307692
+//   "x": np.array(x),
+//   "der('x')": np.array(der_x),
+//   "squared": np.array(squared),
+//   "cubed": np.array(cubed),
+//   "sqrt_approx": np.array(sqrt_approx),
+//   "complex": np.array(complex_val)
 // }
 //
 // @onnx-test-case
-// Test case 2: x=4.0 with consistent algebraic variable values
+// # Test case 2: Random value (seed 123)
+// import numpy as np
+// rng = np.random.RandomState(123)
+// x = rng.uniform(0.5, 10.0)
+// der_x = 0.1
+// squared = x ** 2
+// cubed = x ** 3
+// sqrt_approx = x ** 0.5
+// complex_val = ((x + 1.0) ** 2) / (((x - 0.5) ** 2) + 1.0)
 // {
-//   "x": 4.0,
-//   "der('x')": 0.1,
-//   "squared": 16.0,
-//   "cubed": 64.0,
-//   "sqrt_approx": 2.0,
-//   "complex": 1.9230769230769231
+//   "x": np.array(x),
+//   "der('x')": np.array(der_x),
+//   "squared": np.array(squared),
+//   "cubed": np.array(cubed),
+//   "sqrt_approx": np.array(sqrt_approx),
+//   "complex": np.array(complex_val)
 // }
 //
 // @onnx-test-case
-// Test case 3: x=1.0 (initial value) with consistent algebraic variable values
+// # Test case 3: Random value (seed 999)
+// import numpy as np
+// rng = np.random.RandomState(999)
+// x = rng.uniform(2.0, 8.0)
+// der_x = 0.1
+// squared = x ** 2
+// cubed = x ** 3
+// sqrt_approx = x ** 0.5
+// complex_val = ((x + 1.0) ** 2) / (((x - 0.5) ** 2) + 1.0)
 // {
-//   "x": 1.0,
-//   "der('x')": 0.1,
-//   "squared": 1.0,
-//   "cubed": 1.0,
-//   "sqrt_approx": 1.0,
-//   "complex": 2.56
+//   "x": np.array(x),
+//   "der('x')": np.array(der_x),
+//   "squared": np.array(squared),
+//   "cubed": np.array(cubed),
+//   "sqrt_approx": np.array(sqrt_approx),
+//   "complex": np.array(complex_val)
 // }
