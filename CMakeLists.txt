@@ -234,7 +234,8 @@ if(Python3_FOUND)
 
     # Tests that are expected to fail (but we still want to run them)
     set(ONNX_EXPECTED_FAILURES
-        DerExpression  # Uses custom Der operator for derivative of expressions
+        DerExpression           # Uses custom Der operator for derivative of expressions
+        StructuralParameters    # Uses der(x[i]) which creates undefined Der operator nodes
     )
 
     # Create individual ONNX runtime validation tests for each model with reference

@@ -19,3 +19,104 @@ package 'StructuralParameters'
 
   end 'StructuralParameters';
 end 'StructuralParameters';
+
+// @onnx-test-reference
+// Python reference implementation for ONNX runtime testing
+// def reference_implementation(inputs):
+//     import numpy as np
+//     outputs = {}
+//
+//     # Extract inputs (already numpy arrays/scalars)
+//     n = inputs['n']
+//     useAdvanced = inputs['useAdvanced']
+//     gain = inputs['gain']
+//     x = inputs['x']  # Array of size n (3 in this case)
+//     der_x = inputs["der('x')"]  # Array of size n
+//     y = inputs['y']
+//
+//     # Equation 0: der(x[1]) = -gain * x[1] + x[2]
+//     # Note: Modelica uses 1-based indexing, Python uses 0-based
+//     outputs['eq[0]'] = der_x[0] - (-gain * x[0] + x[1])
+//
+//     # Equation 1: der(x[2]) = x[1] - 2.0 * x[2] + x[3]
+//     outputs['eq[1]'] = der_x[1] - (x[0] - 2.0 * x[1] + x[2])
+//
+//     # Equation 2: der(x[3]) = x[2] - gain * x[3]
+//     outputs['eq[2]'] = der_x[2] - (x[1] - gain * x[2])
+//
+//     # Equation 3: y = x[1] + x[2] + x[3]
+//     outputs['eq[3]'] = y - (x[0] + x[1] + x[2])
+//
+//     # Initial values (start attributes)
+//     outputs['start[0]'] = np.zeros(3)  # x's initial value
+//
+//     return outputs
+//
+// @onnx-test-case
+// # Test case 1: Random values (seed 42)
+// import numpy as np
+// rng = np.random.RandomState(42)
+// n = 3
+// useAdvanced = False
+// gain = 1.0
+// x = rng.uniform(-1.0, 1.0, 3)
+// y = x[0] + x[1] + x[2]
+// der_x = np.array([
+//     -gain * x[0] + x[1],
+//     x[0] - 2.0 * x[1] + x[2],
+//     x[1] - gain * x[2]
+// ])
+// {
+//   "n": np.array(n),
+//   "useAdvanced": np.array(useAdvanced),
+//   "gain": np.array(gain),
+//   "x": x,
+//   "y": np.array(y),
+//   "der('x')": der_x
+// }
+//
+// @onnx-test-case
+// # Test case 2: Random values (seed 123)
+// import numpy as np
+// rng = np.random.RandomState(123)
+// n = 3
+// useAdvanced = False
+// gain = 1.0
+// x = rng.uniform(-2.0, 2.0, 3)
+// y = x[0] + x[1] + x[2]
+// der_x = np.array([
+//     -gain * x[0] + x[1],
+//     x[0] - 2.0 * x[1] + x[2],
+//     x[1] - gain * x[2]
+// ])
+// {
+//   "n": np.array(n),
+//   "useAdvanced": np.array(useAdvanced),
+//   "gain": np.array(gain),
+//   "x": x,
+//   "y": np.array(y),
+//   "der('x')": der_x
+// }
+//
+// @onnx-test-case
+// # Test case 3: Random values with different gain (seed 999)
+// import numpy as np
+// rng = np.random.RandomState(999)
+// n = 3
+// useAdvanced = False
+// gain = 2.5
+// x = rng.uniform(0.0, 1.0, 3)
+// y = x[0] + x[1] + x[2]
+// der_x = np.array([
+//     -gain * x[0] + x[1],
+//     x[0] - 2.0 * x[1] + x[2],
+//     x[1] - gain * x[2]
+// ])
+// {
+//   "n": np.array(n),
+//   "useAdvanced": np.array(useAdvanced),
+//   "gain": np.array(gain),
+//   "x": x,
+//   "y": np.array(y),
+//   "der('x')": der_x
+// }
