@@ -31,6 +31,13 @@ FetchContent_Declare(
     GIT_TAG 10.0.0
 )
 
+# Set policy defaults for FetchContent dependencies
+# This ensures dependencies like googletest (pulled by antlr4) work with newer CMake
+if(POLICY CMP0135)
+  cmake_policy(SET CMP0135 NEW)  # Use extraction timestamp for downloaded archives
+endif()
+set(CMAKE_POLICY_DEFAULT_CMP0000 NEW)  # Allow dependencies with old cmake_minimum_required
+
 FetchContent_MakeAvailable(antlr4_runtime tinyxml2)
 
 # Protobuf (required for ONNX)
@@ -46,6 +53,7 @@ ExternalProject_Add(protobuf-external
         -DCMAKE_POSITION_INDEPENDENT_CODE=ON
         -Dprotobuf_BUILD_TESTS=OFF
         -Dprotobuf_ABSL_PROVIDER=module
+        -DCMAKE_POLICY_VERSION_MINIMUM=3.5
 )
 
 add_library(protobuf::libprotobuf STATIC IMPORTED)
@@ -81,6 +89,7 @@ ExternalProject_Add(onnx-external
         -DCMAKE_PREFIX_PATH=${CMAKE_BINARY_DIR}/external_projects
         -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
         -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+        -DCMAKE_POLICY_VERSION_MINIMUM=3.5
 )
 
 add_library(ONNX::onnx STATIC IMPORTED)
@@ -232,99 +241,7 @@ if(Python3_FOUND)
     foreach(TEST_NAME ${ONNX_REFERENCE_TESTS})
         add_test(
             NAME onnx_validate_${TEST_NAME}
-            COMMAND ${Python3_EXECUTABLE} -c "
-import sys
-sys.path.insert(0, '${CMAKE_SOURCE_DIR}/test')
-from test_onnx_runtime import parse_onnx_test_from_bmo, convert_float64_to_float32, Path
-import onnxruntime as ort
-import onnx
-import numpy as np
-
-# Parse .bmo file
-bmo_path = Path('${CMAKE_SOURCE_DIR}/test/testfiles/${TEST_NAME}.bmo')
-ref_impl, test_cases = parse_onnx_test_from_bmo(bmo_path)
-
-if not ref_impl or not test_cases:
-    print(f'No reference found in {bmo_path}')
-    sys.exit(1)
-
-# Load ONNX model and convert float64 to float32 for compatibility
-onnx_path = Path('${CMAKE_SOURCE_DIR}/test/output/${TEST_NAME}_fmu/extra/org.lacemodelica.ls-onnx-serialization/model.onnx')
-if not onnx_path.exists():
-    print(f'ONNX file not found: {onnx_path}')
-    sys.exit(1)
-
-model = onnx.load(str(onnx_path))
-model = convert_float64_to_float32(model)
-session = ort.InferenceSession(model.SerializeToString())
-input_names = [inp.name for inp in session.get_inputs()]
-output_names = [out.name for out in session.get_outputs()]
-
-# Debug: Print ONNX graph structure
-import onnx
-model = onnx.load(str(onnx_path))
-print(f'\\n=== ONNX Model for ${TEST_NAME} ===')
-print(f'Inputs: {input_names}')
-print(f'Outputs: {output_names}')
-print(f'\\nGraph nodes:')
-for i, node in enumerate(model.graph.node):
-    print(f'  {i}: {node.op_type} ({node.name})')
-    print(f'      inputs: {list(node.input)}')
-    print(f'      outputs: {list(node.output)}')
-print('\\n')
-
-# Get input shapes from model
-input_shapes = {}
-for inp in session.get_inputs():
-    input_shapes[inp.name] = [d if isinstance(d, int) else 1 for d in inp.shape]
-
-# Run all test cases
-passed = True
-for i, test_case in enumerate(test_cases, 1):
-    onnx_inputs = {}
-    for k, v in test_case.items():
-        if k not in input_names:
-            continue
-        # Convert to appropriate dtype - bool stays bool, others become float32
-        if v.dtype == np.bool_:
-            onnx_inputs[k] = v
-        else:
-            onnx_inputs[k] = v.astype(np.float32)
-    onnx_outputs = session.run(output_names, onnx_inputs)
-    onnx_results = dict(zip(output_names, onnx_outputs))
-    ref_results = ref_impl(test_case)
-
-    for name in output_names:
-        if name in ref_results:
-            onnx_val = np.array(onnx_results[name])
-            ref_val = np.array(ref_results[name])
-
-            # Check shapes match
-            if onnx_val.shape != ref_val.shape:
-                print(f'Test {i} FAILED: {name}: shape mismatch ONNX={onnx_val.shape} vs Ref={ref_val.shape}')
-                passed = False
-                continue
-
-            # Compare values (handle both boolean and numeric)
-            if onnx_val.dtype == np.bool_ or ref_val.dtype == np.bool_:
-                # Boolean comparison - check exact equality
-                if not np.all(onnx_val == ref_val):
-                    print(f'Test {i} FAILED: {name}: boolean mismatch ONNX={onnx_val} vs Ref={ref_val}')
-                    passed = False
-            else:
-                # Numeric comparison - use 1e-4 tolerance to account for float32 precision loss
-                diff = np.abs(onnx_val - ref_val)
-                max_diff = np.max(diff) if diff.size > 0 else abs(diff)
-                if max_diff >= 1e-4:
-                    print(f'Test {i} FAILED: {name}: max diff={max_diff:.2e}, shapes={onnx_val.shape}')
-                    passed = False
-
-if passed:
-    print('All tests passed')
-    sys.exit(0)
-else:
-    sys.exit(1)
-"
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/test/validate_onnx_model.py ${TEST_NAME} --verbose
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
         )
         set_tests_properties(onnx_validate_${TEST_NAME} PROPERTIES
