@@ -11,3 +11,56 @@ package 'Modifier'
     der('x') = 'a'*'x';
   end 'Modifier';
 end 'Modifier';
+
+// @onnx-test-reference
+// Python reference implementation for ONNX runtime testing
+// def reference_implementation(inputs):
+//     import numpy as np
+//     outputs = {}
+//
+//     # Extract inputs
+//     x = inputs['x']
+//     a = inputs['a']
+//     der_x = inputs["der('x')"]
+//
+//     # Equation 0: der(x) = a*x
+//     outputs['eq[0]'] = der_x - (a * x)
+//
+//     return outputs
+//
+// @onnx-test-case
+// # Test case 1: x = 1.0, a = 10.0, der(x) = 10.0 (initial)
+// import numpy as np
+// x = 1.0
+// a = 10.0
+// der_x = a * x
+// {
+//   "x": np.array(x),
+//   "a": np.array(a),
+//   "der('x')": np.array(der_x)
+// }
+//
+// @onnx-test-case
+// # Test case 2: x = 2.71828, a = 10.0, der(x) = 27.1828
+// import numpy as np
+// x = 2.71828
+// a = 10.0
+// der_x = a * x
+// {
+//   "x": np.array(x),
+//   "a": np.array(a),
+//   "der('x')": np.array(der_x)
+// }
+//
+// @onnx-test-case
+// # Test case 3: x = 5.0, a = 2.0, der(x) = 10.0
+// import numpy as np
+// x = 5.0
+// a = 2.0
+// der_x = a * x
+// {
+//   "x": np.array(x),
+//   "a": np.array(a),
+//   "der('x')": np.array(der_x)
+// }
+//
