@@ -28,80 +28,90 @@ end 'Precedence';
 //       w = (x + y) * 2.0
 //       v = (x * y) / ((x + 1.0) * (y + 1.0))
 //     """
+//     import numpy as np
 //     outputs = {}
 //
 //     # Extract inputs
-//     x = inputs.get('x', 1.0)
-//     y = inputs.get('y', 2.0)
-//     z = inputs.get('z', 0.0)
-//     w = inputs.get('w', 0.0)
-//     v = inputs.get('v', 0.0)
-//     der_x = inputs.get("der('x')", 0.0)
-//     der_y = inputs.get("der('y')", 0.0)
+//     x = inputs['x']
+//     y = inputs['y']
+//     z = inputs['z']
+//     w = inputs['w']
+//     v = inputs['v']
+//     der_x = inputs["der('x')"]
+//     der_y = inputs["der('y')"]
 //
 //     # Compute equation residuals (LHS - RHS = 0)
 //
 //     # Equation 0: der(x) = 0.1
 //     # Rearranged: der(x) - 0.1 = 0
-//     outputs['eq[0]'] = der_x - 0.1
+//     outputs['eq[0]'] = np.array(der_x - 0.1)
 //
 //     # Equation 1: der(y) = -0.2
 //     # Rearranged: der(y) - (-0.2) = 0
-//     outputs['eq[1]'] = der_y - (-0.2)
+//     outputs['eq[1]'] = np.array(der_y - (-0.2))
 //
 //     # Equation 2: z = x + y * 2.0
 //     # Tests multiplication has higher precedence than addition
 //     # Rearranged: z - (x + y * 2.0) = 0
-//     outputs['eq[2]'] = z - (x + y * 2.0)
+//     outputs['eq[2]'] = np.array(z - (x + y * 2.0))
 //
 //     # Equation 3: w = (x + y) * 2.0
 //     # Tests parentheses override default precedence
 //     # Rearranged: w - ((x + y) * 2.0) = 0
-//     outputs['eq[3]'] = w - ((x + y) * 2.0)
+//     outputs['eq[3]'] = np.array(w - ((x + y) * 2.0))
 //
 //     # Equation 4: v = (x * y) / ((x + 1.0) * (y + 1.0))
 //     # Tests complex expression with multiplication and division
 //     # Rearranged: v - (x * y) / ((x + 1.0) * (y + 1.0)) = 0
-//     outputs['eq[4]'] = v - (x * y) / ((x + 1.0) * (y + 1.0))
+//     outputs['eq[4]'] = np.array(v - (x * y) / ((x + 1.0) * (y + 1.0)))
 //
 //     # Initial values (start attributes)
-//     outputs['start[0]'] = 1.0  # x.start
-//     outputs['start[1]'] = 2.0  # y.start
+//     outputs['start[0]'] = np.array(1.0)  # x.start
+//     outputs['start[1]'] = np.array(2.0)  # y.start
 //
 //     return outputs
 //
 // @onnx-test-case
-// Test case 1: Initial state values
+// # Test case 1: Initial state values
+// import numpy as np
+// x = np.array(1.0)
+// y = np.array(2.0)
 // {
-//   "x": 1.0,
-//   "y": 2.0,
-//   "z": 5.0,
-//   "w": 6.0,
-//   "v": 0.3333333333333333,
-//   "der('x')": 0.1,
-//   "der('y')": -0.2
+//   "x": x,
+//   "y": y,
+//   "z": np.array(x + y * 2.0),
+//   "w": np.array((x + y) * 2.0),
+//   "v": np.array((x * y) / ((x + 1.0) * (y + 1.0))),
+//   "der('x')": np.array(0.1),
+//   "der('y')": np.array(-0.2)
 // }
 //
 // @onnx-test-case
-// Test case 2: Different state after time evolution
+// # Test case 2: Different state after time evolution
+// import numpy as np
+// x = np.array(2.5)
+// y = np.array(1.0)
 // {
-//   "x": 2.5,
-//   "y": 1.0,
-//   "z": 4.5,
-//   "w": 7.0,
-//   "v": 0.35714285714285715,
-//   "der('x')": 0.1,
-//   "der('y')": -0.2
+//   "x": x,
+//   "y": y,
+//   "z": np.array(x + y * 2.0),
+//   "w": np.array((x + y) * 2.0),
+//   "v": np.array((x * y) / ((x + 1.0) * (y + 1.0))),
+//   "der('x')": np.array(0.1),
+//   "der('y')": np.array(-0.2)
 // }
 //
 // @onnx-test-case
-// Test case 3: Edge case with negative values
+// # Test case 3: Edge case with negative values
+// import numpy as np
+// x = np.array(0.5)
+// y = np.array(-1.5)
 // {
-//   "x": 0.5,
-//   "y": -1.5,
-//   "z": -2.5,
-//   "w": -2.0,
-//   "v": 1.0,
-//   "der('x')": 0.1,
-//   "der('y')": -0.2
+//   "x": x,
+//   "y": y,
+//   "z": np.array(x + y * 2.0),
+//   "w": np.array((x + y) * 2.0),
+//   "v": np.array((x * y) / ((x + 1.0) * (y + 1.0))),
+//   "der('x')": np.array(0.1),
+//   "der('y')": np.array(-0.2)
 // }

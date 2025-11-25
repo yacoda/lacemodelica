@@ -28,79 +28,85 @@ end 'TrigFunctions';
 //       tangent_value = tan(angle)
 //       complex_trig = sin(angle) + cos(angle) * 2.0
 //     """
-//     import math
+//     import numpy as np
 //
 //     outputs = {}
 //
 //     # Extract inputs
-//     angle = inputs.get('angle', 0.0)
-//     der_angle = inputs.get("der('angle')", 0.0)
-//     sine_value = inputs.get('sine_value', 0.0)
-//     cosine_value = inputs.get('cosine_value', 0.0)
-//     tangent_value = inputs.get('tangent_value', 0.0)
-//     complex_trig = inputs.get('complex_trig', 0.0)
+//     angle = inputs['angle']
+//     der_angle = inputs["der('angle')"]
+//     sine_value = inputs['sine_value']
+//     cosine_value = inputs['cosine_value']
+//     tangent_value = inputs['tangent_value']
+//     complex_trig = inputs['complex_trig']
 //
 //     # Compute equation residuals (LHS - RHS = 0)
 //
 //     # Equation 0: der(angle) = 0.1
 //     # Rearranged: der(angle) - 0.1 = 0
 //     eq_0 = der_angle - 0.1
-//     outputs['eq[0]'] = eq_0
+//     outputs['eq[0]'] = np.array(eq_0)
 //
 //     # Equation 1: sine_value = sin(angle)
 //     # Rearranged: sine_value - sin(angle) = 0
-//     eq_1 = sine_value - math.sin(angle)
-//     outputs['eq[1]'] = eq_1
+//     eq_1 = sine_value - np.sin(angle)
+//     outputs['eq[1]'] = np.array(eq_1)
 //
 //     # Equation 2: cosine_value = cos(angle)
 //     # Rearranged: cosine_value - cos(angle) = 0
-//     eq_2 = cosine_value - math.cos(angle)
-//     outputs['eq[2]'] = eq_2
+//     eq_2 = cosine_value - np.cos(angle)
+//     outputs['eq[2]'] = np.array(eq_2)
 //
 //     # Equation 3: tangent_value = tan(angle)
 //     # Rearranged: tangent_value - tan(angle) = 0
-//     eq_3 = tangent_value - math.tan(angle)
-//     outputs['eq[3]'] = eq_3
+//     eq_3 = tangent_value - np.tan(angle)
+//     outputs['eq[3]'] = np.array(eq_3)
 //
 //     # Equation 4: complex_trig = sin(angle) + cos(angle) * 2.0
 //     # Rearranged: complex_trig - (sin(angle) + cos(angle) * 2.0) = 0
-//     eq_4 = complex_trig - (math.sin(angle) + math.cos(angle) * 2.0)
-//     outputs['eq[4]'] = eq_4
+//     eq_4 = complex_trig - (np.sin(angle) + np.cos(angle) * 2.0)
+//     outputs['eq[4]'] = np.array(eq_4)
 //
 //     # Initial value (start[0] corresponds to angle's initial value)
-//     outputs['start[0]'] = 0.0
+//     outputs['start[0]'] = np.array(0.0)
 //
 //     return outputs
 //
 // @onnx-test-case
-// Test case 1: angle=0 (trivial case with known values)
+// # Test case 1: angle=0 (trivial case with known values)
+// import numpy as np
+// angle = np.array(0.0)
 // {
-//   "angle": 0.0,
-//   "der('angle')": 0.1,
-//   "sine_value": 0.0,
-//   "cosine_value": 1.0,
-//   "tangent_value": 0.0,
-//   "complex_trig": 2.0
+//   "angle": angle,
+//   "der('angle')": np.array(0.1),
+//   "sine_value": np.array(np.sin(angle)),
+//   "cosine_value": np.array(np.cos(angle)),
+//   "tangent_value": np.array(np.tan(angle)),
+//   "complex_trig": np.array(np.sin(angle) + np.cos(angle) * 2.0)
 // }
 //
 // @onnx-test-case
-// Test case 2: angle=pi/4 (45 degrees)
+// # Test case 2: angle=pi/4 (45 degrees)
+// import numpy as np
+// angle = np.array(np.pi / 4)
 // {
-//   "angle": 0.7853981633974483,
-//   "der('angle')": 0.1,
-//   "sine_value": 0.7071067811865476,
-//   "cosine_value": 0.7071067811865476,
-//   "tangent_value": 1.0,
-//   "complex_trig": 2.121320343559643
+//   "angle": angle,
+//   "der('angle')": np.array(0.1),
+//   "sine_value": np.array(np.sin(angle)),
+//   "cosine_value": np.array(np.cos(angle)),
+//   "tangent_value": np.array(np.tan(angle)),
+//   "complex_trig": np.array(np.sin(angle) + np.cos(angle) * 2.0)
 // }
 //
 // @onnx-test-case
-// Test case 3: angle=pi/6 (30 degrees)
+// # Test case 3: angle=pi/6 (30 degrees)
+// import numpy as np
+// angle = np.array(np.pi / 6)
 // {
-//   "angle": 0.5235987755982988,
-//   "der('angle')": 0.1,
-//   "sine_value": 0.5,
-//   "cosine_value": 0.8660254037844387,
-//   "tangent_value": 0.5773502691896257,
-//   "complex_trig": 2.232050807568877
+//   "angle": angle,
+//   "der('angle')": np.array(0.1),
+//   "sine_value": np.array(np.sin(angle)),
+//   "cosine_value": np.array(np.cos(angle)),
+//   "tangent_value": np.array(np.tan(angle)),
+//   "complex_trig": np.array(np.sin(angle) + np.cos(angle) * 2.0)
 // }

@@ -73,18 +73,19 @@ end 'ParameterBindings';
 //       array_param[2] = base_value * 2.0
 //       array_param[3] = base_value * 3.0
 //     """
+//     import numpy as np
 //     outputs = {}
 //
 //     # Extract base parameters
-//     base_value = inputs.get('base_value', 10.0)
-//     scale = inputs.get('scale', 2.0)
-//     const_computed = inputs.get('const_computed', 5.0)
-//     dynamic_bounded = inputs.get('dynamic_bounded', 30.0)
-//     dynamic_max = inputs.get('dynamic_max', 50.0)
-//     dynamic_both = inputs.get('dynamic_both', 25.0)
-//     mixed_bounds_1 = inputs.get('mixed_bounds_1', 10.0)
-//     mixed_bounds_2 = inputs.get('mixed_bounds_2', 100.0)
-//     const_bounds = inputs.get('const_bounds', 0.0)
+//     base_value = inputs['base_value']
+//     scale = inputs['scale']
+//     const_computed = inputs['const_computed']
+//     dynamic_bounded = inputs['dynamic_bounded']
+//     dynamic_max = inputs['dynamic_max']
+//     dynamic_both = inputs['dynamic_both']
+//     mixed_bounds_1 = inputs['mixed_bounds_1']
+//     mixed_bounds_2 = inputs['mixed_bounds_2']
+//     const_bounds = inputs['const_bounds']
 //
 //     # Compute derived parameters (parameter bindings)
 //     scaled_value = base_value * scale
@@ -94,99 +95,112 @@ end 'ParameterBindings';
 //     array_param_3 = base_value * 3.0
 //
 //     # Extract state variables and derivatives
-//     x = inputs.get('x', 0.0)
-//     y = inputs.get('y', 0.0)
-//     z = inputs.get('z', 0.0)
-//     w = inputs.get('w', 0.0)
-//     der_x = inputs.get("der('x')", 0.0)
-//     der_y = inputs.get("der('y')", 0.0)
-//     der_z = inputs.get("der('z')", 0.0)
-//     der_w = inputs.get("der('w')", 0.0)
+//     x = inputs['x']
+//     y = inputs['y']
+//     z = inputs['z']
+//     w = inputs['w']
+//     der_x = inputs["der('x')"]
+//     der_y = inputs["der('y')"]
+//     der_z = inputs["der('z')"]
+//     der_w = inputs["der('w')"]
 //
 //     # Compute equation residuals (LHS - RHS = 0)
 //     # Equation 0: der('x') = 'scaled_value' * 'x'
-//     outputs['eq[0]'] = der_x - scaled_value * x
+//     outputs['eq[0]'] = np.array(der_x - scaled_value * x)
 //
 //     # Equation 1: der('y') = 'bounded_value' - 'const_computed'
-//     outputs['eq[1]'] = der_y - (bounded_value - const_computed)
+//     outputs['eq[1]'] = np.array(der_y - (bounded_value - const_computed))
 //
 //     # Equation 2: der('z') = 'dynamic_bounded' + 'array_param[1]' + 'array_param[2]' + 'array_param[3]'
-//     outputs['eq[2]'] = der_z - (dynamic_bounded + array_param_1 + array_param_2 + array_param_3)
+//     outputs['eq[2]'] = np.array(der_z - (dynamic_bounded + array_param_1 + array_param_2 + array_param_3))
 //
 //     # Equation 3: der('w') = 'dynamic_max' + 'dynamic_both' + 'mixed_bounds_1' + 'mixed_bounds_2' + 'const_bounds'
-//     outputs['eq[3]'] = der_w - (dynamic_max + dynamic_both + mixed_bounds_1 + mixed_bounds_2 + const_bounds)
+//     outputs['eq[3]'] = np.array(der_w - (dynamic_max + dynamic_both + mixed_bounds_1 + mixed_bounds_2 + const_bounds))
 //
 //     # Start values (from start attributes)
-//     outputs['start[0]'] = scaled_value  # x.start = scaled_value
-//     outputs['start[1]'] = 0.0  # y.start = 0.0
-//     outputs['start[2]'] = 0.0  # z.start = 0.0
-//     outputs['start[3]'] = 0.0  # w.start = 0.0
+//     outputs['start[0]'] = np.array(scaled_value)  # x.start = scaled_value
+//     outputs['start[1]'] = np.array(0.0)  # y.start = 0.0
+//     outputs['start[2]'] = np.array(0.0)  # z.start = 0.0
+//     outputs['start[3]'] = np.array(0.0)  # w.start = 0.0
 //
 //     return outputs
 //
 // @onnx-test-case
-// Test case 1: Default parameters with zero states and derivatives
+// # Test case 1: Default parameters with zero states and derivatives
+// import numpy as np
+// base_value = np.array(10.0)
+// scale = np.array(2.0)
 // {
-//   "base_value": 10.0,
-//   "scale": 2.0,
-//   "const_computed": 5.0,
-//   "dynamic_bounded": 30.0,
-//   "dynamic_max": 50.0,
-//   "dynamic_both": 25.0,
-//   "mixed_bounds_1": 10.0,
-//   "mixed_bounds_2": 100.0,
-//   "const_bounds": 0.0,
-//   "x": 0.0,
-//   "y": 0.0,
-//   "z": 0.0,
-//   "w": 0.0,
-//   "der('x')": 0.0,
-//   "der('y')": 0.0,
-//   "der('z')": 0.0,
-//   "der('w')": 0.0
+//   "base_value": base_value,
+//   "scale": scale,
+//   "const_computed": np.array(5.0),
+//   "dynamic_bounded": np.array(30.0),
+//   "dynamic_max": np.array(50.0),
+//   "dynamic_both": np.array(25.0),
+//   "mixed_bounds_1": np.array(10.0),
+//   "mixed_bounds_2": np.array(100.0),
+//   "const_bounds": np.array(0.0),
+//   "x": np.array(0.0),
+//   "y": np.array(0.0),
+//   "z": np.array(0.0),
+//   "w": np.array(0.0),
+//   "der('x')": np.array(0.0),
+//   "der('y')": np.array(0.0),
+//   "der('z')": np.array(0.0),
+//   "der('w')": np.array(0.0)
 // }
 //
 // @onnx-test-case
-// Test case 2: Non-zero states with computed derivatives
+// # Test case 2: Non-zero states with computed derivatives
+// import numpy as np
+// base_value = np.array(10.0)
+// scale = np.array(2.0)
+// x = np.array(1.5)
+// scaled_value = base_value * scale
 // {
-//   "base_value": 10.0,
-//   "scale": 2.0,
-//   "const_computed": 5.0,
-//   "dynamic_bounded": 30.0,
-//   "dynamic_max": 50.0,
-//   "dynamic_both": 25.0,
-//   "mixed_bounds_1": 10.0,
-//   "mixed_bounds_2": 100.0,
-//   "const_bounds": 0.0,
-//   "x": 1.5,
-//   "y": 3.0,
-//   "z": 5.0,
-//   "w": 10.0,
-//   "der('x')": 30.0,
-//   "der('y')": 7.0,
-//   "der('z')": 90.0,
-//   "der('w')": 185.0
+//   "base_value": base_value,
+//   "scale": scale,
+//   "const_computed": np.array(5.0),
+//   "dynamic_bounded": np.array(30.0),
+//   "dynamic_max": np.array(50.0),
+//   "dynamic_both": np.array(25.0),
+//   "mixed_bounds_1": np.array(10.0),
+//   "mixed_bounds_2": np.array(100.0),
+//   "const_bounds": np.array(0.0),
+//   "x": x,
+//   "y": np.array(3.0),
+//   "z": np.array(5.0),
+//   "w": np.array(10.0),
+//   "der('x')": np.array(scaled_value * x),
+//   "der('y')": np.array(7.0),
+//   "der('z')": np.array(90.0),
+//   "der('w')": np.array(185.0)
 // }
 //
 // @onnx-test-case
-// Test case 3: Modified base parameters with different bindings
+// # Test case 3: Modified base parameters with different bindings
+// import numpy as np
+// base_value = np.array(5.0)
+// scale = np.array(3.0)
+// x = np.array(2.0)
+// scaled_value = base_value * scale
 // {
-//   "base_value": 5.0,
-//   "scale": 3.0,
-//   "const_computed": 2.0,
-//   "dynamic_bounded": 15.0,
-//   "dynamic_max": 25.0,
-//   "dynamic_both": 12.5,
-//   "mixed_bounds_1": 5.0,
-//   "mixed_bounds_2": 50.0,
-//   "const_bounds": 1.0,
-//   "x": 2.0,
-//   "y": 1.0,
-//   "z": 2.5,
-//   "w": 5.0,
-//   "der('x')": 30.0,
-//   "der('y')": 6.0,
-//   "der('z')": 55.0,
-//   "der('w')": 93.5
+//   "base_value": base_value,
+//   "scale": scale,
+//   "const_computed": np.array(2.0),
+//   "dynamic_bounded": np.array(15.0),
+//   "dynamic_max": np.array(25.0),
+//   "dynamic_both": np.array(12.5),
+//   "mixed_bounds_1": np.array(5.0),
+//   "mixed_bounds_2": np.array(50.0),
+//   "const_bounds": np.array(1.0),
+//   "x": x,
+//   "y": np.array(1.0),
+//   "z": np.array(2.5),
+//   "w": np.array(5.0),
+//   "der('x')": np.array(scaled_value * x),
+//   "der('y')": np.array(6.0),
+//   "der('z')": np.array(55.0),
+//   "der('w')": np.array(93.5)
 // }
 //

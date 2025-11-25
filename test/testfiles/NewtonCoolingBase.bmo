@@ -28,54 +28,73 @@ end 'NewtonCoolingBase';
 //     Equation: m * c_p * der(T) = h * A * (T_inf - T)
 //     Initial: T = T0
 //     """
+//     import numpy as np
 //     outputs = {}
 //
 //     # Extract inputs
-//     T_inf = inputs.get('T_inf', 25.0)
-//     T0 = inputs.get('T0', 90.0)
-//     h = inputs.get('h', 0.7)
-//     A = inputs.get('A', 1.0)
-//     m = inputs.get('m', 0.1)
-//     c_p = inputs.get('c_p', 1.2)
-//     T = inputs.get('T', 50.0)
-//     der_T = inputs.get("der('T')", 0.0)
+//     T_inf = inputs['T_inf']
+//     T0 = inputs['T0']
+//     h = inputs['h']
+//     A = inputs['A']
+//     m = inputs['m']
+//     c_p = inputs['c_p']
+//     T = inputs['T']
+//     der_T = inputs["der('T')"]
 //
 //     # Compute equation residual: m * c_p * der(T) = h * A * (T_inf - T)
 //     # Rearranged: m * c_p * der(T) - h * A * (T_inf - T) = 0
 //     eq_0 = m * c_p * der_T - h * A * (T_inf - T)
-//     outputs['eq[0]'] = eq_0
+//     outputs['eq[0]'] = np.array(eq_0)
 //
 //     # Initial equation: T = T0
 //     # Rearranged: T - T0 = 0
-//     outputs['init_eq[0]'] = T - T0
+//     outputs['init_eq[0]'] = np.array(T - T0)
 //
 //     # Initial value (start[0] corresponds to T's initial value)
-//     outputs['start[0]'] = T0
+//     outputs['start[0]'] = np.array(T0)
 //
 //     return outputs
 //
 // @onnx-test-case
-// Test case 1: Default parameters at T=50, der(T)=0
+// # Test case 1: Default parameters at T=50, der(T)=0
+// import numpy as np
+// T_inf = np.array(25.0)
+// T0 = np.array(90.0)
+// h = np.array(0.7)
+// A = np.array(1.0)
+// m = np.array(0.1)
+// c_p = np.array(1.2)
+// T = np.array(50.0)
+// der_T = np.array(0.0)
 // {
-//   "T_inf": 25.0,
-//   "T0": 90.0,
-//   "h": 0.7,
-//   "A": 1.0,
-//   "m": 0.1,
-//   "c_p": 1.2,
-//   "T": 50.0,
-//   "der('T')": 0.0
+//   "T_inf": T_inf,
+//   "T0": T0,
+//   "h": h,
+//   "A": A,
+//   "m": m,
+//   "c_p": c_p,
+//   "T": T,
+//   "der('T')": der_T
 // }
 //
 // @onnx-test-case
-// Test case 2: Different temperature and derivative
+// # Test case 2: Different temperature and derivative
+// import numpy as np
+// T_inf = np.array(25.0)
+// T0 = np.array(90.0)
+// h = np.array(0.7)
+// A = np.array(1.0)
+// m = np.array(0.1)
+// c_p = np.array(1.2)
+// T = np.array(75.0)
+// der_T = np.array(-2.9)
 // {
-//   "T_inf": 25.0,
-//   "T0": 90.0,
-//   "h": 0.7,
-//   "A": 1.0,
-//   "m": 0.1,
-//   "c_p": 1.2,
-//   "T": 75.0,
-//   "der('T')": -2.9
+//   "T_inf": T_inf,
+//   "T0": T0,
+//   "h": h,
+//   "A": A,
+//   "m": m,
+//   "c_p": c_p,
+//   "T": T,
+//   "der('T')": der_T
 // }

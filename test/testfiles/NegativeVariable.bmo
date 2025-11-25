@@ -19,36 +19,40 @@ end 'NegativeVariable';
 //
 //     Equation: der(x) = -x
 //     """
+//     import numpy as np
 //     outputs = {}
 //
 //     # Extract inputs
-//     x = inputs.get('x', 1.0)
-//     der_x = inputs.get("der('x')", 0.0)
+//     x = inputs['x']
+//     der_x = inputs["der('x')"]
 //
 //     # Compute equation residual: der(x) = -x
 //     # Rearranged: der(x) - (-x) = 0 or der(x) + x = 0
 //     eq_0 = der_x - (-x)
-//     outputs['eq[0]'] = eq_0
+//     outputs['eq[0]'] = np.array(eq_0)
 //
 //     return outputs
 //
 // @onnx-test-case
-// Test case 1: x=1.0, der(x)=-1.0 (should satisfy equation perfectly)
+// # Test case 1: x=1.0, der(x)=-1.0 (should satisfy equation perfectly)
+// import numpy as np
 // {
-//   "x": 1.0,
-//   "der('x')": -1.0
+//   "x": np.array(1.0),
+//   "der('x')": np.array(-1.0)
 // }
 //
 // @onnx-test-case
-// Test case 2: x=2.5, der(x)=-2.5 (should satisfy equation perfectly)
+// # Test case 2: x=2.5, der(x)=-2.5 (should satisfy equation perfectly)
+// import numpy as np
 // {
-//   "x": 2.5,
-//   "der('x')": -2.5
+//   "x": np.array(2.5),
+//   "der('x')": np.array(-2.5)
 // }
 //
 // @onnx-test-case
-// Test case 3: Negative x value, x=-3.0, der(x)=3.0
+// # Test case 3: Negative x value, x=-3.0, der(x)=3.0
+// import numpy as np
 // {
-//   "x": -3.0,
-//   "der('x')": 3.0
+//   "x": np.array(-3.0),
+//   "der('x')": np.array(3.0)
 // }
