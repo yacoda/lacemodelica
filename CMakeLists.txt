@@ -212,25 +212,25 @@ if(Python3_FOUND)
         DEPENDS "generate_NewtonCoolingBase"
     )
 
-    # List of test files with ONNX reference implementations
-    set(ONNX_REFERENCE_TESTS
-        NewtonCoolingBase
-        ArithmeticOps
-        Comparisons
-        DerExpression
-        DerVariable
-        ElementWiseProduct
-        GlobalConst
-        IfExpression
-        InputOutput
-        LogicalOps
-        NegativeVariable
-        NestedIf
-        ParameterBindings
-        Precedence
-        TrigFunctions
-        UnaryOps
+    # Auto-discover test files with ONNX reference implementations
+    # Find all .bmo files that contain @onnx-test-reference marker
+    execute_process(
+        COMMAND grep -l "@onnx-test-reference" ${TEST_FILES}
+        OUTPUT_VARIABLE ONNX_REFERENCE_FILES
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
     )
+
+    # Convert file paths to test names
+    string(REPLACE "\n" ";" ONNX_REFERENCE_FILES "${ONNX_REFERENCE_FILES}")
+    set(ONNX_REFERENCE_TESTS "")
+    foreach(FILE_PATH ${ONNX_REFERENCE_FILES})
+        get_filename_component(TEST_NAME ${FILE_PATH} NAME_WE)
+        list(APPEND ONNX_REFERENCE_TESTS ${TEST_NAME})
+    endforeach()
+
+    list(LENGTH ONNX_REFERENCE_TESTS ONNX_TEST_COUNT)
+    message(STATUS "Found ${ONNX_TEST_COUNT} ONNX reference tests: ${ONNX_REFERENCE_TESTS}")
 
     # Tests that are expected to fail (but we still want to run them)
     set(ONNX_EXPECTED_FAILURES
