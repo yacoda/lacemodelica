@@ -31,3 +31,93 @@ package 'FunctionInputOutput'
     'y' = 'foo'('polynomial'('x', 'a', 'b', 'c'),'x');
   end 'FunctionInputOutput';
 end 'FunctionInputOutput';
+
+// @onnx-test-reference
+// Python reference implementation for ONNX runtime testing
+// def reference_implementation(inputs):
+//     import numpy as np
+//     outputs = {}
+//
+//     # Extract inputs
+//     x = inputs['x']
+//     y = inputs['y']
+//     a = inputs['a']
+//     b = inputs['b']
+//     c = inputs['c']
+//     der_x = inputs["der('x')"]
+//
+//     # Helper functions
+//     def polynomial(x, a, b, c):
+//         sub_result = x * x
+//         sub_result = sub_result * a
+//         result = sub_result + b * x + c
+//         return result
+//
+//     def foo(a, b):
+//         result = a + b
+//         return result
+//
+//     # Equation 0: der(x) = 0.5
+//     outputs['eq[0]'] = der_x - 0.5
+//
+//     # Equation 1: y = foo(polynomial(x, a, b, c), x)
+//     poly_result = polynomial(x, a, b, c)
+//     y_computed = foo(poly_result, x)
+//     outputs['eq[1]'] = y - y_computed
+//
+//     return outputs
+//
+// @onnx-test-case
+// # Test case 1: x=0.0
+// import numpy as np
+// x = 0.0
+// y = 3.0
+// a = 1.0
+// b = 2.0
+// c = 3.0
+// der_x = 0.5
+// {
+//   "x": np.array(x),
+//   "y": np.array(y),
+//   "a": np.array(a),
+//   "b": np.array(b),
+//   "c": np.array(c),
+//   "der('x')": np.array(der_x)
+// }
+//
+// @onnx-test-case
+// # Test case 2: x=1.0
+// import numpy as np
+// x = 1.0
+// y = 7.0
+// a = 1.0
+// b = 2.0
+// c = 3.0
+// der_x = 0.5
+// {
+//   "x": np.array(x),
+//   "y": np.array(y),
+//   "a": np.array(a),
+//   "b": np.array(b),
+//   "c": np.array(c),
+//   "der('x')": np.array(der_x)
+// }
+//
+// @onnx-test-case
+// # Test case 3: x=2.0, different parameters
+// import numpy as np
+// x = 2.0
+// y = 9.5
+// a = 0.5
+// b = 1.5
+// c = 2.5
+// der_x = 0.5
+// {
+//   "x": np.array(x),
+//   "y": np.array(y),
+//   "a": np.array(a),
+//   "b": np.array(b),
+//   "c": np.array(c),
+//   "der('x')": np.array(der_x)
+// }
+//
