@@ -29,7 +29,7 @@ end 'GlobalConst';
 //       PI = 3.14159265
 //       E = 2.71828
 //     """
-//     import math
+//     import numpy as np
 //
 //     outputs = {}
 //
@@ -37,57 +37,67 @@ end 'GlobalConst';
 //     PI = 3.14159265
 //     E = 2.71828
 //
-//     # Extract inputs
-//     x = inputs.get('x', 0.0)
-//     der_x = inputs.get("der('x')", 0.0)
-//     sine_wave = inputs.get('sine_wave', 0.0)
-//     exp_decay = inputs.get('exp_decay', 1.0)
+//     # Extract inputs (already numpy scalars)
+//     x = inputs['x']
+//     der_x = inputs["der('x')"]
+//     sine_wave = inputs['sine_wave']
+//     exp_decay = inputs['exp_decay']
 //
-//     # Compute equation residuals: LHS - RHS = 0
+//     # Compute equation residuals
+//     outputs['eq[0]'] = der_x - 1.0
+//     outputs['eq[1]'] = sine_wave - np.sin(2.0 * PI * x)
+//     outputs['eq[2]'] = exp_decay - (E ** (-x))
 //
-//     # Equation 0: der(x) = 1.0
-//     # Rearranged: der(x) - 1.0 = 0
-//     eq_0 = der_x - 1.0
-//     outputs['eq[0]'] = eq_0
-//
-//     # Equation 1: sine_wave = sin(2.0 * PI * x)
-//     # Rearranged: sine_wave - sin(2.0 * PI * x) = 0
-//     eq_1 = sine_wave - math.sin(2.0 * PI * x)
-//     outputs['eq[1]'] = eq_1
-//
-//     # Equation 2: exp_decay = E ^ (-x)
-//     # Rearranged: exp_decay - E ^ (-x) = 0
-//     eq_2 = exp_decay - (E ** (-x))
-//     outputs['eq[2]'] = eq_2
-//
-//     # Initial value for x (start attribute)
-//     outputs['start[0]'] = 0.0
+//     # Initial value
+//     outputs['start[0]'] = np.array(0.0)
 //
 //     return outputs
 //
 // @onnx-test-case
-// Test case 1: At x=0 (initial state)
+// # Test case 1: At x=0 (initial state)
+// import numpy as np
+// PI = 3.14159265
+// E = 2.71828
+// x = 0.0
+// der_x = 1.0
+// sine_wave = np.sin(2.0 * PI * x)
+// exp_decay = E ** (-x)
 // {
-//   "x": 0.0,
-//   "der('x')": 1.0,
-//   "sine_wave": 0.0,
-//   "exp_decay": 2.71828
+//   "x": np.array(x),
+//   "der('x')": np.array(der_x),
+//   "sine_wave": np.array(sine_wave),
+//   "exp_decay": np.array(exp_decay)
 // }
 //
 // @onnx-test-case
-// Test case 2: At x=0.25 (quarter period for sine)
+// # Test case 2: At x=0.25 (quarter period for sine)
+// import numpy as np
+// PI = 3.14159265
+// E = 2.71828
+// x = 0.25
+// der_x = 1.0
+// sine_wave = np.sin(2.0 * PI * x)
+// exp_decay = E ** (-x)
 // {
-//   "x": 0.25,
-//   "der('x')": 1.0,
-//   "sine_wave": 1.0,
-//   "exp_decay": 0.7788
+//   "x": np.array(x),
+//   "der('x')": np.array(der_x),
+//   "sine_wave": np.array(sine_wave),
+//   "exp_decay": np.array(exp_decay)
 // }
 //
 // @onnx-test-case
-// Test case 3: At x=1.0 (one full period for sine)
+// # Test case 3: Random value (seed 42)
+// import numpy as np
+// rng = np.random.RandomState(42)
+// PI = 3.14159265
+// E = 2.71828
+// x = rng.uniform(0.0, 2.0)
+// der_x = 1.0
+// sine_wave = np.sin(2.0 * PI * x)
+// exp_decay = E ** (-x)
 // {
-//   "x": 1.0,
-//   "der('x')": 1.0,
-//   "sine_wave": 0.0,
-//   "exp_decay": 0.36788
+//   "x": np.array(x),
+//   "der('x')": np.array(der_x),
+//   "sine_wave": np.array(sine_wave),
+//   "exp_decay": np.array(exp_decay)
 // }
