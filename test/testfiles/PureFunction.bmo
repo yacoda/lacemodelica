@@ -15,3 +15,61 @@ package 'PureFunction'
     'y' = 'square'('x');
   end 'PureFunction';
 end 'PureFunction';
+
+// @onnx-test-reference
+// Python reference implementation for ONNX runtime testing
+// def reference_implementation(inputs):
+//     import numpy as np
+//     outputs = {}
+//
+//     # Extract inputs (already numpy scalars)
+//     x = inputs['x']
+//     der_x = inputs["der('x')"]
+//     y = inputs['y']
+//
+//     # Equation 0: der(x) = 0.1
+//     outputs['eq[0]'] = der_x - 0.1
+//
+//     # Equation 1: y = square(x) = x * x
+//     outputs['eq[1]'] = y - (x * x)
+//
+//     # Initial value
+//     outputs['start[0]'] = np.array(2.0)
+//
+//     return outputs
+//
+// @onnx-test-case
+// # Test case 1: x = 2.5
+// import numpy as np
+// x = 2.5
+// der_x = 0.1
+// y = x * x
+// {
+//   "x": np.array(x),
+//   "der('x')": np.array(der_x),
+//   "y": np.array(y)
+// }
+//
+// @onnx-test-case
+// # Test case 2: x = -1.5
+// import numpy as np
+// x = -1.5
+// der_x = 0.1
+// y = x * x
+// {
+//   "x": np.array(x),
+//   "der('x')": np.array(der_x),
+//   "y": np.array(y)
+// }
+//
+// @onnx-test-case
+// # Test case 3: x = 0.0
+// import numpy as np
+// x = 0.0
+// der_x = 0.1
+// y = x * x
+// {
+//   "x": np.array(x),
+//   "der('x')": np.array(der_x),
+//   "y": np.array(y)
+// }
