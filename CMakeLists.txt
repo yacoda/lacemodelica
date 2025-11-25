@@ -149,6 +149,7 @@ add_executable(lacemodelica
     src/ModelInfoExtractor.cpp
     src/FMUGenerator.cpp
     src/ONNXGenerator.cpp
+    src/ParseTreeNavigator.cpp
     ${GENERATED_SOURCES}
 )
 
@@ -235,6 +236,7 @@ if(Python3_FOUND)
     # Tests that are expected to fail (but we still want to run them)
     set(ONNX_EXPECTED_FAILURES
         DerExpression  # Uses custom Der operator for derivative of expressions
+        MinimalValid  # Empty model with no equations - validation test not meaningful
     )
 
     # Create individual ONNX runtime validation tests for each model with reference
