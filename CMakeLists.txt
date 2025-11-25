@@ -285,8 +285,11 @@ for i, test_case in enumerate(test_cases, 1):
     for k, v in test_case.items():
         if k not in input_names:
             continue
-        # All inputs are numpy arrays - convert to float32 to match model
-        onnx_inputs[k] = v.astype(np.float32)
+        # Convert to appropriate dtype - bool stays bool, others become float32
+        if v.dtype == np.bool_:
+            onnx_inputs[k] = v
+        else:
+            onnx_inputs[k] = v.astype(np.float32)
     onnx_outputs = session.run(output_names, onnx_inputs)
     onnx_results = dict(zip(output_names, onnx_outputs))
     ref_results = ref_impl(test_case)

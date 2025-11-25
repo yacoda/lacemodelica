@@ -44,11 +44,12 @@ end 'LogicalOps';
 //     outputs['eq[0]'] = der_x - 0.5
 //     outputs['eq[1]'] = der_y - (-0.3 * y)
 //
+//     # Boolean equation residuals use Equal instead of Sub
 //     expected_inRange = (x >= 0.0) and (x <= 1.0)
-//     outputs['eq[2]'] = float(inRange) - float(expected_inRange)
+//     outputs['eq[2]'] = np.array(inRange == expected_inRange)
 //
 //     expected_isPositive = (y > 0.0) or (x > 0.5)
-//     outputs['eq[3]'] = float(isPositive) - float(expected_isPositive)
+//     outputs['eq[3]'] = np.array(isPositive == expected_isPositive)
 //
 //     expected_control = 1.0 if (inRange and not isPositive) else 0.0
 //     outputs['eq[4]'] = control - expected_control

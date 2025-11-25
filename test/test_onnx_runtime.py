@@ -240,8 +240,11 @@ def test_newton_cooling_base():
                 if key in input_names:
                     # Handle different input types
                     if isinstance(value, np.ndarray):
-                        # Already a numpy array, use as-is with correct dtype (float32 for ONNX Runtime compatibility)
-                        onnx_inputs[key] = value.astype(np.float32)
+                        # Already a numpy array - keep bool as bool, convert others to float32
+                        if value.dtype == np.bool_:
+                            onnx_inputs[key] = value
+                        else:
+                            onnx_inputs[key] = value.astype(np.float32)
                     elif isinstance(value, (list, tuple)):
                         # Convert list to numpy array
                         onnx_inputs[key] = np.array(value, dtype=np.float32)

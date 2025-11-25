@@ -109,7 +109,12 @@ void ONNXGenerator::generateONNXModel(const ModelInfo& info, const std::string& 
         auto* input = graph->add_input();
         input->set_name(var.name);
         auto* input_type = input->mutable_type()->mutable_tensor_type();
-        input_type->set_elem_type(onnx::TensorProto::DOUBLE);
+        // Set element type based on variable type
+        if (var.type == "Boolean") {
+            input_type->set_elem_type(onnx::TensorProto::BOOL);
+        } else {
+            input_type->set_elem_type(onnx::TensorProto::DOUBLE);
+        }
         auto* input_shape = input_type->mutable_shape();
 
         // Handle array dimensions
@@ -495,12 +500,29 @@ void ONNXGenerator::generateEquationOutputs(
             continue;
         }
 
-        // Create equation residual: LHS - RHS
+        // Create equation residual: LHS - RHS (or LHS == RHS for booleans)
         // For numerical evaluation, we want the residual (should be zero when equation is satisfied)
         std::string eqOutputName = prefix + "[" + std::to_string(i) + "]";
 
+        // Check if LHS is a boolean variable
+        std::string lhsText = eq.lhsContext->getText();
+        // Strip quotes if present
+        if (lhsText.front() == '\'' && lhsText.back() == '\'') {
+            lhsText = lhsText.substr(1, lhsText.length() - 2);
+        }
+        const Variable* lhsVar = info.findVariable(lhsText);
+        bool isBooleanEquation = (lhsVar && lhsVar->type == "Boolean");
+
+        if (isBooleanEquation) {
+            std::cerr << "DEBUG: Equation " << i << " is boolean: " << lhsText << std::endl;
+        }
+
         auto* eq_node = graph->add_node();
-        eq_node->set_op_type("Sub");  // Subtract to get residual
+        if (isBooleanEquation) {
+            eq_node->set_op_type("Equal");  // For boolean equations, check equality
+        } else {
+            eq_node->set_op_type("Sub");  // For numeric equations, subtract to get residual
+        }
         eq_node->set_name(prefix + "_residual_" + std::to_string(i));
         eq_node->add_input(lhsTensor);
         eq_node->add_input(rhsTensor);
@@ -510,7 +532,11 @@ void ONNXGenerator::generateEquationOutputs(
         auto* eq_output = graph->add_output();
         eq_output->set_name(eqOutputName);
         auto* eq_type = eq_output->mutable_type()->mutable_tensor_type();
-        eq_type->set_elem_type(onnx::TensorProto::DOUBLE);  // Residual returns float64
+        if (isBooleanEquation) {
+            eq_type->set_elem_type(onnx::TensorProto::BOOL);  // Boolean equation result
+        } else {
+            eq_type->set_elem_type(onnx::TensorProto::DOUBLE);  // Numeric residual
+        }
         // Don't create shape - let shape inference fill it in
 
         // Set the string comment as doc_string on the output
