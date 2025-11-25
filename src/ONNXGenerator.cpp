@@ -743,10 +743,10 @@ std::string ONNXGenerator::convertIfExpression(
 
     // Create then branch as a subgraph
     // Note: If subgraphs have zero inputs - they access parent scope variables directly
+    // IMPORTANT: Share nodeCounter with subgraphs to maintain SSA (no duplicate tensor names)
     onnx::GraphProto thenBranch;
     thenBranch.set_name("then_branch");
-    int thenCounter = 0;
-    std::string thenResult = convertExpression(expressions[1], info, &thenBranch, thenCounter, variableMap, derivativeInputs);
+    std::string thenResult = convertExpression(expressions[1], info, &thenBranch, nodeCounter, variableMap, derivativeInputs);
 
     // Add output to then branch
     auto* thenOutput = thenBranch.add_output();
@@ -758,10 +758,10 @@ std::string ONNXGenerator::convertIfExpression(
 
     // Create else branch as a subgraph
     // Note: If subgraphs have zero inputs - they access parent scope variables directly
+    // IMPORTANT: Share nodeCounter with subgraphs to maintain SSA (no duplicate tensor names)
     onnx::GraphProto elseBranch;
     elseBranch.set_name("else_branch");
-    int elseCounter = 0;
-    std::string elseResult = convertExpression(expressions[2], info, &elseBranch, elseCounter, variableMap, derivativeInputs);
+    std::string elseResult = convertExpression(expressions[2], info, &elseBranch, nodeCounter, variableMap, derivativeInputs);
 
     // Add output to else branch
     auto* elseOutput = elseBranch.add_output();

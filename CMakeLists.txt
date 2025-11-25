@@ -252,6 +252,19 @@ session = ort.InferenceSession(str(onnx_path))
 input_names = [inp.name for inp in session.get_inputs()]
 output_names = [out.name for out in session.get_outputs()]
 
+# Debug: Print ONNX graph structure
+import onnx
+model = onnx.load(str(onnx_path))
+print(f'\\n=== ONNX Model for ${TEST_NAME} ===')
+print(f'Inputs: {input_names}')
+print(f'Outputs: {output_names}')
+print(f'\\nGraph nodes:')
+for i, node in enumerate(model.graph.node):
+    print(f'  {i}: {node.op_type} ({node.name})')
+    print(f'      inputs: {list(node.input)}')
+    print(f'      outputs: {list(node.output)}')
+print('\\n')
+
 # Run all test cases
 passed = True
 for i, test_case in enumerate(test_cases, 1):
