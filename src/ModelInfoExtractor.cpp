@@ -364,12 +364,14 @@ void ModelInfoExtractor::identifyDerivatives() {
 }
 
 
-std::string ModelInfoExtractor::extractStartValue(basemodelica::BaseModelicaParser::ModificationContext* ctx) {
-    if (ctx->expression()) {
-        return ctx->expression()->getText();
-    }
+// Helper to find named attribute in modification's class modification argument list
+antlr4::tree::ParseTree* ModelInfoExtractor::findModificationAttribute(
+    basemodelica::BaseModelicaParser::ModificationContext* ctx,
+    const std::string& attrName) {
 
-    // Check class modification for start= or similar
+    if (!ctx) return nullptr;
+
+    // Check class modification for named attributes
     if (ctx->classModification()) {
         auto argList = ctx->classModification()->argumentList();
         if (argList) {
@@ -377,52 +379,40 @@ std::string ModelInfoExtractor::extractStartValue(basemodelica::BaseModelicaPars
                 if (auto elemMod = arg->elementModificationOrReplaceable()) {
                     if (auto mod = elemMod->elementModification()) {
                         std::string name = mod->name()->getText();
-                        if (name == "start" && mod->modification() && mod->modification()->expression()) {
-                            return mod->modification()->expression()->getText();
+                        if (name == attrName && mod->modification() && mod->modification()->expression()) {
+                            return mod->modification()->expression();
                         }
                     }
                 }
             }
         }
+    }
+
+    return nullptr;
+}
+
+std::string ModelInfoExtractor::extractStartValue(basemodelica::BaseModelicaParser::ModificationContext* ctx) {
+    if (ctx->expression()) {
+        return ctx->expression()->getText();
+    }
+
+    if (auto expr = findModificationAttribute(ctx, "start")) {
+        return expr->getText();
     }
 
     return "";
 }
 
 std::string ModelInfoExtractor::extractMinValue(basemodelica::BaseModelicaParser::ModificationContext* ctx) {
-    if (ctx->classModification()) {
-        auto argList = ctx->classModification()->argumentList();
-        if (argList) {
-            for (auto arg : argList->argument()) {
-                if (auto elemMod = arg->elementModificationOrReplaceable()) {
-                    if (auto mod = elemMod->elementModification()) {
-                        std::string name = mod->name()->getText();
-                        if (name == "min" && mod->modification() && mod->modification()->expression()) {
-                            return mod->modification()->expression()->getText();
-                        }
-                    }
-                }
-            }
-        }
+    if (auto expr = findModificationAttribute(ctx, "min")) {
+        return expr->getText();
     }
     return "";
 }
 
 std::string ModelInfoExtractor::extractMaxValue(basemodelica::BaseModelicaParser::ModificationContext* ctx) {
-    if (ctx->classModification()) {
-        auto argList = ctx->classModification()->argumentList();
-        if (argList) {
-            for (auto arg : argList->argument()) {
-                if (auto elemMod = arg->elementModificationOrReplaceable()) {
-                    if (auto mod = elemMod->elementModification()) {
-                        std::string name = mod->name()->getText();
-                        if (name == "max" && mod->modification() && mod->modification()->expression()) {
-                            return mod->modification()->expression()->getText();
-                        }
-                    }
-                }
-            }
-        }
+    if (auto expr = findModificationAttribute(ctx, "max")) {
+        return expr->getText();
     }
     return "";
 }
@@ -432,62 +422,15 @@ antlr4::ParserRuleContext* ModelInfoExtractor::extractBindingContext(basemodelic
         return ctx->expression();
     }
 
-    // Check class modification for start= or similar
-    if (ctx->classModification()) {
-        auto argList = ctx->classModification()->argumentList();
-        if (argList) {
-            for (auto arg : argList->argument()) {
-                if (auto elemMod = arg->elementModificationOrReplaceable()) {
-                    if (auto mod = elemMod->elementModification()) {
-                        std::string name = mod->name()->getText();
-                        if (name == "start" && mod->modification() && mod->modification()->expression()) {
-                            return mod->modification()->expression();
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    return nullptr;
+    return dynamic_cast<antlr4::ParserRuleContext*>(findModificationAttribute(ctx, "start"));
 }
 
 antlr4::ParserRuleContext* ModelInfoExtractor::extractMinContext(basemodelica::BaseModelicaParser::ModificationContext* ctx) {
-    if (ctx->classModification()) {
-        auto argList = ctx->classModification()->argumentList();
-        if (argList) {
-            for (auto arg : argList->argument()) {
-                if (auto elemMod = arg->elementModificationOrReplaceable()) {
-                    if (auto mod = elemMod->elementModification()) {
-                        std::string name = mod->name()->getText();
-                        if (name == "min" && mod->modification() && mod->modification()->expression()) {
-                            return mod->modification()->expression();
-                        }
-                    }
-                }
-            }
-        }
-    }
-    return nullptr;
+    return dynamic_cast<antlr4::ParserRuleContext*>(findModificationAttribute(ctx, "min"));
 }
 
 antlr4::ParserRuleContext* ModelInfoExtractor::extractMaxContext(basemodelica::BaseModelicaParser::ModificationContext* ctx) {
-    if (ctx->classModification()) {
-        auto argList = ctx->classModification()->argumentList();
-        if (argList) {
-            for (auto arg : argList->argument()) {
-                if (auto elemMod = arg->elementModificationOrReplaceable()) {
-                    if (auto mod = elemMod->elementModification()) {
-                        std::string name = mod->name()->getText();
-                        if (name == "max" && mod->modification() && mod->modification()->expression()) {
-                            return mod->modification()->expression();
-                        }
-                    }
-                }
-            }
-        }
-    }
-    return nullptr;
+    return dynamic_cast<antlr4::ParserRuleContext*>(findModificationAttribute(ctx, "max"));
 }
 
 bool ModelInfoExtractor::isConstExpression(const std::string& expr) {

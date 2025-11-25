@@ -29,6 +29,9 @@ private:
 
     void processEquation(basemodelica::BaseModelicaParser::EquationContext* equation, std::vector<Equation>& target);
 
+    // Helper to find named attribute in modification's class modification argument list
+    antlr4::tree::ParseTree* findModificationAttribute(basemodelica::BaseModelicaParser::ModificationContext* ctx, const std::string& attrName);
+
     std::string extractStartValue(basemodelica::BaseModelicaParser::ModificationContext* ctx);
     std::string extractMinValue(basemodelica::BaseModelicaParser::ModificationContext* ctx);
     std::string extractMaxValue(basemodelica::BaseModelicaParser::ModificationContext* ctx);
