@@ -135,33 +135,47 @@ def convert_float64_to_float32(model):
     Returns:
         Modified ONNX ModelProto with float32 types
     """
-    # Convert graph inputs
-    for input in model.graph.input:
-        if input.type.tensor_type.elem_type == TensorProto.DOUBLE:
-            input.type.tensor_type.elem_type = TensorProto.FLOAT
+    def convert_graph(graph):
+        """Helper to convert a graph (handles nested graphs in If/Loop nodes)"""
+        # Convert graph inputs
+        for input in graph.input:
+            if input.type.tensor_type.elem_type == TensorProto.DOUBLE:
+                input.type.tensor_type.elem_type = TensorProto.FLOAT
 
-    # Convert graph outputs
-    for output in model.graph.output:
-        if output.type.tensor_type.elem_type == TensorProto.DOUBLE:
-            output.type.tensor_type.elem_type = TensorProto.FLOAT
+        # Convert graph outputs
+        for output in graph.output:
+            if output.type.tensor_type.elem_type == TensorProto.DOUBLE:
+                output.type.tensor_type.elem_type = TensorProto.FLOAT
 
-    # Convert initializers
-    for init in model.graph.initializer:
-        if init.data_type == TensorProto.DOUBLE:
-            # Get the data as float64
-            data = onnx.numpy_helper.to_array(init)
-            # Convert to float32
-            data_f32 = data.astype(np.float32)
-            # Replace the initializer
-            new_init = onnx.numpy_helper.from_array(data_f32, init.name)
-            init.CopyFrom(new_init)
+        # Convert initializers
+        for init in graph.initializer:
+            if init.data_type == TensorProto.DOUBLE:
+                # Get the data as float64
+                data = onnx.numpy_helper.to_array(init)
+                # Convert to float32
+                data_f32 = data.astype(np.float32)
+                # Replace the initializer
+                new_init = onnx.numpy_helper.from_array(data_f32, init.name)
+                init.CopyFrom(new_init)
 
-    # Convert value_info
-    for value_info in model.graph.value_info:
-        if value_info.type.HasField('tensor_type'):
-            if value_info.type.tensor_type.elem_type == TensorProto.DOUBLE:
-                value_info.type.tensor_type.elem_type = TensorProto.FLOAT
+        # Convert value_info
+        for value_info in graph.value_info:
+            if value_info.type.HasField('tensor_type'):
+                if value_info.type.tensor_type.elem_type == TensorProto.DOUBLE:
+                    value_info.type.tensor_type.elem_type = TensorProto.FLOAT
 
+        # Recursively handle subgraphs in nodes (e.g., If, Loop, Scan)
+        for node in graph.node:
+            for attr in node.attribute:
+                if attr.HasField('g'):
+                    # Single subgraph (e.g., in Loop)
+                    convert_graph(attr.g)
+                # Handle multiple subgraphs (e.g., then/else branches in If)
+                if attr.graphs:
+                    for subgraph in attr.graphs:
+                        convert_graph(subgraph)
+
+    convert_graph(model.graph)
     return model
 
 
@@ -257,20 +271,20 @@ def test_newton_cooling_base():
                     onnx_val = np.array(onnx_results[name])
                     ref_val = np.array(ref_results[name])
 
-                    # Handle both scalars and arrays
+                    # Handle both scalars and arrays (use 1e-4 tolerance for float32 precision)
                     if onnx_val.shape == () and ref_val.shape == ():
                         # Both are scalars
                         diff = abs(float(onnx_val) - float(ref_val))
-                        match = "✓" if diff < 1e-5 else "✗"
+                        match = "✓" if diff < 1e-4 else "✗"
                         print(f"      {name}: ONNX={float(onnx_val):.6f}, Ref={float(ref_val):.6f}, Diff={diff:.2e} {match}")
-                        if diff >= 1e-5:
+                        if diff >= 1e-4:
                             passed = False
                     elif onnx_val.shape == ref_val.shape:
                         # Both are arrays with same shape
                         diff = np.max(np.abs(onnx_val - ref_val))
-                        match = "✓" if diff < 1e-5 else "✗"
+                        match = "✓" if diff < 1e-4 else "✗"
                         print(f"      {name} {onnx_val.shape}: Max diff={diff:.2e} {match}")
-                        if diff >= 1e-5:
+                        if diff >= 1e-4:
                             passed = False
                     else:
                         # Shape mismatch
