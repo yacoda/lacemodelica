@@ -71,6 +71,15 @@ private:
         std::map<std::string, std::vector<std::string>>* derivativeInputs = nullptr
     );
 
+    static std::string convertRelation(
+        basemodelica::BaseModelicaParser::RelationContext* relation,
+        const ModelInfo& info,
+        onnx::GraphProto* graph,
+        int& nodeCounter,
+        const std::map<std::string, std::string>* variableMap = nullptr,
+        std::map<std::string, std::vector<std::string>>* derivativeInputs = nullptr
+    );
+
     static std::string convertArithmeticExpression(
         basemodelica::BaseModelicaParser::ArithmeticExpressionContext* expr,
         const ModelInfo& info,

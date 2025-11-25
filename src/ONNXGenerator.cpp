@@ -883,11 +883,57 @@ std::string ONNXGenerator::convertSimpleExpression(
         throw std::runtime_error("Empty logical term");
     }
 
-    auto* logicalFactor = logicalFactors[0];
-    auto* relation = logicalFactor->relation();
-    if (!relation) {
-        throw std::runtime_error("No relation in logical factor");
+    // Handle multiple logical factors connected by 'and'
+    std::string resultTensor;
+    for (size_t i = 0; i < logicalFactors.size(); i++) {
+        auto* logicalFactor = logicalFactors[i];
+        auto* relation = logicalFactor->relation();
+        if (!relation) {
+            throw std::runtime_error("No relation in logical factor");
+        }
+
+        // Convert this logical factor to a tensor
+        std::string factorTensor = convertRelation(relation, info, graph, nodeCounter, variableMap, derivativeInputs);
+
+        // Check if logical factor has 'not' prefix
+        // If 'not' is present, logicalFactor will have 2 children: 'not' token and relation
+        // If 'not' is absent, it will have 1 child: just the relation
+        if (logicalFactor->children.size() > 1) {
+            // Apply NOT operator
+            auto* notNode = graph->add_node();
+            notNode->set_op_type("Not");
+            notNode->set_name("Not_" + std::to_string(nodeCounter));
+            notNode->add_input(factorTensor);
+            factorTensor = "tensor_" + std::to_string(nodeCounter++);
+            notNode->add_output(factorTensor);
+        }
+
+        if (i == 0) {
+            // First factor
+            resultTensor = factorTensor;
+        } else {
+            // Subsequent factors - AND with previous result
+            auto* andNode = graph->add_node();
+            andNode->set_op_type("And");
+            andNode->set_name("And_" + std::to_string(nodeCounter));
+            andNode->add_input(resultTensor);
+            andNode->add_input(factorTensor);
+            resultTensor = "tensor_" + std::to_string(nodeCounter++);
+            andNode->add_output(resultTensor);
+        }
     }
+
+    return resultTensor;
+}
+
+// Helper function to convert a relation to ONNX
+std::string ONNXGenerator::convertRelation(
+    basemodelica::BaseModelicaParser::RelationContext* relation,
+    const ModelInfo& info,
+    onnx::GraphProto* graph,
+    int& nodeCounter,
+    const std::map<std::string, std::string>* variableMap,
+    std::map<std::string, std::vector<std::string>>* derivativeInputs) {
 
     auto arithmeticExprs = relation->arithmeticExpression();
     if (arithmeticExprs.empty()) {
