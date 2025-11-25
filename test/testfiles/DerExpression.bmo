@@ -27,71 +27,81 @@ end 'DerExpression';
 //
 //     Note: der(x * y) = der(x) * y + x * der(y) by product rule
 //     """
+//     import numpy as np
 //     outputs = {}
 //
-//     # Extract inputs
-//     x = inputs.get('x', 1.0)
-//     y = inputs.get('y', 2.0)
-//     z = inputs.get('z', 0.0)
-//     dz_dt = inputs.get('dz_dt', 0.0)
-//     der_x = inputs.get("der('x')", 0.0)
-//     der_y = inputs.get("der('y')", 0.0)
+//     # Extract inputs (already numpy scalars)
+//     x = inputs['x']
+//     y = inputs['y']
+//     z = inputs['z']
+//     dz_dt = inputs['dz_dt']
+//     der_x = inputs["der('x')"]
+//     der_y = inputs["der('y')"]
 //
-//     # Compute equation residuals (LHS - RHS = 0)
-//
-//     # Equation 0: der(x) = -x  =>  der(x) - (-x) = 0
-//     eq_0 = der_x - (-x)
-//     outputs['eq[0]'] = eq_0
-//
-//     # Equation 1: der(y) = x - y  =>  der(y) - (x - y) = 0
-//     eq_1 = der_y - (x - y)
-//     outputs['eq[1]'] = eq_1
-//
-//     # Equation 2: z = x * y  =>  z - x * y = 0
-//     eq_2 = z - x * y
-//     outputs['eq[2]'] = eq_2
-//
-//     # Equation 3: dz_dt = der(x * y)
-//     # By product rule: der(x * y) = der(x) * y + x * der(y)
-//     # So: dz_dt - (der(x) * y + x * der(y)) = 0
-//     eq_3 = dz_dt - (der_x * y + x * der_y)
-//     outputs['eq[3]'] = eq_3
+//     # Compute equation residuals
+//     outputs['eq[0]'] = der_x - (-x)
+//     outputs['eq[1]'] = der_y - (x - y)
+//     outputs['eq[2]'] = z - x * y
+//     outputs['eq[3]'] = dz_dt - (der_x * y + x * der_y)
 //
 //     # Start values
-//     outputs['start[0]'] = 1.0  # x.start
-//     outputs['start[1]'] = 2.0  # y.start
+//     outputs['start[0]'] = np.array(1.0)
+//     outputs['start[1]'] = np.array(2.0)
 //
 //     return outputs
 //
 // @onnx-test-case
-// Test case 1: Initial state values
+// # Test case 1: Initial state values
+// import numpy as np
+// x = 1.0
+// y = 2.0
+// z = x * y
+// der_x = -x
+// der_y = x - y
+// dz_dt = der_x * y + x * der_y
 // {
-//   "x": 1.0,
-//   "y": 2.0,
-//   "z": 2.0,
-//   "dz_dt": -3.0,
-//   "der('x')": -1.0,
-//   "der('y')": -1.0
+//   "x": np.array(x),
+//   "y": np.array(y),
+//   "z": np.array(z),
+//   "dz_dt": np.array(dz_dt),
+//   "der('x')": np.array(der_x),
+//   "der('y')": np.array(der_y)
 // }
 //
 // @onnx-test-case
-// Test case 2: Non-initial state with smaller values
+// # Test case 2: Random values (seed 42)
+// import numpy as np
+// rng = np.random.RandomState(42)
+// x = rng.uniform(0.1, 2.0)
+// y = rng.uniform(0.5, 3.0)
+// z = x * y
+// der_x = -x
+// der_y = x - y
+// dz_dt = der_x * y + x * der_y
 // {
-//   "x": 0.5,
-//   "y": 1.5,
-//   "z": 0.75,
-//   "dz_dt": -1.25,
-//   "der('x')": -0.5,
-//   "der('y')": -1.0
+//   "x": np.array(x),
+//   "y": np.array(y),
+//   "z": np.array(z),
+//   "dz_dt": np.array(dz_dt),
+//   "der('x')": np.array(der_x),
+//   "der('y')": np.array(der_y)
 // }
 //
 // @onnx-test-case
-// Test case 3: State with larger values
+// # Test case 3: Random values (seed 123)
+// import numpy as np
+// rng = np.random.RandomState(123)
+// x = rng.uniform(0.5, 3.0)
+// y = rng.uniform(1.0, 4.0)
+// z = x * y
+// der_x = -x
+// der_y = x - y
+// dz_dt = der_x * y + x * der_y
 // {
-//   "x": 2.0,
-//   "y": 3.0,
-//   "z": 6.0,
-//   "dz_dt": -8.0,
-//   "der('x')": -2.0,
-//   "der('y')": -1.0
+//   "x": np.array(x),
+//   "y": np.array(y),
+//   "z": np.array(z),
+//   "dz_dt": np.array(dz_dt),
+//   "der('x')": np.array(der_x),
+//   "der('y')": np.array(der_y)
 // }
