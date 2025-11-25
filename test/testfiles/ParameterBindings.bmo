@@ -57,22 +57,6 @@ end 'ParameterBindings';
 // @onnx-test-reference
 // Python reference implementation for ONNX runtime testing
 // def reference_implementation(inputs):
-//     """
-//     Compute expected outputs for ParameterBindings.
-//
-//     Equations:
-//       der('x') = 'scaled_value' * 'x'
-//       der('y') = 'bounded_value' - 'const_computed'
-//       der('z') = 'dynamic_bounded' + 'array_param[1]' + 'array_param[2]' + 'array_param[3]'
-//       der('w') = 'dynamic_max' + 'dynamic_both' + 'mixed_bounds_1' + 'mixed_bounds_2' + 'const_bounds'
-//
-//     Parameter bindings:
-//       scaled_value = base_value * scale
-//       bounded_value = base_value + scale
-//       array_param[1] = base_value
-//       array_param[2] = base_value * 2.0
-//       array_param[3] = base_value * 3.0
-//     """
 //     import numpy as np
 //     outputs = {}
 //

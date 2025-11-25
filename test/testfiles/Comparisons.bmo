@@ -18,18 +18,6 @@ end 'Comparisons';
 // @onnx-test-reference
 // Python reference implementation for ONNX runtime testing
 // def reference_implementation(inputs):
-//     """
-//     Compute expected outputs for Comparisons.
-//
-//     Equations:
-//       der(x) = 0.1
-//       lt = x < ref
-//       le = x <= ref
-//       gt = x > ref
-//       ge = x >= ref
-//       eq = x == ref
-//       ne = x <> ref
-//     """
 //     import numpy as np
 //     outputs = {}
 //
@@ -44,14 +32,16 @@ end 'Comparisons';
 //     eq = inputs['eq']
 //     ne = inputs['ne']
 //
-//     # Compute equation residuals (LHS - RHS = 0)
+//     # Compute equation residuals
 //     outputs['eq[0]'] = der_x - 0.1
-//     outputs['eq[1]'] = float(lt) - float(x < ref)
-//     outputs['eq[2]'] = float(le) - float(x <= ref)
-//     outputs['eq[3]'] = float(gt) - float(x > ref)
-//     outputs['eq[4]'] = float(ge) - float(x >= ref)
-//     outputs['eq[5]'] = float(eq) - float(x == ref)
-//     outputs['eq[6]'] = float(ne) - float(x != ref)
+//
+//     # Boolean equation residuals use Equal instead of Sub
+//     outputs['eq[1]'] = np.array(lt == (x < ref))
+//     outputs['eq[2]'] = np.array(le == (x <= ref))
+//     outputs['eq[3]'] = np.array(gt == (x > ref))
+//     outputs['eq[4]'] = np.array(ge == (x >= ref))
+//     outputs['eq[5]'] = np.array(eq == (x == ref))
+//     outputs['eq[6]'] = np.array(ne == (x != ref))
 //
 //     # Initial value
 //     outputs['start[0]'] = np.array(0.0)

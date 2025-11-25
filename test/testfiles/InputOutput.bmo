@@ -14,14 +14,6 @@ end 'InputOutput';
 // @onnx-test-reference
 // Python reference implementation for ONNX runtime testing
 // def reference_implementation(inputs):
-//     """
-//     Compute expected outputs for InputOutput.
-//
-//     Equations:
-//       der(x) = -x + u
-//       y = gain * x
-//     Initial: x(start = 1.0)
-//     """
 //     import numpy as np
 //     outputs = {}
 //

@@ -14,14 +14,6 @@ end 'UnaryOps';
 // @onnx-test-reference
 // Python reference implementation for ONNX runtime testing
 // def reference_implementation(inputs):
-//     """
-//     Compute expected outputs for UnaryOps.
-//
-//     Equations:
-//       der(x) = +0.5
-//       y = -x
-//       z = -((x + 1.0) * y)
-//     """
 //     import numpy as np
 //     outputs = {}
 //

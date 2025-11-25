@@ -18,16 +18,6 @@ end 'TrigFunctions';
 // @onnx-test-reference
 // Python reference implementation for ONNX runtime testing
 // def reference_implementation(inputs):
-//     """
-//     Compute expected outputs for TrigFunctions.
-//
-//     Equations:
-//       der(angle) = 0.1
-//       sine_value = sin(angle)
-//       cosine_value = cos(angle)
-//       tangent_value = tan(angle)
-//       complex_trig = sin(angle) + cos(angle) * 2.0
-//     """
 //     import numpy as np
 //
 //     outputs = {}

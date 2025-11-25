@@ -15,14 +15,6 @@ end 'IfExpression';
 // @onnx-test-reference
 // Python reference implementation for ONNX runtime testing
 // def reference_implementation(inputs):
-//     """
-//     Compute expected outputs for IfExpression.
-//
-//     Equations:
-//       der(x) = -0.3 * x
-//       y = if x > threshold then x^2 else 0.5 * x
-//     Initial: x = 1.0
-//     """
 //     import numpy as np
 //     outputs = {}
 //

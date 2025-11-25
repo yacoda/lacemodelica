@@ -18,16 +18,6 @@ end 'ArithmeticOps';
 // @onnx-test-reference
 // Python reference implementation for ONNX runtime testing
 // def reference_implementation(inputs):
-//     """
-//     Compute expected outputs for ArithmeticOps.
-//
-//     Equations:
-//       der(x) = 0.1
-//       squared = x^2
-//       cubed = x^3
-//       sqrt_approx = x^0.5
-//       complex = (x + 1)^2 / ((x - 0.5)^2 + 1)
-//     """
 //     import numpy as np
 //     outputs = {}
 //

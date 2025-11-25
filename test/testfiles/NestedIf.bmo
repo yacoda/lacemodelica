@@ -14,14 +14,6 @@ end 'NestedIf';
 // @onnx-test-reference
 // Python reference implementation for ONNX runtime testing
 // def reference_implementation(inputs):
-//     """
-//     Compute expected outputs for NestedIf.
-//
-//     Equations:
-//       der(x) = 1.0
-//       mode = if x < 0.3 then 1.0 elseif x < 0.6 then 2.0 elseif x < 0.9 then 3.0 else 4.0
-//       output = mode * x
-//     """
 //     import numpy as np
 //     outputs = {}
 //

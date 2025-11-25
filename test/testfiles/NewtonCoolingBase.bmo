@@ -22,12 +22,6 @@ end 'NewtonCoolingBase';
 // @onnx-test-reference
 // Python reference implementation for ONNX runtime testing
 // def reference_implementation(inputs):
-//     """
-//     Compute expected outputs for NewtonCoolingBase.
-//
-//     Equation: m * c_p * der(T) = h * A * (T_inf - T)
-//     Initial: T = T0
-//     """
 //     import numpy as np
 //     outputs = {}
 //

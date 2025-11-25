@@ -16,15 +16,6 @@ end 'DerVariable';
 // @onnx-test-reference
 // Python reference implementation for ONNX runtime testing
 // def reference_implementation(inputs):
-//     """
-//     Compute expected outputs for DerVariable.
-//
-//     Equations:
-//       der(x) = -0.5 * x + y
-//       der(y) = x - 0.3 * y
-//       dx_dt = der(x)
-//       dy_dt = der(y)
-//     """
 //     import numpy as np
 //     outputs = {}
 //

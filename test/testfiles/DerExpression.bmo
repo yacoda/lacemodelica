@@ -16,17 +16,6 @@ end 'DerExpression';
 // @onnx-test-reference
 // Python reference implementation for ONNX runtime testing
 // def reference_implementation(inputs):
-//     """
-//     Compute expected outputs for DerExpression.
-//
-//     Equations:
-//       der(x) = -x
-//       der(y) = x - y
-//       z = x * y
-//       dz_dt = der(x * y)
-//
-//     Note: der(x * y) = der(x) * y + x * der(y) by product rule
-//     """
 //     import numpy as np
 //     outputs = {}
 //

@@ -17,18 +17,6 @@ end 'GlobalConst';
 // @onnx-test-reference
 // Python reference implementation for ONNX runtime testing
 // def reference_implementation(inputs):
-//     """
-//     Compute expected outputs for GlobalConst.
-//
-//     Equations:
-//       der(x) = 1.0
-//       sine_wave = sin(2.0 * PI * x)
-//       exp_decay = E ^ (-x)
-//
-//     Global constants:
-//       PI = 3.14159265
-//       E = 2.71828
-//     """
 //     import numpy as np
 //
 //     outputs = {}

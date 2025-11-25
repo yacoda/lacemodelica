@@ -18,16 +18,6 @@ end 'LogicalOps';
 // @onnx-test-reference
 // Python reference implementation for ONNX runtime testing
 // def reference_implementation(inputs):
-//     """
-//     Compute expected outputs for LogicalOps.
-//
-//     Equations:
-//       der(x) = 0.5
-//       der(y) = -0.3 * y
-//       inRange = (x >= 0.0) and (x <= 1.0)
-//       isPositive = (y > 0.0) or (x > 0.5)
-//       control = if inRange and not isPositive then 1.0 else 0.0
-//     """
 //     import numpy as np
 //     outputs = {}
 //

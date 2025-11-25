@@ -14,11 +14,6 @@ end 'NegativeVariable';
 // @onnx-test-reference
 // Python reference implementation for ONNX runtime testing
 // def reference_implementation(inputs):
-//     """
-//     Compute expected outputs for NegativeVariable.
-//
-//     Equation: der(x) = -x
-//     """
 //     import numpy as np
 //     outputs = {}
 //
