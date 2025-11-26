@@ -85,6 +85,14 @@ def validate_onnx_model(test_name: str, verbose: bool = False) -> bool:
         onnx_results = dict(zip(output_names, onnx_outputs))
         ref_results = ref_impl(test_case)
 
+        # Check for missing equation outputs (eq[X])
+        # Only validate equation residuals, not start values or init equations
+        ref_eq_outputs = [name for name in ref_results.keys() if name.startswith('eq[')]
+        missing_outputs = set(ref_eq_outputs) - set(output_names)
+        if missing_outputs:
+            print(f'Test {i} FAILED: Missing equation outputs in ONNX model: {sorted(missing_outputs)}')
+            passed = False
+
         for name in output_names:
             if name in ref_results:
                 onnx_val = np.array(onnx_results[name])

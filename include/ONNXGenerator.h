@@ -44,7 +44,9 @@ private:
         const ModelInfo& info,
         onnx::GraphProto* graph,
         int& nodeCounter,
-        std::map<std::string, std::vector<std::string>>& derivativeInputs
+        std::map<std::string, std::vector<std::string>>& derivativeInputs,
+        bool isNested = false,
+        std::map<std::string, std::string>* parentLoopVarMap = nullptr
     );
 
     // Create ONNX FunctionProto for a function with algorithm

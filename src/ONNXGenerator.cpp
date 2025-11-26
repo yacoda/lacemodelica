@@ -614,7 +614,8 @@ void ONNXGenerator::generateEquationOutputs(
         } else {
             eq_type->set_elem_type(onnx::TensorProto::DOUBLE);  // Numeric residual
         }
-        // Don't create shape - let shape inference fill it in
+        // Create shape object (can be empty for scalar/unknown shape)
+        eq_type->mutable_shape();
 
         // Set the string comment as doc_string on the output
         if (!eq.comment.empty()) {
@@ -664,7 +665,9 @@ size_t ONNXGenerator::generateForEquationLoop(
     const ModelInfo& info,
     onnx::GraphProto* graph,
     int& nodeCounter,
-    std::map<std::string, std::vector<std::string>>& derivativeInputs) {
+    std::map<std::string, std::vector<std::string>>& derivativeInputs,
+    bool isNested,
+    std::map<std::string, std::string>* parentLoopVarMap) {
 
     auto* forEqCtx = dynamic_cast<basemodelica::BaseModelicaParser::ForEquationContext*>(eq.forEquationContext);
     if (!forEqCtx) {
@@ -766,6 +769,38 @@ size_t ONNXGenerator::generateForEquationLoop(
     condIdentity->add_input("cond_in");
     condIdentity->add_output("cond_out");
 
+    // For nested loops, add parent loop variables as inputs
+    // This allows inner loop to reference outer loop variables
+    if (isNested && parentLoopVarMap) {
+        for (const auto& [varName, tensorName] : *parentLoopVarMap) {
+            loopNode->add_input(tensorName);
+
+            // Add to body inputs
+            auto* bodyInput = bodyGraph->add_input();
+            bodyInput->set_name("parent_" + varName);
+            auto* inputType = bodyInput->mutable_type()->mutable_tensor_type();
+            inputType->set_elem_type(onnx::TensorProto::INT64);
+            inputType->mutable_shape();  // Scalar
+
+            // Add to body outputs (passthrough)
+            auto* bodyOutput = bodyGraph->add_output();
+            bodyOutput->set_name("parent_" + varName + "_out");
+            auto* outputType = bodyOutput->mutable_type()->mutable_tensor_type();
+            outputType->set_elem_type(onnx::TensorProto::INT64);
+            outputType->mutable_shape();  // Scalar
+
+            // Identity passthrough
+            auto* identity = bodyGraph->add_node();
+            identity->set_op_type("Identity");
+            identity->set_name("parent_" + varName + "_passthrough");
+            identity->add_input("parent_" + varName);
+            identity->add_output("parent_" + varName + "_out");
+
+            // Add to loop outputs
+            loopNode->add_output("parent_" + varName + "_final_" + std::to_string(equationIndex));
+        }
+    }
+
     // Map loop variable to iter
     // iter is already 0-based (0, 1, 2, ...) which matches ONNX array indexing
     // Even though Modelica uses 1-based indexing (for i in 1:3), the iter counter
@@ -797,10 +832,13 @@ size_t ONNXGenerator::generateForEquationLoop(
         }
     }
 
-    // Collect all variables referenced in the loop body and add them as loop inputs
-    // Note: ONNXRuntime requires symmetric I/O (body outputs must match loop inputs)
-    // even though the ONNX spec allows asymmetry
-    for (const auto& var : info.variables) {
+    // For top-level loops, add loop-carried dependencies for all variables
+    // For nested loops, skip this - variables are already in scope from parent loop
+    if (!isNested) {
+        // Collect all variables referenced in the loop body and add them as loop inputs
+        // Note: ONNXRuntime requires symmetric I/O (body outputs must match loop inputs)
+        // even though the ONNX spec allows asymmetry
+        for (const auto& var : info.variables) {
         if (!var.isDerivative && var.variability != "fixed") {
             // Add as loop input
             loopNode->add_input(var.name);
@@ -907,11 +945,122 @@ size_t ONNXGenerator::generateForEquationLoop(
             derivativeInputs[derName] = baseVar->dimensions;
         }
     }
+    }  // End if (!isNested)
 
     // Process each equation in the loop body
     int bodyNodeCounter = 0;
+    size_t scanOutputCount = 0;  // Track how many scan outputs we've created
+
     for (size_t eqIdx = 0; eqIdx < loopEquations.size(); eqIdx++) {
         auto* innerEq = loopEquations[eqIdx];
+
+        // Check if this is a nested for-equation
+        if (innerEq->forEquation()) {
+            std::cerr << "DEBUG: Processing nested for-equation in outer loop" << std::endl;
+
+            // Create an Equation wrapper for the nested for-loop
+            Equation nestedEq;
+            nestedEq.forEquationContext = innerEq->forEquation();
+            nestedEq.sourceFile = eq.sourceFile;
+            nestedEq.sourceLine = innerEq->getStart()->getLine();
+
+            // Create combined loop variable map for nested loop
+            // This includes the current loop's variable for the inner loop to access
+            std::map<std::string, std::string> combinedLoopVarMap;
+            if (parentLoopVarMap) {
+                // Include grandparent variables
+                combinedLoopVarMap = *parentLoopVarMap;
+            }
+            // Add current loop variable (maps to "iter" in current body)
+            combinedLoopVarMap[loopVar] = loopVarTensor;
+
+            // Recursively generate nested Loop node inside current loop body
+            size_t nestedOutputCount = generateForEquationLoop(
+                nestedEq,
+                prefix,
+                equationIndex + scanOutputCount,
+                info,
+                bodyGraph,  // Create nested loop in current body graph!
+                bodyNodeCounter,
+                derivativeInputs,
+                true,  // isNested = true
+                &combinedLoopVarMap  // Pass parent context
+            );
+
+            // The nested Loop node's outputs are available in the current body graph
+            // Connect the scan outputs from the nested loop to the outer loop's scan outputs
+            // The nested loop's outputs are at the end (after all the loop-carried dependencies)
+            // We need to find where the scan outputs start in the nested loop's output list
+
+            // Count how many loop-carried dependency outputs the nested loop has
+            // (these are the _final_X outputs before the scan outputs)
+            size_t nestedCarriedCount = 0;
+            for (const auto& var : info.variables) {
+                if (!var.isDerivative && var.variability != "fixed") {
+                    nestedCarriedCount++;
+                }
+            }
+            // Add derivatives used in nested loop
+            for (const auto& derName : requiredDerivatives) {
+                nestedCarriedCount++;
+            }
+
+            // Now connect each nested scan output
+            for (size_t i = 0; i < nestedOutputCount; i++) {
+                // The nested loop outputs eq[X] in its own context
+                // But we need to collect these in the outer loop with unique names
+                std::string nestedEqName = prefix + "[" + std::to_string(equationIndex + scanOutputCount + i) + "]";
+                std::string collectedOutputName = "collected_nested_" + std::to_string(scanOutputCount + i);
+
+                // The nested Loop node's scan outputs start after the carried dependencies
+                // But we can't directly reference them - we need to reference the Loop node outputs
+                // The nested loop already added these as outputs to its Loop node, but they're in bodyGraph
+
+                // Add as scan output of outer loop body
+                auto* scanOutput = bodyGraph->add_output();
+                scanOutput->set_name("scan_" + std::to_string(scanOutputCount + i));
+                auto* scanType = scanOutput->mutable_type()->mutable_tensor_type();
+                scanType->set_elem_type(onnx::TensorProto::DOUBLE);
+                // The inner loop outputs an array, so this scan output collects arrays
+                // Shape is [inner_trip_count] per iteration
+                auto* scanShape = scanType->mutable_shape();
+                // We don't know the inner trip count here, leave shape unspecified for now
+                // ONNXRuntime can infer it
+
+                // Identity to pass through the nested loop's scan output
+                auto* scanIdentity = bodyGraph->add_node();
+                scanIdentity->set_op_type("Identity");
+                scanIdentity->set_name("scan_identity_nested_" + std::to_string(scanOutputCount + i));
+                scanIdentity->add_input(nestedEqName);  // Input from inner loop's eq[X]
+                scanIdentity->add_output("scan_" + std::to_string(scanOutputCount + i));
+
+                // Add this scan output to the outer loop node with collected name
+                loopNode->add_output(collectedOutputName);
+
+                // Only add to main graph outputs if we're at top level (not nested ourselves)
+                // Map the collected output to the final equation name
+                if (!isNested) {
+                    // Add Identity node in main graph to rename collected output to eq[X]
+                    auto* renameNode = graph->add_node();
+                    renameNode->set_op_type("Identity");
+                    renameNode->set_name("rename_collected_" + std::to_string(scanOutputCount + i));
+                    renameNode->add_input(collectedOutputName);
+                    renameNode->add_output(nestedEqName);
+
+                    auto* graphOutput = graph->add_output();
+                    graphOutput->set_name(nestedEqName);
+                    auto* graphOutputType = graphOutput->mutable_type()->mutable_tensor_type();
+                    graphOutputType->set_elem_type(onnx::TensorProto::DOUBLE);
+                    // Multi-dimensional shape from nested loops [outer_dim, inner_dim]
+                    // Leave shape unspecified for now - ONNXRuntime can infer it
+                    graphOutputType->mutable_shape();
+                }
+            }
+
+            scanOutputCount += nestedOutputCount;
+            continue;
+        }
+
         auto simpleExpr = innerEq->simpleExpression();
         auto fullExpr = innerEq->expression();
 
@@ -921,8 +1070,15 @@ size_t ONNXGenerator::generateForEquationLoop(
         }
 
         // Create variable map for loop variable substitution
-        // Loop variable maps to loopVarTensor which is computed in the body
+        // Start with parent loop variables if we're nested
         std::map<std::string, std::string> loopVarMap;
+        if (parentLoopVarMap) {
+            // Include parent loop variables with their parent_ prefixed names
+            for (const auto& [varName, tensorName] : *parentLoopVarMap) {
+                loopVarMap[varName] = "parent_" + varName;
+            }
+        }
+        // Add current loop variable
         loopVarMap[loopVar] = loopVarTensor;
 
         // Convert LHS and RHS with loop variable substitution
@@ -937,17 +1093,17 @@ size_t ONNXGenerator::generateForEquationLoop(
         }
 
         // Compute residual: LHS - RHS
-        std::string residualTensor = "residual_" + std::to_string(eqIdx);
+        std::string residualTensor = "residual_" + std::to_string(scanOutputCount);
         auto* subNode = bodyGraph->add_node();
         subNode->set_op_type("Sub");
-        subNode->set_name("residual_" + std::to_string(eqIdx));
+        subNode->set_name("residual_" + std::to_string(scanOutputCount));
         subNode->add_input(lhsTensor);
         subNode->add_input(rhsTensor);
         subNode->add_output(residualTensor);
 
         // Add as scan output
         auto* scanOutput = bodyGraph->add_output();
-        scanOutput->set_name("scan_" + std::to_string(eqIdx));
+        scanOutput->set_name("scan_" + std::to_string(scanOutputCount));
         auto* scanType = scanOutput->mutable_type()->mutable_tensor_type();
         scanType->set_elem_type(onnx::TensorProto::DOUBLE);
         // Scan outputs are scalars (one residual per iteration)
@@ -956,25 +1112,29 @@ size_t ONNXGenerator::generateForEquationLoop(
         // Identity to connect residual to scan output
         auto* scanIdentity = bodyGraph->add_node();
         scanIdentity->set_op_type("Identity");
-        scanIdentity->set_name("scan_identity_" + std::to_string(eqIdx));
+        scanIdentity->set_name("scan_identity_" + std::to_string(scanOutputCount));
         scanIdentity->add_input(residualTensor);
-        scanIdentity->add_output("scan_" + std::to_string(eqIdx));
+        scanIdentity->add_output("scan_" + std::to_string(scanOutputCount));
 
         // Add scan output to loop node
-        std::string loopOutputName = prefix + "[" + std::to_string(equationIndex + eqIdx) + "]";
+        std::string loopOutputName = prefix + "[" + std::to_string(equationIndex + scanOutputCount) + "]";
         loopNode->add_output(loopOutputName);
 
-        // Add to graph outputs
-        auto* graphOutput = graph->add_output();
-        graphOutput->set_name(loopOutputName);
-        auto* graphOutputType = graphOutput->mutable_type()->mutable_tensor_type();
-        graphOutputType->set_elem_type(onnx::TensorProto::DOUBLE);
-        auto* graphOutputShape = graphOutputType->mutable_shape();
-        graphOutputShape->add_dim()->set_dim_value(tripCount);  // Array of residuals
+        // Add to graph outputs (only if this is a top-level loop, not nested)
+        if (!isNested) {
+            auto* graphOutput = graph->add_output();
+            graphOutput->set_name(loopOutputName);
+            auto* graphOutputType = graphOutput->mutable_type()->mutable_tensor_type();
+            graphOutputType->set_elem_type(onnx::TensorProto::DOUBLE);
+            auto* graphOutputShape = graphOutputType->mutable_shape();
+            graphOutputShape->add_dim()->set_dim_value(tripCount);  // Array of residuals
+        }
+
+        scanOutputCount++;
     }
 
-    std::cerr << "DEBUG: For-equation Loop node created with " << loopEquations.size() << " scan outputs" << std::endl;
-    return loopEquations.size();
+    std::cerr << "DEBUG: For-equation Loop node created with " << scanOutputCount << " scan outputs" << std::endl;
+    return scanOutputCount;
 }
 
 void ONNXGenerator::createFunctionProto(
