@@ -1,1 +1,2 @@
+onnx_validate_LogicalOps 0 0
 ---

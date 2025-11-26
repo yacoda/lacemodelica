@@ -1,0 +1,144 @@
+Start testing: Nov 25 17:22 CET
+----------------------------------------------------------
+92/100 Testing: onnx_validate_LogicalOps
+92/100 Test: onnx_validate_LogicalOps
+Command: "/home/yacoda/miniconda3/envs/py311/bin/python3.11" "-c" "
+import sys
+sys.path.insert(0, '/home/yacoda/programs/lacemodelica/test')
+from test_onnx_runtime import parse_onnx_test_from_bmo, convert_float64_to_float32, Path
+import onnxruntime as ort
+import onnx
+import numpy as np
+
+# Parse .bmo file
+bmo_path = Path('/home/yacoda/programs/lacemodelica/test/testfiles/LogicalOps.bmo')
+ref_impl, test_cases = parse_onnx_test_from_bmo(bmo_path)
+
+if not ref_impl or not test_cases:
+    print(f'No reference found in {bmo_path}')
+    sys.exit(1)
+
+# Load ONNX model and convert float64 to float32 for compatibility
+onnx_path = Path('/home/yacoda/programs/lacemodelica/test/output/LogicalOps_fmu/extra/org.lacemodelica.ls-onnx-serialization/model.onnx')
+if not onnx_path.exists():
+    print(f'ONNX file not found: {onnx_path}')
+    sys.exit(1)
+
+model = onnx.load(str(onnx_path))
+model = convert_float64_to_float32(model)
+session = ort.InferenceSession(model.SerializeToString())
+input_names = [inp.name for inp in session.get_inputs()]
+output_names = [out.name for out in session.get_outputs()]
+
+# Debug: Print ONNX graph structure
+import onnx
+model = onnx.load(str(onnx_path))
+print(f'\n=== ONNX Model for LogicalOps ===')
+print(f'Inputs: {input_names}')
+print(f'Outputs: {output_names}')
+print(f'\nGraph nodes:')
+for i, node in enumerate(model.graph.node):
+    print(f'  {i}: {node.op_type} ({node.name})')
+    print(f'      inputs: {list(node.input)}')
+    print(f'      outputs: {list(node.output)}')
+print('\n')
+
+# Get input shapes from model
+input_shapes = {}
+for inp in session.get_inputs():
+    input_shapes[inp.name] = [d if isinstance(d, int) else 1 for d in inp.shape]
+
+# Run all test cases
+passed = True
+for i, test_case in enumerate(test_cases, 1):
+    onnx_inputs = {}
+    for k, v in test_case.items():
+        if k not in input_names:
+            continue
+        # Convert to appropriate dtype - bool stays bool, others become float32
+        if v.dtype == np.bool_:
+            onnx_inputs[k] = v
+        else:
+            onnx_inputs[k] = v.astype(np.float32)
+    onnx_outputs = session.run(output_names, onnx_inputs)
+    onnx_results = dict(zip(output_names, onnx_outputs))
+    ref_results = ref_impl(test_case)
+
+    for name in output_names:
+        if name in ref_results:
+            onnx_val = np.array(onnx_results[name])
+            ref_val = np.array(ref_results[name])
+
+            # Check shapes match
+            if onnx_val.shape != ref_val.shape:
+                print(f'Test {i} FAILED: {name}: shape mismatch ONNX={onnx_val.shape} vs Ref={ref_val.shape}')
+                passed = False
+                continue
+
+            # Compare values (use 1e-4 tolerance to account for float32 precision loss)
+            diff = np.abs(onnx_val - ref_val)
+            max_diff = np.max(diff) if diff.size > 0 else abs(diff)
+            if max_diff >= 1e-4:
+                print(f'Test {i} FAILED: {name}: max diff={max_diff:.2e}, shapes={onnx_val.shape}')
+                passed = False
+
+if passed:
+    print('All tests passed')
+    sys.exit(0)
+else:
+    sys.exit(1)
+"
+Directory: /home/yacoda/programs/lacemodelica
+"onnx_validate_LogicalOps" start time: Nov 25 17:22 CET
+Output:
+----------------------------------------------------------
+Traceback (most recent call last):
+  File "<string>", line 75, in <module>
+TypeError: numpy boolean subtract, the `-` operator, is not supported, use the bitwise_xor, the `^` operator, or the logical_xor function instead.
+
+=== ONNX Model for LogicalOps ===
+Inputs: ['x', 'y', 'inRange', 'isPositive', 'control', "der('x')", "der('y')"]
+Outputs: ['eq[0]', 'eq[1]', 'eq[2]', 'eq[3]', 'eq[4]']
+
+Graph nodes:
+  0: Sub (eq_residual_0)
+      inputs: ["der('x')", 'const_0']
+      outputs: ['eq[0]']
+  1: Mul (Mul_3)
+      inputs: ['const_1', 'y']
+      outputs: ['tensor_2']
+  2: Neg (Neg_4)
+      inputs: ['tensor_2']
+      outputs: ['tensor_3']
+  3: Sub (eq_residual_1)
+      inputs: ["der('y')", 'tensor_3']
+      outputs: ['eq[1]']
+  4: GreaterOrEqual (GreaterOrEqual_6)
+      inputs: ['x', 'const_4']
+      outputs: ['tensor_5']
+  5: Equal (eq_residual_2)
+      inputs: ['inRange', 'tensor_5']
+      outputs: ['eq[2]']
+  6: Greater (Greater_8)
+      inputs: ['y', 'const_6']
+      outputs: ['tensor_7']
+  7: Equal (eq_residual_3)
+      inputs: ['isPositive', 'tensor_7']
+      outputs: ['eq[3]']
+  8: If (If_11)
+      inputs: ['inRange']
+      outputs: ['tensor_10']
+  9: Sub (eq_residual_4)
+      inputs: ['control', 'tensor_10']
+      outputs: ['eq[4]']
+
+
+<end of output>
+Test time =   0.20 sec
+----------------------------------------------------------
+Test Failed.
+"onnx_validate_LogicalOps" end time: Nov 25 17:22 CET
+"onnx_validate_LogicalOps" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Nov 25 17:22 CET

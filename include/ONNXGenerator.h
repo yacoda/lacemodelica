@@ -35,6 +35,18 @@ private:
         std::map<std::string, std::vector<std::string>>& derivativeInputs
     );
 
+    // Generate ONNX Loop node for a for-equation
+    // Returns the number of equation outputs generated
+    static size_t generateForEquationLoop(
+        const Equation& eq,
+        const std::string& prefix,
+        size_t equationIndex,
+        const ModelInfo& info,
+        onnx::GraphProto* graph,
+        int& nodeCounter,
+        std::map<std::string, std::vector<std::string>>& derivativeInputs
+    );
+
     // Create ONNX FunctionProto for a function with algorithm
     static void createFunctionProto(
         const Function& func,

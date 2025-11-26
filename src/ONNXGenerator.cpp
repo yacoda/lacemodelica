@@ -459,8 +459,16 @@ void ONNXGenerator::generateEquationOutputs(
 
     std::cerr << "DEBUG: generateEquationOutputs called with " << equations.size() << " " << prefix << " equations" << std::endl;
 
+    size_t equationOutputIndex = 0;  // Track equation output index separately from loop index
     for (size_t i = 0; i < equations.size(); i++) {
         const auto& eq = equations[i];
+
+        // Check if this is a for-equation
+        if (eq.isForEquation()) {
+            size_t numOutputs = generateForEquationLoop(eq, prefix, equationOutputIndex, info, graph, nodeCounter, derivativeInputs);
+            equationOutputIndex += numOutputs;
+            continue;
+        }
 
         // Debug: Check if this equation contains tan
         std::string rhsText = eq.rhsContext ? eq.rhsContext->getText() : "";
@@ -564,13 +572,14 @@ void ONNXGenerator::generateEquationOutputs(
             }
         } catch (const std::exception& e) {
             // Skip equations that fail to convert
-            std::cerr << "Warning: Skipping equation " << prefix << "[" << i << "] due to conversion error" << std::endl;
+            std::cerr << "Warning: Skipping equation " << prefix << "[" << equationOutputIndex << "] due to conversion error" << std::endl;
+            equationOutputIndex++;
             continue;
         }
 
         // Create equation residual: LHS - RHS (or LHS == RHS for booleans)
         // For numerical evaluation, we want the residual (should be zero when equation is satisfied)
-        std::string eqOutputName = prefix + "[" + std::to_string(i) + "]";
+        std::string eqOutputName = prefix + "[" + std::to_string(equationOutputIndex) + "]";
 
         // Check if LHS is a boolean variable
         std::string lhsText = eq.lhsContext->getText();
@@ -622,6 +631,8 @@ void ONNXGenerator::generateEquationOutputs(
             meta_line->set_key("source_line");
             meta_line->set_value(std::to_string(eq.sourceLine));
         }
+
+        equationOutputIndex++;
     }
 }
 
@@ -644,6 +655,326 @@ static std::string ensureTensorName(
     identityNode->add_output(desiredName);
 
     return desiredName;
+}
+
+size_t ONNXGenerator::generateForEquationLoop(
+    const Equation& eq,
+    const std::string& prefix,
+    size_t equationIndex,
+    const ModelInfo& info,
+    onnx::GraphProto* graph,
+    int& nodeCounter,
+    std::map<std::string, std::vector<std::string>>& derivativeInputs) {
+
+    auto* forEqCtx = dynamic_cast<basemodelica::BaseModelicaParser::ForEquationContext*>(eq.forEquationContext);
+    if (!forEqCtx) {
+        throw std::runtime_error("Invalid for-equation context");
+    }
+
+    // Extract loop variable and range
+    auto forIndex = forEqCtx->forIndex();
+    std::string loopVar = forIndex->IDENT()->getText();
+    std::string rangeText = forIndex->expression()->getText();
+
+    // Parse range (assuming format "start:end")
+    int startVal, endVal;
+    size_t colonPos = rangeText.find(':');
+    if (colonPos == std::string::npos) {
+        throw std::runtime_error("For-equation range must be in format start:end");
+    }
+    try {
+        startVal = std::stoi(rangeText.substr(0, colonPos));
+        endVal = std::stoi(rangeText.substr(colonPos + 1));
+    } catch (...) {
+        throw std::runtime_error("For-equation range must contain constant integers");
+    }
+
+    int tripCount = endVal - startVal + 1;
+    std::cerr << "DEBUG: For-equation loop var=" << loopVar << " range=" << startVal << ":" << endVal << " trip_count=" << tripCount << std::endl;
+
+    // Get equations inside the loop
+    auto loopEquations = forEqCtx->equation();
+    std::cerr << "DEBUG: For-equation contains " << loopEquations.size() << " inner equations" << std::endl;
+
+    // Create trip count constant
+    std::string tripCountTensor = "trip_count_" + std::to_string(nodeCounter++);
+    auto* tripCountNode = graph->add_node();
+    tripCountNode->set_op_type("Constant");
+    tripCountNode->set_name(tripCountTensor);
+    tripCountNode->add_output(tripCountTensor);
+    auto* tripCountAttr = tripCountNode->add_attribute();
+    tripCountAttr->set_name("value");
+    tripCountAttr->set_type(onnx::AttributeProto::TENSOR);
+    auto* tripCountTensorProto = tripCountAttr->mutable_t();
+    tripCountTensorProto->set_data_type(onnx::TensorProto::INT64);
+    tripCountTensorProto->add_int64_data(tripCount);
+
+    // Create empty condition tensor (unconditional loop)
+    std::string condTensor = "loop_cond_" + std::to_string(nodeCounter++);
+    auto* condNode = graph->add_node();
+    condNode->set_op_type("Constant");
+    condNode->set_name(condTensor);
+    condNode->add_output(condTensor);
+    auto* condAttr = condNode->add_attribute();
+    condAttr->set_name("value");
+    condAttr->set_type(onnx::AttributeProto::TENSOR);
+    auto* condTensorProto = condAttr->mutable_t();
+    condTensorProto->set_data_type(onnx::TensorProto::BOOL);
+    condTensorProto->add_int32_data(1);  // true
+
+    // Create Loop node
+    auto* loopNode = graph->add_node();
+    loopNode->set_op_type("Loop");
+    loopNode->set_name("for_loop_" + std::to_string(nodeCounter++));
+    loopNode->add_input(tripCountTensor);
+    loopNode->add_input(condTensor);
+
+    // Create loop body subgraph
+    auto* bodyAttr = loopNode->add_attribute();
+    bodyAttr->set_name("body");
+    bodyAttr->set_type(onnx::AttributeProto::GRAPH);
+    auto* bodyGraph = bodyAttr->mutable_g();
+    bodyGraph->set_name("loop_body_" + std::to_string(nodeCounter++));
+
+    // Loop body inputs: iteration number, condition
+    auto* iterInput = bodyGraph->add_input();
+    iterInput->set_name("iter");
+    auto* iterType = iterInput->mutable_type()->mutable_tensor_type();
+    iterType->set_elem_type(onnx::TensorProto::INT64);
+    // Scalar shape (empty dimensions)
+    iterType->mutable_shape();
+
+    auto* condInput = bodyGraph->add_input();
+    condInput->set_name("cond_in");
+    auto* condInputType = condInput->mutable_type()->mutable_tensor_type();
+    condInputType->set_elem_type(onnx::TensorProto::BOOL);
+    // Scalar shape (empty dimensions)
+    condInputType->mutable_shape();
+
+    // Loop body outputs: condition (pass-through)
+    auto* condOutput = bodyGraph->add_output();
+    condOutput->set_name("cond_out");
+    auto* condOutputType = condOutput->mutable_type()->mutable_tensor_type();
+    condOutputType->set_elem_type(onnx::TensorProto::BOOL);
+    // Scalar shape (empty dimensions)
+    condOutputType->mutable_shape();
+
+    // Identity node to pass condition through
+    auto* condIdentity = bodyGraph->add_node();
+    condIdentity->set_op_type("Identity");
+    condIdentity->set_name("cond_passthrough");
+    condIdentity->add_input("cond_in");
+    condIdentity->add_output("cond_out");
+
+    // Map loop variable to iter
+    // iter is already 0-based (0, 1, 2, ...) which matches ONNX array indexing
+    // Even though Modelica uses 1-based indexing (for i in 1:3), the iter counter
+    // goes 0, 1, 2, and ONNX arrays are also 0-indexed, so we can use iter directly
+    std::string loopVarTensor = "iter";
+
+    // Pre-scan equations to discover which derivatives are needed
+    // We need to know this before building the loop body
+    std::set<std::string> requiredDerivatives;
+    for (auto* innerEq : loopEquations) {
+        std::string eqText = innerEq->getText();
+        size_t pos = 0;
+        while ((pos = eqText.find("der(", pos)) != std::string::npos) {
+            size_t start = pos + 4;
+            size_t end = eqText.find(")", start);
+            if (end != std::string::npos) {
+                std::string derArg = eqText.substr(start, end - start);
+                // Parse out the base variable (handle both der('x') and der('x'[i]))
+                size_t bracketPos = derArg.find('[');
+                std::string baseVar = (bracketPos != std::string::npos) ? derArg.substr(0, bracketPos) : derArg;
+                // Strip quotes
+                if (baseVar.size() >= 2 && baseVar.front() == '\'' && baseVar.back() == '\'') {
+                    baseVar = baseVar.substr(1, baseVar.size() - 2);
+                }
+                std::string derName = "der('" + baseVar + "')";
+                requiredDerivatives.insert(derName);
+            }
+            pos = end;
+        }
+    }
+
+    // Collect all variables referenced in the loop body and add them as loop inputs
+    // Note: ONNXRuntime requires symmetric I/O (body outputs must match loop inputs)
+    // even though the ONNX spec allows asymmetry
+    for (const auto& var : info.variables) {
+        if (!var.isDerivative && var.variability != "fixed") {
+            // Add as loop input
+            loopNode->add_input(var.name);
+
+            // Add as body input
+            auto* bodyInput = bodyGraph->add_input();
+            bodyInput->set_name(var.name);
+            auto* inputType = bodyInput->mutable_type()->mutable_tensor_type();
+            inputType->set_elem_type(onnx::TensorProto::DOUBLE);
+            auto* inputShape = inputType->mutable_shape();
+            for (const auto& dim : var.dimensions) {
+                auto* shapeDim = inputShape->add_dim();
+                try {
+                    shapeDim->set_dim_value(std::stoi(dim));
+                } catch (...) {
+                    shapeDim->set_dim_param(dim);
+                }
+            }
+
+            // Add as body output (passthrough for ONNXRuntime compatibility)
+            auto* bodyOutput = bodyGraph->add_output();
+            bodyOutput->set_name(var.name + "_out");
+            auto* outputType = bodyOutput->mutable_type()->mutable_tensor_type();
+            outputType->set_elem_type(onnx::TensorProto::DOUBLE);
+            auto* outputShape = outputType->mutable_shape();
+            for (const auto& dim : var.dimensions) {
+                auto* shapeDim = outputShape->add_dim();
+                try {
+                    shapeDim->set_dim_value(std::stoi(dim));
+                } catch (...) {
+                    shapeDim->set_dim_param(dim);
+                }
+            }
+
+            // Identity node for passthrough
+            auto* identity = bodyGraph->add_node();
+            identity->set_op_type("Identity");
+            identity->set_name(var.name + "_passthrough");
+            identity->add_input(var.name);
+            identity->add_output(var.name + "_out");
+
+            // Add as loop output (final value, though we don't use it)
+            loopNode->add_output(var.name + "_final");
+        }
+    }
+
+    // Add pre-discovered derivatives as inputs
+    for (const std::string& derName : requiredDerivatives) {
+        // Find the base variable to get dimensions
+        size_t start = derName.find("'") + 1;
+        size_t end = derName.rfind("'");
+        std::string baseVarName = derName.substr(start, end - start);
+        const Variable* baseVar = info.findVariable(baseVarName);
+
+        // Add to loop inputs
+        loopNode->add_input(derName);
+
+        // Add to body inputs
+        auto* bodyInput = bodyGraph->add_input();
+        bodyInput->set_name(derName);
+        auto* inputType = bodyInput->mutable_type()->mutable_tensor_type();
+        inputType->set_elem_type(onnx::TensorProto::DOUBLE);
+        auto* inputShape = inputType->mutable_shape();
+        if (baseVar) {
+            for (const auto& dim : baseVar->dimensions) {
+                auto* shapeDim = inputShape->add_dim();
+                try {
+                    shapeDim->set_dim_value(std::stoi(dim));
+                } catch (...) {
+                    shapeDim->set_dim_param(dim);
+                }
+            }
+        }
+
+        // Add to body outputs (passthrough for ONNXRuntime compatibility)
+        auto* bodyOutput = bodyGraph->add_output();
+        bodyOutput->set_name(derName + "_out");
+        auto* outputType = bodyOutput->mutable_type()->mutable_tensor_type();
+        outputType->set_elem_type(onnx::TensorProto::DOUBLE);
+        auto* outputShape = outputType->mutable_shape();
+        if (baseVar) {
+            for (const auto& dim : baseVar->dimensions) {
+                auto* shapeDim = outputShape->add_dim();
+                try {
+                    shapeDim->set_dim_value(std::stoi(dim));
+                } catch (...) {
+                    shapeDim->set_dim_param(dim);
+                }
+            }
+        }
+
+        // Identity node for passthrough
+        auto* identity = bodyGraph->add_node();
+        identity->set_op_type("Identity");
+        identity->set_name(derName + "_passthrough");
+        identity->add_input(derName);
+        identity->add_output(derName + "_out");
+
+        // Add as loop output (final value, though we don't use it)
+        loopNode->add_output(derName + "_final");
+
+        // Also add to derivativeInputs map for later reference
+        if (baseVar) {
+            derivativeInputs[derName] = baseVar->dimensions;
+        }
+    }
+
+    // Process each equation in the loop body
+    int bodyNodeCounter = 0;
+    for (size_t eqIdx = 0; eqIdx < loopEquations.size(); eqIdx++) {
+        auto* innerEq = loopEquations[eqIdx];
+        auto simpleExpr = innerEq->simpleExpression();
+        auto fullExpr = innerEq->expression();
+
+        if (!simpleExpr || !fullExpr) {
+            std::cerr << "Warning: Skipping non-simple equation in for-loop" << std::endl;
+            continue;
+        }
+
+        // Create variable map for loop variable substitution
+        // Loop variable maps to loopVarTensor which is computed in the body
+        std::map<std::string, std::string> loopVarMap;
+        loopVarMap[loopVar] = loopVarTensor;
+
+        // Convert LHS and RHS with loop variable substitution
+        std::string lhsTensor, rhsTensor;
+        try {
+            // For body graph, we need to use variable names with "_in" suffix
+            lhsTensor = convertExpression(simpleExpr, info, bodyGraph, bodyNodeCounter, &loopVarMap, &derivativeInputs);
+            rhsTensor = convertExpression(fullExpr, info, bodyGraph, bodyNodeCounter, &loopVarMap, &derivativeInputs);
+        } catch (const std::exception& e) {
+            std::cerr << "Warning: Failed to convert equation " << eqIdx << " in for-loop: " << e.what() << std::endl;
+            continue;
+        }
+
+        // Compute residual: LHS - RHS
+        std::string residualTensor = "residual_" + std::to_string(eqIdx);
+        auto* subNode = bodyGraph->add_node();
+        subNode->set_op_type("Sub");
+        subNode->set_name("residual_" + std::to_string(eqIdx));
+        subNode->add_input(lhsTensor);
+        subNode->add_input(rhsTensor);
+        subNode->add_output(residualTensor);
+
+        // Add as scan output
+        auto* scanOutput = bodyGraph->add_output();
+        scanOutput->set_name("scan_" + std::to_string(eqIdx));
+        auto* scanType = scanOutput->mutable_type()->mutable_tensor_type();
+        scanType->set_elem_type(onnx::TensorProto::DOUBLE);
+        // Scan outputs are scalars (one residual per iteration)
+        scanType->mutable_shape();
+
+        // Identity to connect residual to scan output
+        auto* scanIdentity = bodyGraph->add_node();
+        scanIdentity->set_op_type("Identity");
+        scanIdentity->set_name("scan_identity_" + std::to_string(eqIdx));
+        scanIdentity->add_input(residualTensor);
+        scanIdentity->add_output("scan_" + std::to_string(eqIdx));
+
+        // Add scan output to loop node
+        std::string loopOutputName = prefix + "[" + std::to_string(equationIndex + eqIdx) + "]";
+        loopNode->add_output(loopOutputName);
+
+        // Add to graph outputs
+        auto* graphOutput = graph->add_output();
+        graphOutput->set_name(loopOutputName);
+        auto* graphOutputType = graphOutput->mutable_type()->mutable_tensor_type();
+        graphOutputType->set_elem_type(onnx::TensorProto::DOUBLE);
+        auto* graphOutputShape = graphOutputType->mutable_shape();
+        graphOutputShape->add_dim()->set_dim_value(tripCount);  // Array of residuals
+    }
+
+    std::cerr << "DEBUG: For-equation Loop node created with " << loopEquations.size() << " scan outputs" << std::endl;
+    return loopEquations.size();
 }
 
 void ONNXGenerator::createFunctionProto(
@@ -1405,16 +1736,42 @@ std::string ONNXGenerator::convertPrimary(
                         }
 
                         std::string indexExpr = subExpr->getText();
+
+                        // Check if this is a loop variable (variable tensor, not constant)
+                        if (variableMap && variableMap->count(indexExpr) > 0) {
+                            // Dynamic indexing with loop variable - use Gather
+                            // The loop variable is already 0-based (maps to iter), so use directly
+                            std::string indexTensor = variableMap->at(indexExpr);
+
+                            // Use Gather to index into der('x') array
+                            auto* gatherNode = graph->add_node();
+                            std::string outputTensor = "tensor_" + std::to_string(nodeCounter++);
+                            gatherNode->set_op_type("Gather");
+                            gatherNode->set_name("Gather_" + std::to_string(nodeCounter));
+                            gatherNode->add_input(baseTensor);
+                            gatherNode->add_input(indexTensor);
+                            gatherNode->add_output(outputTensor);
+
+                            // Set axis attribute (axis=0 for first dimension)
+                            auto* axisAttr = gatherNode->add_attribute();
+                            axisAttr->set_name("axis");
+                            axisAttr->set_type(onnx::AttributeProto::INT);
+                            axisAttr->set_i(0);
+
+                            return outputTensor;
+                        }
+
+                        // Static indexing with constant
                         try {
                             int modelicaIndex = std::stoi(indexExpr);
                             int onnxIndex = modelicaIndex - 1;  // Convert to 0-based
                             indices.push_back(onnxIndex);
                         } catch (const std::exception& e) {
-                            throw std::runtime_error("Array subscript in der() must be constant integer, got: " + indexExpr);
+                            throw std::runtime_error("Array subscript in der() must be constant integer or loop variable, got: " + indexExpr);
                         }
                     }
 
-                    // Create a Constant node for the indices tensor
+                    // Create a Constant node for the indices tensor (static indexing)
                     auto* constNode = graph->add_node();
                     std::string indexTensor = "const_" + std::to_string(nodeCounter++);
                     constNode->set_op_type("Constant");
@@ -1620,8 +1977,32 @@ std::string ONNXGenerator::convertPrimary(
                 throw std::runtime_error("Invalid array subscript");
             }
 
-            // Convert the subscript expression (should yield a constant)
+            // Convert the subscript expression (should yield a constant or loop variable)
             std::string indexExpr = subExpr->getText();
+
+            // Check if this is a loop variable (variable tensor, not constant)
+            if (variableMap && variableMap->count(indexExpr) > 0) {
+                // Dynamic indexing with loop variable - use Gather
+                // The loop variable is already 0-based (maps to iter), so use directly
+                std::string indexTensor = variableMap->at(indexExpr);
+
+                // Use Gather to index into array
+                auto* gatherNode = graph->add_node();
+                std::string outputTensor = "tensor_" + std::to_string(nodeCounter++);
+                gatherNode->set_op_type("Gather");
+                gatherNode->set_name("Gather_" + std::to_string(nodeCounter));
+                gatherNode->add_input(baseTensor);
+                gatherNode->add_input(indexTensor);
+                gatherNode->add_output(outputTensor);
+
+                // Set axis attribute (axis=0 for first dimension)
+                auto* axisAttr = gatherNode->add_attribute();
+                axisAttr->set_name("axis");
+                axisAttr->set_type(onnx::AttributeProto::INT);
+                axisAttr->set_i(0);
+
+                return outputTensor;
+            }
 
             // Try to parse as integer constant (Modelica uses 1-based indexing)
             try {
@@ -1629,11 +2010,11 @@ std::string ONNXGenerator::convertPrimary(
                 int onnxIndex = modelicaIndex - 1;  // Convert to 0-based
                 indices.push_back(onnxIndex);
             } catch (const std::exception& e) {
-                throw std::runtime_error("Array subscript must be constant integer, got: " + indexExpr);
+                throw std::runtime_error("Array subscript must be constant integer or loop variable, got: " + indexExpr);
             }
         }
 
-        // Create a Constant node for the indices tensor
+        // Create a Constant node for the indices tensor (static indexing)
         auto* constNode = graph->add_node();
         std::string indexTensor = "const_" + std::to_string(nodeCounter++);
         constNode->set_op_type("Constant");

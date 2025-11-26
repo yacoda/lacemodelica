@@ -295,8 +295,29 @@ void ModelInfoExtractor::processEquation(basemodelica::BaseModelicaParser::Equat
                                  std::to_string(equation->getStart()->getLine()) + ")");
     }
     if (equation->forEquation()) {
-        throw std::runtime_error("For-equations are not supported (" + sourceFile + ":" +
-                                 std::to_string(equation->getStart()->getLine()) + ")");
+        // Store the for-equation context for later ONNX generation
+        Equation eq;
+        eq.forEquationContext = equation->forEquation();
+        eq.sourceFile = sourceFile;
+        eq.sourceLine = equation->getStart()->getLine();
+        if (equation->comment()) {
+            eq.comment = extractDescription(equation->comment());
+        }
+        target.push_back(eq);
+
+        // Scan for der() calls in the loop body
+        std::string eqText = equation->getText();
+        size_t pos = 0;
+        while ((pos = eqText.find("der(", pos)) != std::string::npos) {
+            size_t start = pos + 4;
+            size_t end = eqText.find(")", start);
+            if (end != std::string::npos) {
+                std::string varName = eqText.substr(start, end - start);
+                derivativeCalls.insert(varName);
+            }
+            pos = end;
+        }
+        return;
     }
     if (equation->whenEquation()) {
         throw std::runtime_error("When-equations are not supported (" + sourceFile + ":" +

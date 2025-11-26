@@ -24,6 +24,9 @@ struct Equation {
     size_t sourceLine = 0;  // Source line number for debugging
     antlr4::ParserRuleContext* lhsContext = nullptr;  // AST node for LHS
     antlr4::ParserRuleContext* rhsContext = nullptr;  // AST node for RHS
+    antlr4::ParserRuleContext* forEquationContext = nullptr;  // AST node for for-equation (if this is a for-equation)
+
+    bool isForEquation() const { return forEquationContext != nullptr; }
 };
 
 struct Variable {
