@@ -64,7 +64,8 @@ private:
         onnx::GraphProto* graph,
         int& nodeCounter,
         const std::map<std::string, std::string>* variableMap = nullptr,
-        std::map<std::string, std::vector<std::string>>* derivativeInputs = nullptr
+        std::map<std::string, std::vector<std::string>>* derivativeInputs = nullptr,
+        const std::string& tensorPrefix = ""
     );
 
     static std::string convertSimpleExpression(
@@ -73,7 +74,8 @@ private:
         onnx::GraphProto* graph,
         int& nodeCounter,
         const std::map<std::string, std::string>* variableMap = nullptr,
-        std::map<std::string, std::vector<std::string>>* derivativeInputs = nullptr
+        std::map<std::string, std::vector<std::string>>* derivativeInputs = nullptr,
+        const std::string& tensorPrefix = ""
     );
 
     static std::string convertIfExpression(
@@ -82,7 +84,8 @@ private:
         onnx::GraphProto* graph,
         int& nodeCounter,
         const std::map<std::string, std::string>* variableMap = nullptr,
-        std::map<std::string, std::vector<std::string>>* derivativeInputs = nullptr
+        std::map<std::string, std::vector<std::string>>* derivativeInputs = nullptr,
+        const std::string& tensorPrefix = ""
     );
 
     static std::string convertRelation(
@@ -91,7 +94,8 @@ private:
         onnx::GraphProto* graph,
         int& nodeCounter,
         const std::map<std::string, std::string>* variableMap = nullptr,
-        std::map<std::string, std::vector<std::string>>* derivativeInputs = nullptr
+        std::map<std::string, std::vector<std::string>>* derivativeInputs = nullptr,
+        const std::string& tensorPrefix = ""
     );
 
     static std::string convertArithmeticExpression(
@@ -100,7 +104,8 @@ private:
         onnx::GraphProto* graph,
         int& nodeCounter,
         const std::map<std::string, std::string>* variableMap = nullptr,
-        std::map<std::string, std::vector<std::string>>* derivativeInputs = nullptr
+        std::map<std::string, std::vector<std::string>>* derivativeInputs = nullptr,
+        const std::string& tensorPrefix = ""
     );
 
     static std::string convertTerm(
@@ -109,7 +114,8 @@ private:
         onnx::GraphProto* graph,
         int& nodeCounter,
         const std::map<std::string, std::string>* variableMap = nullptr,
-        std::map<std::string, std::vector<std::string>>* derivativeInputs = nullptr
+        std::map<std::string, std::vector<std::string>>* derivativeInputs = nullptr,
+        const std::string& tensorPrefix = ""
     );
 
     static std::string convertFactor(
@@ -118,7 +124,8 @@ private:
         onnx::GraphProto* graph,
         int& nodeCounter,
         const std::map<std::string, std::string>* variableMap = nullptr,
-        std::map<std::string, std::vector<std::string>>* derivativeInputs = nullptr
+        std::map<std::string, std::vector<std::string>>* derivativeInputs = nullptr,
+        const std::string& tensorPrefix = ""
     );
 
     static std::string convertPrimary(
@@ -127,7 +134,8 @@ private:
         onnx::GraphProto* graph,
         int& nodeCounter,
         const std::map<std::string, std::string>* variableMap = nullptr,
-        std::map<std::string, std::vector<std::string>>* derivativeInputs = nullptr
+        std::map<std::string, std::vector<std::string>>* derivativeInputs = nullptr,
+        const std::string& tensorPrefix = ""
     );
 
     // Convert multi-output function call

@@ -728,7 +728,8 @@ size_t ONNXGenerator::generateForEquationLoop(
     // Create Loop node
     auto* loopNode = graph->add_node();
     loopNode->set_op_type("Loop");
-    loopNode->set_name("for_loop_" + std::to_string(nodeCounter++));
+    std::string loopNodeName = "for_loop_" + std::to_string(nodeCounter++);
+    loopNode->set_name(loopNodeName);
     loopNode->add_input(tripCountTensor);
     loopNode->add_input(condTensor);
 
@@ -756,7 +757,8 @@ size_t ONNXGenerator::generateForEquationLoop(
 
     // Loop body outputs: condition (pass-through)
     auto* condOutput = bodyGraph->add_output();
-    condOutput->set_name("cond_out");
+    std::string condOutName = loopNodeName + "_cond_out";
+    condOutput->set_name(condOutName);
     auto* condOutputType = condOutput->mutable_type()->mutable_tensor_type();
     condOutputType->set_elem_type(onnx::TensorProto::BOOL);
     // Scalar shape (empty dimensions)
@@ -765,9 +767,9 @@ size_t ONNXGenerator::generateForEquationLoop(
     // Identity node to pass condition through
     auto* condIdentity = bodyGraph->add_node();
     condIdentity->set_op_type("Identity");
-    condIdentity->set_name("cond_passthrough");
+    condIdentity->set_name(loopNodeName + "_cond_passthrough");
     condIdentity->add_input("cond_in");
-    condIdentity->add_output("cond_out");
+    condIdentity->add_output(condOutName);
 
     // For nested loops, add parent loop variables as inputs
     // This allows inner loop to reference outer loop variables
@@ -784,7 +786,8 @@ size_t ONNXGenerator::generateForEquationLoop(
 
             // Add to body outputs (passthrough)
             auto* bodyOutput = bodyGraph->add_output();
-            bodyOutput->set_name("parent_" + varName + "_out");
+            std::string parentOutName = loopNodeName + "_parent_" + varName + "_out";
+            bodyOutput->set_name(parentOutName);
             auto* outputType = bodyOutput->mutable_type()->mutable_tensor_type();
             outputType->set_elem_type(onnx::TensorProto::INT64);
             outputType->mutable_shape();  // Scalar
@@ -792,9 +795,9 @@ size_t ONNXGenerator::generateForEquationLoop(
             // Identity passthrough
             auto* identity = bodyGraph->add_node();
             identity->set_op_type("Identity");
-            identity->set_name("parent_" + varName + "_passthrough");
+            identity->set_name(loopNodeName + "_parent_" + varName + "_passthrough");
             identity->add_input("parent_" + varName);
-            identity->add_output("parent_" + varName + "_out");
+            identity->add_output(parentOutName);
 
             // Add to loop outputs
             loopNode->add_output("parent_" + varName + "_final_" + std::to_string(equationIndex));
@@ -860,7 +863,8 @@ size_t ONNXGenerator::generateForEquationLoop(
 
             // Add as body output (passthrough for ONNXRuntime compatibility)
             auto* bodyOutput = bodyGraph->add_output();
-            bodyOutput->set_name(var.name + "_out");
+            std::string varOutName = loopNodeName + "_" + var.name + "_out";
+            bodyOutput->set_name(varOutName);
             auto* outputType = bodyOutput->mutable_type()->mutable_tensor_type();
             outputType->set_elem_type(onnx::TensorProto::DOUBLE);
             auto* outputShape = outputType->mutable_shape();
@@ -876,9 +880,9 @@ size_t ONNXGenerator::generateForEquationLoop(
             // Identity node for passthrough
             auto* identity = bodyGraph->add_node();
             identity->set_op_type("Identity");
-            identity->set_name(var.name + "_passthrough");
+            identity->set_name(loopNodeName + "_" + var.name + "_passthrough");
             identity->add_input(var.name);
-            identity->add_output(var.name + "_out");
+            identity->add_output(varOutName);
 
             // Add as loop output (final value, though we don't use it)
             loopNode->add_output(var.name + "_final_" + std::to_string(equationIndex));
@@ -915,7 +919,8 @@ size_t ONNXGenerator::generateForEquationLoop(
 
         // Add to body outputs (passthrough for ONNXRuntime compatibility)
         auto* bodyOutput = bodyGraph->add_output();
-        bodyOutput->set_name(derName + "_out");
+        std::string derOutName = loopNodeName + "_" + derName + "_out";
+        bodyOutput->set_name(derOutName);
         auto* outputType = bodyOutput->mutable_type()->mutable_tensor_type();
         outputType->set_elem_type(onnx::TensorProto::DOUBLE);
         auto* outputShape = outputType->mutable_shape();
@@ -933,9 +938,9 @@ size_t ONNXGenerator::generateForEquationLoop(
         // Identity node for passthrough
         auto* identity = bodyGraph->add_node();
         identity->set_op_type("Identity");
-        identity->set_name(derName + "_passthrough");
+        identity->set_name(loopNodeName + "_" + derName + "_passthrough");
         identity->add_input(derName);
-        identity->add_output(derName + "_out");
+        identity->add_output(derOutName);
 
         // Add as loop output (final value, though we don't use it)
         loopNode->add_output(derName + "_final_" + std::to_string(equationIndex));
@@ -1028,21 +1033,23 @@ size_t ONNXGenerator::generateForEquationLoop(
 
                 // Add as scan output of outer loop body
                 auto* scanOutput = bodyGraph->add_output();
-                scanOutput->set_name("scan_" + std::to_string(scanOutputCount + i));
+                std::string scanOutName = loopNodeName + "_scan_" + std::to_string(scanOutputCount + i);
+                scanOutput->set_name(scanOutName);
                 auto* scanType = scanOutput->mutable_type()->mutable_tensor_type();
                 scanType->set_elem_type(onnx::TensorProto::DOUBLE);
                 // The inner loop outputs an array, so this scan output collects arrays
-                // Shape is [inner_trip_count] per iteration
+                // The shape is [inner_trip_count], but we don't know the exact count at this point
+                // Specify it as a 1D array with unknown size to help shape inference
                 auto* scanShape = scanType->mutable_shape();
-                // We don't know the inner trip count here, leave shape unspecified for now
-                // ONNXRuntime can infer it
+                auto* dim = scanShape->add_dim();
+                // Don't set dim_value or dim_param - leave it empty for unknown/dynamic size
 
                 // Identity to pass through the nested loop's scan output
                 auto* scanIdentity = bodyGraph->add_node();
                 scanIdentity->set_op_type("Identity");
-                scanIdentity->set_name("scan_identity_nested_" + std::to_string(scanOutputCount + i));
+                scanIdentity->set_name(loopNodeName + "_scan_identity_nested_" + std::to_string(scanOutputCount + i));
                 scanIdentity->add_input(nestedEqName);  // Input from inner loop's eq[X]
-                scanIdentity->add_output("scan_" + std::to_string(scanOutputCount + i));
+                scanIdentity->add_output(scanOutName);
 
                 // Add this scan output to the outer loop node with collected name
                 loopNode->add_output(collectedOutputName);
@@ -1062,8 +1069,10 @@ size_t ONNXGenerator::generateForEquationLoop(
                     auto* graphOutputType = graphOutput->mutable_type()->mutable_tensor_type();
                     graphOutputType->set_elem_type(onnx::TensorProto::DOUBLE);
                     // Multi-dimensional shape from nested loops [outer_dim, inner_dim]
-                    // Leave shape unspecified for now - ONNXRuntime can infer it
-                    graphOutputType->mutable_shape();
+                    // Add two dimensions with unknown sizes for proper 2D shape declaration
+                    auto* graphShape = graphOutputType->mutable_shape();
+                    graphShape->add_dim();  // Outer loop dimension (unknown size)
+                    graphShape->add_dim();  // Inner loop dimension (unknown size)
                 }
             }
 
@@ -1095,25 +1104,27 @@ size_t ONNXGenerator::generateForEquationLoop(
         std::string lhsTensor, rhsTensor;
         try {
             // For body graph, we need to use variable names with "_in" suffix
-            lhsTensor = convertExpression(simpleExpr, info, bodyGraph, bodyNodeCounter, &loopVarMap, &derivativeInputs);
-            rhsTensor = convertExpression(fullExpr, info, bodyGraph, bodyNodeCounter, &loopVarMap, &derivativeInputs);
+            // Pass loopNodeName as tensorPrefix to ensure unique tensor names in nested loops
+            lhsTensor = convertExpression(simpleExpr, info, bodyGraph, bodyNodeCounter, &loopVarMap, &derivativeInputs, loopNodeName);
+            rhsTensor = convertExpression(fullExpr, info, bodyGraph, bodyNodeCounter, &loopVarMap, &derivativeInputs, loopNodeName);
         } catch (const std::exception& e) {
             std::cerr << "Warning: Failed to convert equation " << eqIdx << " in for-loop: " << e.what() << std::endl;
             continue;
         }
 
         // Compute residual: LHS - RHS
-        std::string residualTensor = "residual_" + std::to_string(scanOutputCount);
+        std::string residualTensor = loopNodeName + "_residual_" + std::to_string(scanOutputCount);
         auto* subNode = bodyGraph->add_node();
         subNode->set_op_type("Sub");
-        subNode->set_name("residual_" + std::to_string(scanOutputCount));
+        subNode->set_name(loopNodeName + "_residual_" + std::to_string(scanOutputCount));
         subNode->add_input(lhsTensor);
         subNode->add_input(rhsTensor);
         subNode->add_output(residualTensor);
 
         // Add as scan output
         auto* scanOutput = bodyGraph->add_output();
-        scanOutput->set_name("scan_" + std::to_string(scanOutputCount));
+        std::string scanOutName = loopNodeName + "_scan_" + std::to_string(scanOutputCount);
+        scanOutput->set_name(scanOutName);
         auto* scanType = scanOutput->mutable_type()->mutable_tensor_type();
         scanType->set_elem_type(onnx::TensorProto::DOUBLE);
         // Scan outputs are scalars (one residual per iteration)
@@ -1122,9 +1133,9 @@ size_t ONNXGenerator::generateForEquationLoop(
         // Identity to connect residual to scan output
         auto* scanIdentity = bodyGraph->add_node();
         scanIdentity->set_op_type("Identity");
-        scanIdentity->set_name("scan_identity_" + std::to_string(scanOutputCount));
+        scanIdentity->set_name(loopNodeName + "_scan_identity_" + std::to_string(scanOutputCount));
         scanIdentity->add_input(residualTensor);
-        scanIdentity->add_output("scan_" + std::to_string(scanOutputCount));
+        scanIdentity->add_output(scanOutName);
 
         // Add scan output to loop node
         std::string loopOutputName = prefix + "[" + std::to_string(equationIndex + scanOutputCount) + "]";
@@ -1304,7 +1315,8 @@ std::string ONNXGenerator::convertExpression(
     onnx::GraphProto* graph,
     int& nodeCounter,
     const std::map<std::string, std::string>* variableMap,
-    std::map<std::string, std::vector<std::string>>* derivativeInputs) {
+    std::map<std::string, std::vector<std::string>>* derivativeInputs,
+    const std::string& tensorPrefix) {
 
     if (!expr) {
         throw std::runtime_error("Null expression context");
@@ -1318,27 +1330,27 @@ std::string ONNXGenerator::convertExpression(
             // Check for if expression first
             auto* ifExpr = exprNoDecoration->ifExpression();
             if (ifExpr) {
-                return convertIfExpression(ifExpr, info, graph, nodeCounter, variableMap, derivativeInputs);
+                return convertIfExpression(ifExpr, info, graph, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
             }
 
             auto* simpleExpr = exprNoDecoration->simpleExpression();
             if (simpleExpr) {
-                return convertSimpleExpression(simpleExpr, info, graph, nodeCounter, variableMap, derivativeInputs);
+                return convertSimpleExpression(simpleExpr, info, graph, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
             }
         }
     } else if (auto* exprNoDecoration = dynamic_cast<basemodelica::BaseModelicaParser::ExpressionNoDecorationContext*>(expr)) {
         // Handle ExpressionNoDecoration directly (e.g., from if expression conditions)
         auto* ifExpr = exprNoDecoration->ifExpression();
         if (ifExpr) {
-            return convertIfExpression(ifExpr, info, graph, nodeCounter, variableMap, derivativeInputs);
+            return convertIfExpression(ifExpr, info, graph, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
         }
 
         auto* simpleExpr = exprNoDecoration->simpleExpression();
         if (simpleExpr) {
-            return convertSimpleExpression(simpleExpr, info, graph, nodeCounter, variableMap, derivativeInputs);
+            return convertSimpleExpression(simpleExpr, info, graph, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
         }
     } else if (auto* simpleExpr = dynamic_cast<basemodelica::BaseModelicaParser::SimpleExpressionContext*>(expr)) {
-        return convertSimpleExpression(simpleExpr, info, graph, nodeCounter, variableMap, derivativeInputs);
+        return convertSimpleExpression(simpleExpr, info, graph, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
     }
 
     // Fallback: return placeholder
@@ -1351,7 +1363,8 @@ std::string ONNXGenerator::convertIfExpression(
     onnx::GraphProto* graph,
     int& nodeCounter,
     const std::map<std::string, std::string>* variableMap,
-    std::map<std::string, std::vector<std::string>>* derivativeInputs) {
+    std::map<std::string, std::vector<std::string>>* derivativeInputs,
+    const std::string& tensorPrefix) {
 
     std::cerr << "Converting if expression" << std::endl;
 
@@ -1370,14 +1383,14 @@ std::string ONNXGenerator::convertIfExpression(
     }
 
     // Convert condition expression (should produce boolean tensor)
-    std::string condTensor = convertExpression(expressions[0], info, graph, nodeCounter, variableMap, derivativeInputs);
+    std::string condTensor = convertExpression(expressions[0], info, graph, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
 
     // Create then branch as a subgraph
     // Note: If subgraphs have zero inputs - they access parent scope variables directly
     // IMPORTANT: Share nodeCounter with subgraphs to maintain SSA (no duplicate tensor names)
     onnx::GraphProto thenBranch;
     thenBranch.set_name("then_branch");
-    std::string thenResult = convertExpression(expressions[1], info, &thenBranch, nodeCounter, variableMap, derivativeInputs);
+    std::string thenResult = convertExpression(expressions[1], info, &thenBranch, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
 
     // Add output to then branch
     auto* thenOutput = thenBranch.add_output();
@@ -1392,7 +1405,7 @@ std::string ONNXGenerator::convertIfExpression(
     // IMPORTANT: Share nodeCounter with subgraphs to maintain SSA (no duplicate tensor names)
     onnx::GraphProto elseBranch;
     elseBranch.set_name("else_branch");
-    std::string elseResult = convertExpression(expressions[2], info, &elseBranch, nodeCounter, variableMap, derivativeInputs);
+    std::string elseResult = convertExpression(expressions[2], info, &elseBranch, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
 
     // Add output to else branch
     auto* elseOutput = elseBranch.add_output();
@@ -1404,7 +1417,7 @@ std::string ONNXGenerator::convertIfExpression(
 
     // Create If node
     auto* ifNode = graph->add_node();
-    std::string outputTensor = "tensor_" + std::to_string(nodeCounter++);
+    std::string outputTensor = (tensorPrefix.empty() ? "" : tensorPrefix + "_") + "tensor_" + std::to_string(nodeCounter++);
 
     ifNode->set_op_type("If");
     ifNode->set_name("If_" + std::to_string(nodeCounter));
@@ -1434,7 +1447,8 @@ std::string ONNXGenerator::convertSimpleExpression(
     onnx::GraphProto* graph,
     int& nodeCounter,
     const std::map<std::string, std::string>* variableMap,
-    std::map<std::string, std::vector<std::string>>* derivativeInputs) {
+    std::map<std::string, std::vector<std::string>>* derivativeInputs,
+    const std::string& tensorPrefix) {
 
     // SimpleExpression: logicalExpression+
     // For now, assume single logical expression -> arithmetic expression
@@ -1466,7 +1480,7 @@ std::string ONNXGenerator::convertSimpleExpression(
         }
 
         // Convert this logical factor to a tensor
-        std::string factorTensor = convertRelation(relation, info, graph, nodeCounter, variableMap, derivativeInputs);
+        std::string factorTensor = convertRelation(relation, info, graph, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
 
         // Check if logical factor has 'not' prefix
         // If 'not' is present, logicalFactor will have 2 children: 'not' token and relation
@@ -1477,7 +1491,7 @@ std::string ONNXGenerator::convertSimpleExpression(
             notNode->set_op_type("Not");
             notNode->set_name("Not_" + std::to_string(nodeCounter));
             notNode->add_input(factorTensor);
-            factorTensor = "tensor_" + std::to_string(nodeCounter++);
+            factorTensor = (tensorPrefix.empty() ? "" : tensorPrefix + "_") + "tensor_" + std::to_string(nodeCounter++);
             notNode->add_output(factorTensor);
         }
 
@@ -1491,7 +1505,7 @@ std::string ONNXGenerator::convertSimpleExpression(
             andNode->set_name("And_" + std::to_string(nodeCounter));
             andNode->add_input(resultTensor);
             andNode->add_input(factorTensor);
-            resultTensor = "tensor_" + std::to_string(nodeCounter++);
+            resultTensor = (tensorPrefix.empty() ? "" : tensorPrefix + "_") + "tensor_" + std::to_string(nodeCounter++);
             andNode->add_output(resultTensor);
         }
     }
@@ -1506,7 +1520,8 @@ std::string ONNXGenerator::convertRelation(
     onnx::GraphProto* graph,
     int& nodeCounter,
     const std::map<std::string, std::string>* variableMap,
-    std::map<std::string, std::vector<std::string>>* derivativeInputs) {
+    std::map<std::string, std::vector<std::string>>* derivativeInputs,
+    const std::string& tensorPrefix) {
 
     auto arithmeticExprs = relation->arithmeticExpression();
     if (arithmeticExprs.empty()) {
@@ -1522,12 +1537,12 @@ std::string ONNXGenerator::convertRelation(
         }
 
         // Convert left and right operands
-        std::string leftTensor = convertArithmeticExpression(arithmeticExprs[0], info, graph, nodeCounter, variableMap, derivativeInputs);
-        std::string rightTensor = convertArithmeticExpression(arithmeticExprs[1], info, graph, nodeCounter, variableMap, derivativeInputs);
+        std::string leftTensor = convertArithmeticExpression(arithmeticExprs[0], info, graph, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
+        std::string rightTensor = convertArithmeticExpression(arithmeticExprs[1], info, graph, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
 
         // Create comparison node
         auto* node = graph->add_node();
-        std::string outputTensor = "tensor_" + std::to_string(nodeCounter++);
+        std::string outputTensor = (tensorPrefix.empty() ? "" : tensorPrefix + "_") + "tensor_" + std::to_string(nodeCounter++);
 
         std::string opText = relOp->getText();
         if (opText == ">") {
@@ -1546,7 +1561,7 @@ std::string ONNXGenerator::convertRelation(
             node->set_name("Equal_" + std::to_string(nodeCounter));
             node->add_input(leftTensor);
             node->add_input(rightTensor);
-            std::string equalOutput = "tensor_" + std::to_string(nodeCounter++);
+            std::string equalOutput = (tensorPrefix.empty() ? "" : tensorPrefix + "_") + "tensor_" + std::to_string(nodeCounter++);
             node->add_output(equalOutput);
 
             // Now negate the result
@@ -1570,7 +1585,7 @@ std::string ONNXGenerator::convertRelation(
     }
 
     // No comparison, just return the arithmetic expression
-    return convertArithmeticExpression(arithmeticExprs[0], info, graph, nodeCounter, variableMap, derivativeInputs);
+    return convertArithmeticExpression(arithmeticExprs[0], info, graph, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
 }
 
 std::string ONNXGenerator::convertArithmeticExpression(
@@ -1579,7 +1594,8 @@ std::string ONNXGenerator::convertArithmeticExpression(
     onnx::GraphProto* graph,
     int& nodeCounter,
     const std::map<std::string, std::string>* variableMap,
-    std::map<std::string, std::vector<std::string>>* derivativeInputs) {
+    std::map<std::string, std::vector<std::string>>* derivativeInputs,
+    const std::string& tensorPrefix) {
 
     // ArithmeticExpression: addOperator? term (addOperator term)*
     auto terms = expr->term();
@@ -1594,7 +1610,7 @@ std::string ONNXGenerator::convertArithmeticExpression(
     size_t opIndex = 0;
 
     // Convert first term
-    std::string result = convertTerm(terms[termIndex++], info, graph, nodeCounter, variableMap, derivativeInputs);
+    std::string result = convertTerm(terms[termIndex++], info, graph, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
 
     // If we have more addOps than remaining terms, first addOp was a leading unary
     if (addOps.size() > terms.size() - 1) {
@@ -1603,7 +1619,7 @@ std::string ONNXGenerator::convertArithmeticExpression(
 
         if (opText == "-") {
             auto* node = graph->add_node();
-            std::string outputTensor = "tensor_" + std::to_string(nodeCounter++);
+            std::string outputTensor = (tensorPrefix.empty() ? "" : tensorPrefix + "_") + "tensor_" + std::to_string(nodeCounter++);
             node->set_op_type("Neg");
             node->set_name("Neg_" + std::to_string(nodeCounter));
             node->add_input(result);
@@ -1619,13 +1635,13 @@ std::string ONNXGenerator::convertArithmeticExpression(
     // Process remaining terms with operators
     while (opIndex < addOps.size()) {
         std::string opText = addOps[opIndex]->getText();
-        std::string rightTensor = convertTerm(terms[termIndex], info, graph, nodeCounter, variableMap, derivativeInputs);
+        std::string rightTensor = convertTerm(terms[termIndex], info, graph, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
         termIndex++;
         opIndex++;
 
         // Create ONNX node for the operation
         auto* node = graph->add_node();
-        std::string outputTensor = "tensor_" + std::to_string(nodeCounter++);
+        std::string outputTensor = (tensorPrefix.empty() ? "" : tensorPrefix + "_") + "tensor_" + std::to_string(nodeCounter++);
 
         if (opText == "+") {
             node->set_op_type("Add");
@@ -1667,7 +1683,8 @@ std::string ONNXGenerator::convertTerm(
     onnx::GraphProto* graph,
     int& nodeCounter,
     const std::map<std::string, std::string>* variableMap,
-    std::map<std::string, std::vector<std::string>>* derivativeInputs) {
+    std::map<std::string, std::vector<std::string>>* derivativeInputs,
+    const std::string& tensorPrefix) {
 
     // Term: factor (mulOperator factor)*
     auto factors = expr->factor();
@@ -1678,16 +1695,16 @@ std::string ONNXGenerator::convertTerm(
     }
 
     // Convert first factor
-    std::string result = convertFactor(factors[0], info, graph, nodeCounter, variableMap, derivativeInputs);
+    std::string result = convertFactor(factors[0], info, graph, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
 
     // Process remaining factors with operators
     for (size_t i = 0; i < mulOps.size(); i++) {
         std::string opText = mulOps[i]->getText();
-        std::string rightTensor = convertFactor(factors[i + 1], info, graph, nodeCounter, variableMap, derivativeInputs);
+        std::string rightTensor = convertFactor(factors[i + 1], info, graph, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
 
         // Create ONNX node for the operation
         auto* node = graph->add_node();
-        std::string outputTensor = "tensor_" + std::to_string(nodeCounter++);
+        std::string outputTensor = (tensorPrefix.empty() ? "" : tensorPrefix + "_") + "tensor_" + std::to_string(nodeCounter++);
 
         if (opText == "*") {
             // Check if both operands are matrices (2D arrays)
@@ -1727,7 +1744,8 @@ std::string ONNXGenerator::convertFactor(
     onnx::GraphProto* graph,
     int& nodeCounter,
     const std::map<std::string, std::string>* variableMap,
-    std::map<std::string, std::vector<std::string>>* derivativeInputs) {
+    std::map<std::string, std::vector<std::string>>* derivativeInputs,
+    const std::string& tensorPrefix) {
 
     // Factor: primary (('^' | '.^') primary)?
     auto primaries = expr->primary();
@@ -1736,14 +1754,14 @@ std::string ONNXGenerator::convertFactor(
         throw std::runtime_error("Empty factor");
     }
 
-    std::string result = convertPrimary(primaries[0], info, graph, nodeCounter, variableMap, derivativeInputs);
+    std::string result = convertPrimary(primaries[0], info, graph, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
 
     // Handle power operator if present
     if (primaries.size() > 1) {
-        std::string exponentTensor = convertPrimary(primaries[1], info, graph, nodeCounter, variableMap, derivativeInputs);
+        std::string exponentTensor = convertPrimary(primaries[1], info, graph, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
 
         auto* node = graph->add_node();
-        std::string outputTensor = "tensor_" + std::to_string(nodeCounter++);
+        std::string outputTensor = (tensorPrefix.empty() ? "" : tensorPrefix + "_") + "tensor_" + std::to_string(nodeCounter++);
 
         node->set_op_type("Pow");
         node->set_name("Pow_" + std::to_string(nodeCounter));
@@ -1763,7 +1781,8 @@ std::string ONNXGenerator::convertPrimary(
     onnx::GraphProto* graph,
     int& nodeCounter,
     const std::map<std::string, std::string>* variableMap,
-    std::map<std::string, std::vector<std::string>>* derivativeInputs) {
+    std::map<std::string, std::vector<std::string>>* derivativeInputs,
+    const std::string& tensorPrefix) {
 
     // Handle different primary types
 
@@ -1893,45 +1912,75 @@ std::string ONNXGenerator::convertPrimary(
                     auto arraySubscript = compRef->arraySubscripts()[0];
                     auto subscriptList = arraySubscript->subscript();
 
-                    // Collect all indices (convert from 1-based Modelica to 0-based ONNX)
+                    // Check if any subscripts are loop variables
+                    bool hasLoopVariable = false;
+                    for (auto sub : subscriptList) {
+                        if (sub->getText() != ":") {
+                            auto subExpr = sub->expression();
+                            if (subExpr) {
+                                std::string indexExpr = subExpr->getText();
+                                if (variableMap && variableMap->count(indexExpr) > 0) {
+                                    hasLoopVariable = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    // If we have loop variables, process subscripts sequentially with Gather
+                    if (hasLoopVariable) {
+                        std::string currentTensor = baseTensor;
+
+                        for (size_t dimIdx = 0; dimIdx < subscriptList.size(); dimIdx++) {
+                            auto sub = subscriptList[dimIdx];
+
+                            if (sub->getText() == ":") {
+                                throw std::runtime_error("Array slice ':' not yet supported in der() subscript");
+                            }
+
+                            auto subExpr = sub->expression();
+                            if (!subExpr) {
+                                throw std::runtime_error("Invalid array subscript in der()");
+                            }
+
+                            std::string indexExpr = subExpr->getText();
+
+                            // Check if this is a loop variable (variable tensor, not constant)
+                            if (variableMap && variableMap->count(indexExpr) > 0) {
+                                // Dynamic indexing with loop variable - use Gather
+                                // The loop variable is already 0-based (maps to iter), so use directly
+                                std::string indexTensor = variableMap->at(indexExpr);
+
+                                // Use Gather to index into array along this dimension
+                                auto* gatherNode = graph->add_node();
+                                std::string outputTensor = (tensorPrefix.empty() ? "" : tensorPrefix + "_") + "tensor_" + std::to_string(nodeCounter++);
+                                gatherNode->set_op_type("Gather");
+                                gatherNode->set_name("Gather_" + std::to_string(nodeCounter));
+                                gatherNode->add_input(currentTensor);
+                                gatherNode->add_input(indexTensor);
+                                gatherNode->add_output(outputTensor);
+
+                                // Set axis attribute (always axis=0 since each Gather reduces rank by 1)
+                                auto* axisAttr = gatherNode->add_attribute();
+                                axisAttr->set_name("axis");
+                                axisAttr->set_type(onnx::AttributeProto::INT);
+                                axisAttr->set_i(0);
+
+                                currentTensor = outputTensor;
+                            } else {
+                                // Static indexing with constant - not supported in mixed mode yet
+                                throw std::runtime_error("Mixed static and dynamic indexing not yet fully supported");
+                            }
+                        }
+
+                        return currentTensor;
+                    }
+
+                    // If no loop variables, fall through to static indexing
                     std::vector<int64_t> indices;
                     for (auto sub : subscriptList) {
-                        if (sub->getText() == ":") {
-                            throw std::runtime_error("Array slice ':' not yet supported in der() subscript");
-                        }
-
                         auto subExpr = sub->expression();
-                        if (!subExpr) {
-                            throw std::runtime_error("Invalid array subscript in der()");
-                        }
-
                         std::string indexExpr = subExpr->getText();
-
-                        // Check if this is a loop variable (variable tensor, not constant)
-                        if (variableMap && variableMap->count(indexExpr) > 0) {
-                            // Dynamic indexing with loop variable - use Gather
-                            // The loop variable is already 0-based (maps to iter), so use directly
-                            std::string indexTensor = variableMap->at(indexExpr);
-
-                            // Use Gather to index into der('x') array
-                            auto* gatherNode = graph->add_node();
-                            std::string outputTensor = "tensor_" + std::to_string(nodeCounter++);
-                            gatherNode->set_op_type("Gather");
-                            gatherNode->set_name("Gather_" + std::to_string(nodeCounter));
-                            gatherNode->add_input(baseTensor);
-                            gatherNode->add_input(indexTensor);
-                            gatherNode->add_output(outputTensor);
-
-                            // Set axis attribute (axis=0 for first dimension)
-                            auto* axisAttr = gatherNode->add_attribute();
-                            axisAttr->set_name("axis");
-                            axisAttr->set_type(onnx::AttributeProto::INT);
-                            axisAttr->set_i(0);
-
-                            return outputTensor;
-                        }
-
-                        // Static indexing with constant
                         try {
                             int modelicaIndex = std::stoi(indexExpr);
                             int onnxIndex = modelicaIndex - 1;  // Convert to 0-based
@@ -1960,7 +2009,7 @@ std::string ONNXGenerator::convertPrimary(
 
                     // Create GatherND node to extract the element from der('x')
                     auto* gatherNode = graph->add_node();
-                    std::string outputTensor = "tensor_" + std::to_string(nodeCounter++);
+                    std::string outputTensor = (tensorPrefix.empty() ? "" : tensorPrefix + "_") + "tensor_" + std::to_string(nodeCounter++);
                     gatherNode->set_op_type("GatherND");
                     gatherNode->set_name("GatherND_" + std::to_string(nodeCounter));
                     gatherNode->add_input(baseTensor);
@@ -2001,7 +2050,7 @@ std::string ONNXGenerator::convertPrimary(
 
                 // Create a Der operator node
                 auto* node = graph->add_node();
-                std::string outputTensor = "tensor_" + std::to_string(nodeCounter++);
+                std::string outputTensor = (tensorPrefix.empty() ? "" : tensorPrefix + "_") + "tensor_" + std::to_string(nodeCounter++);
 
                 node->set_op_type("Der");
                 node->set_domain("lacemodelica");  // Custom operator in our domain
@@ -2037,7 +2086,7 @@ std::string ONNXGenerator::convertPrimary(
 
             // Create ONNX node for the math function
             auto* node = graph->add_node();
-            std::string outputTensor = "tensor_" + std::to_string(nodeCounter++);
+            std::string outputTensor = (tensorPrefix.empty() ? "" : tensorPrefix + "_") + "tensor_" + std::to_string(nodeCounter++);
 
             node->set_op_type(it->second);  // ONNX operator name
             node->set_name(funcName + "_" + std::to_string(nodeCounter));
@@ -2080,7 +2129,7 @@ std::string ONNXGenerator::convertPrimary(
 
             // Create a function call node that references the FunctionProto
             auto* node = graph->add_node();
-            std::string outputTensor = "tensor_" + std::to_string(nodeCounter++);
+            std::string outputTensor = (tensorPrefix.empty() ? "" : tensorPrefix + "_") + "tensor_" + std::to_string(nodeCounter++);
 
             node->set_op_type(funcName);  // op_type is the function name
             node->set_domain("lacemodelica");  // Custom domain where function is defined
@@ -2129,51 +2178,81 @@ std::string ONNXGenerator::convertPrimary(
         }
 
         // Handle array indexing with subscripts
-        // Use GatherND for multi-dimensional indexing
         auto arraySubscript = subscripts[0];  // First (and likely only) arraySubscripts
         auto subscriptList = arraySubscript->subscript();
 
-        // Collect all indices (convert from 1-based Modelica to 0-based ONNX)
+        // Check if any subscripts are loop variables
+        bool hasLoopVariable = false;
+        for (auto sub : subscriptList) {
+            if (sub->getText() != ":") {
+                auto subExpr = sub->expression();
+                if (subExpr) {
+                    std::string indexExpr = subExpr->getText();
+                    if (variableMap && variableMap->count(indexExpr) > 0) {
+                        hasLoopVariable = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        // If we have loop variables, process subscripts sequentially with Gather
+        if (hasLoopVariable) {
+            std::string currentTensor = baseTensor;
+
+            for (size_t dimIdx = 0; dimIdx < subscriptList.size(); dimIdx++) {
+                auto sub = subscriptList[dimIdx];
+
+                // Check if it's a colon (full slice) or expression
+                if (sub->getText() == ":") {
+                    throw std::runtime_error("Array slice ':' not yet supported in ONNX conversion");
+                }
+
+                // It's an expression - evaluate it
+                auto subExpr = sub->expression();
+                if (!subExpr) {
+                    throw std::runtime_error("Invalid array subscript");
+                }
+
+                // Convert the subscript expression (should yield a constant or loop variable)
+                std::string indexExpr = subExpr->getText();
+
+                // Check if this is a loop variable (variable tensor, not constant)
+                if (variableMap && variableMap->count(indexExpr) > 0) {
+                    // Dynamic indexing with loop variable - use Gather
+                    // The loop variable is already 0-based (maps to iter), so use directly
+                    std::string indexTensor = variableMap->at(indexExpr);
+
+                    // Use Gather to index into array along this dimension
+                    auto* gatherNode = graph->add_node();
+                    std::string outputTensor = (tensorPrefix.empty() ? "" : tensorPrefix + "_") + "tensor_" + std::to_string(nodeCounter++);
+                    gatherNode->set_op_type("Gather");
+                    gatherNode->set_name("Gather_" + std::to_string(nodeCounter));
+                    gatherNode->add_input(currentTensor);
+                    gatherNode->add_input(indexTensor);
+                    gatherNode->add_output(outputTensor);
+
+                    // Set axis attribute (always axis=0 since each Gather reduces rank by 1)
+                    auto* axisAttr = gatherNode->add_attribute();
+                    axisAttr->set_name("axis");
+                    axisAttr->set_type(onnx::AttributeProto::INT);
+                    axisAttr->set_i(0);
+
+                    currentTensor = outputTensor;
+                } else {
+                    // Static indexing with constant - not supported in mixed mode yet
+                    throw std::runtime_error("Mixed static and dynamic indexing not yet fully supported");
+                }
+            }
+
+            return currentTensor;
+        }
+
+        // If no loop variables, fall through to static indexing with GatherND
         std::vector<int64_t> indices;
         for (auto sub : subscriptList) {
-            // Check if it's a colon (full slice) or expression
-            if (sub->getText() == ":") {
-                throw std::runtime_error("Array slice ':' not yet supported in ONNX conversion");
-            }
-
-            // It's an expression - evaluate it
             auto subExpr = sub->expression();
-            if (!subExpr) {
-                throw std::runtime_error("Invalid array subscript");
-            }
-
-            // Convert the subscript expression (should yield a constant or loop variable)
             std::string indexExpr = subExpr->getText();
-
-            // Check if this is a loop variable (variable tensor, not constant)
-            if (variableMap && variableMap->count(indexExpr) > 0) {
-                // Dynamic indexing with loop variable - use Gather
-                // The loop variable is already 0-based (maps to iter), so use directly
-                std::string indexTensor = variableMap->at(indexExpr);
-
-                // Use Gather to index into array
-                auto* gatherNode = graph->add_node();
-                std::string outputTensor = "tensor_" + std::to_string(nodeCounter++);
-                gatherNode->set_op_type("Gather");
-                gatherNode->set_name("Gather_" + std::to_string(nodeCounter));
-                gatherNode->add_input(baseTensor);
-                gatherNode->add_input(indexTensor);
-                gatherNode->add_output(outputTensor);
-
-                // Set axis attribute (axis=0 for first dimension)
-                auto* axisAttr = gatherNode->add_attribute();
-                axisAttr->set_name("axis");
-                axisAttr->set_type(onnx::AttributeProto::INT);
-                axisAttr->set_i(0);
-
-                return outputTensor;
-            }
-
             // Try to parse as integer constant (Modelica uses 1-based indexing)
             try {
                 int modelicaIndex = std::stoi(indexExpr);
@@ -2204,7 +2283,7 @@ std::string ONNXGenerator::convertPrimary(
 
         // Create GatherND node to extract the element
         auto* gatherNode = graph->add_node();
-        std::string outputTensor = "tensor_" + std::to_string(nodeCounter++);
+        std::string outputTensor = (tensorPrefix.empty() ? "" : tensorPrefix + "_") + "tensor_" + std::to_string(nodeCounter++);
         gatherNode->set_op_type("GatherND");
         gatherNode->set_name("GatherND_" + std::to_string(nodeCounter));
         gatherNode->add_input(baseTensor);
@@ -2220,7 +2299,7 @@ std::string ONNXGenerator::convertPrimary(
         auto outputList = expr->outputExpressionList();
         auto expressions = outputList->expression();
         if (!expressions.empty()) {
-            return convertExpression(expressions[0], info, graph, nodeCounter, variableMap, derivativeInputs);
+            return convertExpression(expressions[0], info, graph, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
         }
     }
 
