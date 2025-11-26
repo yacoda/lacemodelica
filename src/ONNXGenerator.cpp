@@ -971,8 +971,18 @@ size_t ONNXGenerator::generateForEquationLoop(
                 // Include grandparent variables
                 combinedLoopVarMap = *parentLoopVarMap;
             }
+
             // Add current loop variable (maps to "iter" in current body)
-            combinedLoopVarMap[loopVar] = loopVarTensor;
+            // But we can't pass "iter" directly as it's a reserved name in ONNX Loop bodies
+            // Create an Identity node to copy iter to a uniquely named tensor
+            std::string currentLoopIterCopy = "loop_iter_" + loopVar + "_" + std::to_string(bodyNodeCounter++);
+            auto* iterCopyNode = bodyGraph->add_node();
+            iterCopyNode->set_op_type("Identity");
+            iterCopyNode->set_name("copy_iter_for_nested_" + loopVar);
+            iterCopyNode->add_input(loopVarTensor);  // Input is "iter"
+            iterCopyNode->add_output(currentLoopIterCopy);  // Output is uniquely named
+
+            combinedLoopVarMap[loopVar] = currentLoopIterCopy;
 
             // Recursively generate nested Loop node inside current loop body
             size_t nestedOutputCount = generateForEquationLoop(
