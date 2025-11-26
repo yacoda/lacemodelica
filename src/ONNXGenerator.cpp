@@ -667,7 +667,8 @@ size_t ONNXGenerator::generateForEquationLoop(
     int& nodeCounter,
     std::map<std::string, std::vector<std::string>>& derivativeInputs,
     bool isNested,
-    std::map<std::string, std::string>* parentLoopVarMap) {
+    std::map<std::string, std::string>* parentLoopVarMap,
+    std::string* outLoopNodeName) {
 
     auto* forEqCtx = dynamic_cast<basemodelica::BaseModelicaParser::ForEquationContext*>(eq.forEquationContext);
     if (!forEqCtx) {
@@ -699,8 +700,16 @@ size_t ONNXGenerator::generateForEquationLoop(
     auto loopEquations = forEqCtx->equation();
     std::cerr << "DEBUG: For-equation contains " << loopEquations.size() << " inner equations" << std::endl;
 
+    // Create Loop node name first so we can use it for constants
+    std::string loopNodeName = "for_loop_" + std::to_string(nodeCounter++);
+
+    // Return loop node name if requested
+    if (outLoopNodeName) {
+        *outLoopNodeName = loopNodeName;
+    }
+
     // Create trip count constant
-    std::string tripCountTensor = "trip_count_" + std::to_string(nodeCounter++);
+    std::string tripCountTensor = "trip_count_" + loopNodeName;
     auto* tripCountNode = graph->add_node();
     tripCountNode->set_op_type("Constant");
     tripCountNode->set_name(tripCountTensor);
@@ -713,7 +722,7 @@ size_t ONNXGenerator::generateForEquationLoop(
     tripCountTensorProto->add_int64_data(tripCount);
 
     // Create empty condition tensor (unconditional loop)
-    std::string condTensor = "loop_cond_" + std::to_string(nodeCounter++);
+    std::string condTensor = "loop_cond_" + loopNodeName;
     auto* condNode = graph->add_node();
     condNode->set_op_type("Constant");
     condNode->set_name(condTensor);
@@ -728,7 +737,6 @@ size_t ONNXGenerator::generateForEquationLoop(
     // Create Loop node
     auto* loopNode = graph->add_node();
     loopNode->set_op_type("Loop");
-    std::string loopNodeName = "for_loop_" + std::to_string(nodeCounter++);
     loopNode->set_name(loopNodeName);
     loopNode->add_input(tripCountTensor);
     loopNode->add_input(condTensor);
@@ -804,11 +812,38 @@ size_t ONNXGenerator::generateForEquationLoop(
         }
     }
 
-    // Map loop variable to iter
-    // iter is already 0-based (0, 1, 2, ...) which matches ONNX array indexing
-    // Even though Modelica uses 1-based indexing (for i in 1:3), the iter counter
-    // goes 0, 1, 2, and ONNX arrays are also 0-indexed, so we can use iter directly
-    std::string loopVarTensor = "iter";
+    // Create 1-based loop variable for Modelica semantics
+    // Modelica: for i in 1:3 → i = 1, 2, 3
+    // ONNX iter: 0, 1, 2
+    // For expressions (e.g., 2^i), we need 1-based values
+    // For array subscripts (e.g., x[i]), we subtract 1 to get 0-based indexing
+
+    // Create tensor for 1-based loop variable: i_1based = iter + 1
+    std::string loopVar1BasedTensor = loopNodeName + "_" + loopVar + "_1based";
+
+    // Create Constant node with value 1
+    std::string constOneTensor = loopNodeName + "_const_one";
+    auto* constOneNode = bodyGraph->add_node();
+    constOneNode->set_op_type("Constant");
+    constOneNode->set_name(constOneTensor);
+    constOneNode->add_output(constOneTensor);
+    auto* constOneAttr = constOneNode->add_attribute();
+    constOneAttr->set_name("value");
+    constOneAttr->set_type(onnx::AttributeProto::TENSOR);
+    auto* constOneTensorProto = constOneAttr->mutable_t();
+    constOneTensorProto->set_data_type(onnx::TensorProto::INT64);
+    constOneTensorProto->add_int64_data(1);
+
+    // Create Add node: loop_var_1based = iter + 1
+    auto* addNode = bodyGraph->add_node();
+    addNode->set_op_type("Add");
+    addNode->set_name(loopVar1BasedTensor + "_add");
+    addNode->add_input("iter");
+    addNode->add_input(constOneTensor);
+    addNode->add_output(loopVar1BasedTensor);
+
+    // Map loop variable to 1-based tensor for use in expressions
+    std::string loopVarTensor = loopVar1BasedTensor;
 
     // Pre-scan equations to discover which derivatives are needed
     // We need to know this before building the loop body
@@ -990,46 +1025,58 @@ size_t ONNXGenerator::generateForEquationLoop(
             combinedLoopVarMap[loopVar] = currentLoopIterCopy;
 
             // Recursively generate nested Loop node inside current loop body
+            std::string nestedLoopNodeName;
             size_t nestedOutputCount = generateForEquationLoop(
                 nestedEq,
                 prefix,
                 equationIndex + scanOutputCount,
                 info,
                 bodyGraph,  // Create nested loop in current body graph!
-                bodyNodeCounter,
+                nodeCounter,  // Use global counter to ensure unique loop names across all nesting levels
                 derivativeInputs,
                 true,  // isNested = true
-                &combinedLoopVarMap  // Pass parent context
+                &combinedLoopVarMap,  // Pass parent context
+                &nestedLoopNodeName  // Get the nested loop's node name
             );
 
             // The nested Loop node's outputs are available in the current body graph
             // Connect the scan outputs from the nested loop to the outer loop's scan outputs
             // The nested loop's outputs are at the end (after all the loop-carried dependencies)
-            // We need to find where the scan outputs start in the nested loop's output list
-
-            // Count how many loop-carried dependency outputs the nested loop has
-            // (these are the _final_X outputs before the scan outputs)
-            size_t nestedCarriedCount = 0;
-            for (const auto& var : info.variables) {
-                if (!var.isDerivative && var.variability != "fixed") {
-                    nestedCarriedCount++;
+            // Find the nested loop node first to determine how many outputs it has
+            onnx::NodeProto* nestedLoopNode = nullptr;
+            for (int ni = bodyGraph->node_size() - 1; ni >= 0; ni--) {
+                if (bodyGraph->node(ni).name() == nestedLoopNodeName) {
+                    nestedLoopNode = bodyGraph->mutable_node(ni);
+                    break;
                 }
             }
-            // Add derivatives used in nested loop
-            for (const auto& derName : requiredDerivatives) {
-                nestedCarriedCount++;
+
+            // The scan outputs start after the carried dependencies
+            // total_outputs = carried_deps + scan_outputs
+            // So: carried_deps = total_outputs - scan_outputs
+            size_t nestedCarriedCount = 0;
+            if (nestedLoopNode) {
+                nestedCarriedCount = nestedLoopNode->output_size() - nestedOutputCount;
             }
 
             // Now connect each nested scan output
+            // The nested loop's outputs are: [carried deps...] [scan outputs...]
+            // We need to find the scan outputs which start after the carried dependencies
+            // Note: for nested loops themselves, the scan outputs may be named "collected_nested_X"
+            // rather than "eq[X]_loopname", so we must reference by position in the loop node's outputs
+
             for (size_t i = 0; i < nestedOutputCount; i++) {
-                // The nested loop outputs eq[X] in its own context
-                // But we need to collect these in the outer loop with unique names
-                std::string nestedEqName = prefix + "[" + std::to_string(equationIndex + scanOutputCount + i) + "]";
                 std::string collectedOutputName = "collected_nested_" + std::to_string(scanOutputCount + i);
 
-                // The nested Loop node's scan outputs start after the carried dependencies
-                // But we can't directly reference them - we need to reference the Loop node outputs
-                // The nested loop already added these as outputs to its Loop node, but they're in bodyGraph
+                // The nested loop node's scan outputs start after carried dependencies
+                // Reference the actual output name from the nested loop node
+                std::string nestedOutputName;
+                if (nestedLoopNode) {
+                    size_t outputIndex = nestedCarriedCount + i;
+                    if (outputIndex < nestedLoopNode->output_size()) {
+                        nestedOutputName = nestedLoopNode->output(outputIndex);
+                    }
+                }
 
                 // Add as scan output of outer loop body
                 auto* scanOutput = bodyGraph->add_output();
@@ -1048,7 +1095,7 @@ size_t ONNXGenerator::generateForEquationLoop(
                 auto* scanIdentity = bodyGraph->add_node();
                 scanIdentity->set_op_type("Identity");
                 scanIdentity->set_name(loopNodeName + "_scan_identity_nested_" + std::to_string(scanOutputCount + i));
-                scanIdentity->add_input(nestedEqName);  // Input from inner loop's eq[X]
+                scanIdentity->add_input(nestedOutputName);  // Input from nested loop's actual output
                 scanIdentity->add_output(scanOutName);
 
                 // Add this scan output to the outer loop node with collected name
@@ -1057,15 +1104,18 @@ size_t ONNXGenerator::generateForEquationLoop(
                 // Only add to main graph outputs if we're at top level (not nested ourselves)
                 // Map the collected output to the final equation name
                 if (!isNested) {
+                    // At top level, use plain eq[X] name without loop suffix
+                    std::string topLevelEqName = prefix + "[" + std::to_string(equationIndex + scanOutputCount + i) + "]";
+
                     // Add Identity node in main graph to rename collected output to eq[X]
                     auto* renameNode = graph->add_node();
                     renameNode->set_op_type("Identity");
                     renameNode->set_name("rename_collected_" + std::to_string(scanOutputCount + i));
                     renameNode->add_input(collectedOutputName);
-                    renameNode->add_output(nestedEqName);
+                    renameNode->add_output(topLevelEqName);
 
                     auto* graphOutput = graph->add_output();
-                    graphOutput->set_name(nestedEqName);
+                    graphOutput->set_name(topLevelEqName);
                     auto* graphOutputType = graphOutput->mutable_type()->mutable_tensor_type();
                     graphOutputType->set_elem_type(onnx::TensorProto::DOUBLE);
                     // Multi-dimensional shape from nested loops [outer_dim, inner_dim]
@@ -1138,7 +1188,11 @@ size_t ONNXGenerator::generateForEquationLoop(
         scanIdentity->add_output(scanOutName);
 
         // Add scan output to loop node
+        // For nested loops, append loop node name to make output names unique
         std::string loopOutputName = prefix + "[" + std::to_string(equationIndex + scanOutputCount) + "]";
+        if (isNested) {
+            loopOutputName += "_" + loopNodeName;
+        }
         loopNode->add_output(loopOutputName);
 
         // Add to graph outputs (only if this is a top-level loop, not nested)
@@ -1947,17 +2001,40 @@ std::string ONNXGenerator::convertPrimary(
 
                             // Check if this is a loop variable (variable tensor, not constant)
                             if (variableMap && variableMap->count(indexExpr) > 0) {
-                                // Dynamic indexing with loop variable - use Gather
-                                // The loop variable is already 0-based (maps to iter), so use directly
-                                std::string indexTensor = variableMap->at(indexExpr);
+                                // Dynamic indexing with loop variable
+                                // The loop variable is 1-based (Modelica), but array indices need 0-based
+                                // So subtract 1: index_0based = loop_var_1based - 1
+                                std::string loopVar1Based = variableMap->at(indexExpr);
 
-                                // Use Gather to index into array along this dimension
+                                // Create Constant node with value 1
+                                std::string constOneTensor = (tensorPrefix.empty() ? "" : tensorPrefix + "_") + "const_one_" + std::to_string(nodeCounter++);
+                                auto* constOneNode = graph->add_node();
+                                constOneNode->set_op_type("Constant");
+                                constOneNode->set_name(constOneTensor);
+                                constOneNode->add_output(constOneTensor);
+                                auto* constOneAttr = constOneNode->add_attribute();
+                                constOneAttr->set_name("value");
+                                constOneAttr->set_type(onnx::AttributeProto::TENSOR);
+                                auto* constOneTensorProto = constOneAttr->mutable_t();
+                                constOneTensorProto->set_data_type(onnx::TensorProto::INT64);
+                                constOneTensorProto->add_int64_data(1);
+
+                                // Create Sub node: index_0based = loop_var_1based - 1
+                                std::string index0Based = (tensorPrefix.empty() ? "" : tensorPrefix + "_") + "index_0based_" + std::to_string(nodeCounter++);
+                                auto* subNode = graph->add_node();
+                                subNode->set_op_type("Sub");
+                                subNode->set_name(index0Based + "_sub");
+                                subNode->add_input(loopVar1Based);
+                                subNode->add_input(constOneTensor);
+                                subNode->add_output(index0Based);
+
+                                // Use Gather with 0-based index
                                 auto* gatherNode = graph->add_node();
                                 std::string outputTensor = (tensorPrefix.empty() ? "" : tensorPrefix + "_") + "tensor_" + std::to_string(nodeCounter++);
                                 gatherNode->set_op_type("Gather");
                                 gatherNode->set_name("Gather_" + std::to_string(nodeCounter));
                                 gatherNode->add_input(currentTensor);
-                                gatherNode->add_input(indexTensor);
+                                gatherNode->add_input(index0Based);
                                 gatherNode->add_output(outputTensor);
 
                                 // Set axis attribute (always axis=0 since each Gather reduces rank by 1)
@@ -2219,17 +2296,40 @@ std::string ONNXGenerator::convertPrimary(
 
                 // Check if this is a loop variable (variable tensor, not constant)
                 if (variableMap && variableMap->count(indexExpr) > 0) {
-                    // Dynamic indexing with loop variable - use Gather
-                    // The loop variable is already 0-based (maps to iter), so use directly
-                    std::string indexTensor = variableMap->at(indexExpr);
+                    // Dynamic indexing with loop variable
+                    // The loop variable is 1-based (Modelica), but array indices need 0-based
+                    // So subtract 1: index_0based = loop_var_1based - 1
+                    std::string loopVar1Based = variableMap->at(indexExpr);
 
-                    // Use Gather to index into array along this dimension
+                    // Create Constant node with value 1
+                    std::string constOneTensor = (tensorPrefix.empty() ? "" : tensorPrefix + "_") + "const_one_" + std::to_string(nodeCounter++);
+                    auto* constOneNode = graph->add_node();
+                    constOneNode->set_op_type("Constant");
+                    constOneNode->set_name(constOneTensor);
+                    constOneNode->add_output(constOneTensor);
+                    auto* constOneAttr = constOneNode->add_attribute();
+                    constOneAttr->set_name("value");
+                    constOneAttr->set_type(onnx::AttributeProto::TENSOR);
+                    auto* constOneTensorProto = constOneAttr->mutable_t();
+                    constOneTensorProto->set_data_type(onnx::TensorProto::INT64);
+                    constOneTensorProto->add_int64_data(1);
+
+                    // Create Sub node: index_0based = loop_var_1based - 1
+                    std::string index0Based = (tensorPrefix.empty() ? "" : tensorPrefix + "_") + "index_0based_" + std::to_string(nodeCounter++);
+                    auto* subNode = graph->add_node();
+                    subNode->set_op_type("Sub");
+                    subNode->set_name(index0Based + "_sub");
+                    subNode->add_input(loopVar1Based);
+                    subNode->add_input(constOneTensor);
+                    subNode->add_output(index0Based);
+
+                    // Use Gather with 0-based index
                     auto* gatherNode = graph->add_node();
                     std::string outputTensor = (tensorPrefix.empty() ? "" : tensorPrefix + "_") + "tensor_" + std::to_string(nodeCounter++);
                     gatherNode->set_op_type("Gather");
                     gatherNode->set_name("Gather_" + std::to_string(nodeCounter));
                     gatherNode->add_input(currentTensor);
-                    gatherNode->add_input(indexTensor);
+                    gatherNode->add_input(index0Based);
                     gatherNode->add_output(outputTensor);
 
                     // Set axis attribute (always axis=0 since each Gather reduces rank by 1)

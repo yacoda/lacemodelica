@@ -46,7 +46,8 @@ private:
         int& nodeCounter,
         std::map<std::string, std::vector<std::string>>& derivativeInputs,
         bool isNested = false,
-        std::map<std::string, std::string>* parentLoopVarMap = nullptr
+        std::map<std::string, std::string>* parentLoopVarMap = nullptr,
+        std::string* outLoopNodeName = nullptr
     );
 
     // Create ONNX FunctionProto for a function with algorithm

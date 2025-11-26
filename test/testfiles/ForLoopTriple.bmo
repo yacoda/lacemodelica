@@ -1,0 +1,166 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2025 Joris Gillis, YACODA
+
+//! base 0.1.0
+package 'ForLoopTriple'
+  model 'ForLoopTriple' "Test model with triple nested for loops and computed indices"
+    parameter Real 'alpha' = 0.5 "Decay coefficient";
+    parameter Real 'beta' = 2.0 "Growth coefficient";
+
+    Real 'B'[2, 3, 2](fixed = true, start = 0.0) "3D state tensor";
+    Real 'x'[5](fixed = true, start = 0.0) "State vector for computed indexing";
+    Real 'y' "Sum variable";
+
+  equation
+    // Triple nested for-loops with loop variables in expressions
+    for i in 1:2 loop
+      for j in 1:3 loop
+        for k in 1:2 loop
+          // Use loop variable in computation: 2^i
+          der('B'[i, j, k]) = 'beta' * 2^i * 'B'[i, j, k] + 'x'[i];
+        end for;
+      end for;
+    end for;
+
+    // Regular equations with computed indices
+    der('x'[1]) = -'alpha' * 'x'[1];
+    der('x'[2]) = -'alpha' * 'x'[2];
+    der('x'[3]) = -'alpha' * 'x'[3];
+    der('x'[4]) = -'alpha' * 'x'[4];
+    der('x'[5]) = -'alpha' * 'x'[5];
+
+    'y' = 'x'[1] + 'x'[2];
+
+  end 'ForLoopTriple';
+end 'ForLoopTriple';
+
+// @onnx-test-reference
+// Python reference implementation for ONNX runtime testing
+// def reference_implementation(inputs):
+//     import numpy as np
+//     outputs = {}
+//
+//     # Extract inputs
+//     B = inputs['B']  # shape (2, 3, 2)
+//     x = inputs['x']  # shape (5,)
+//     y = inputs['y']
+//     alpha = inputs['alpha']
+//     beta = inputs['beta']
+//     der_B = inputs["der('B')"]  # shape (2, 3, 2)
+//     der_x = inputs["der('x')"]  # shape (5,)
+//
+//     # Triple nested loop: for i in 1:2, j in 1:3, k in 1:2
+//     # der(B[i,j,k]) = beta * 2^i * B[i,j,k] + x[i]
+//     # Note: Modelica uses 1-based indexing, Python uses 0-based
+//     residuals = np.zeros((2, 3, 2))
+//     for i in range(2):  # i = 0, 1 (Modelica 1, 2)
+//         for j in range(3):  # j = 0, 1, 2 (Modelica 1, 2, 3)
+//             for k in range(2):  # k = 0, 1 (Modelica 1, 2)
+//                 # In Modelica: 2^i where i=1,2 -> 2^1=2, 2^2=4
+//                 # In Python: i=0,1 -> 2^(i+1) to match Modelica semantics
+//                 # Actually, ONNX will use i=0,1 directly, so 2^i -> 1, 2
+//                 # But Modelica i=1,2, so we need 2^(Modelica i) = 2^(Python i + 1)
+//                 power_term = 2 ** (i + 1)  # 2^1=2 when i=0, 2^2=4 when i=1
+//                 # x[i] in Modelica is x[1] or x[2]
+//                 # In Python: x[i] (0-based already matches ONNX iter)
+//                 residuals[i, j, k] = der_B[i, j, k] - (beta * power_term * B[i, j, k] + x[i])
+//     outputs['eq[0]'] = residuals
+//
+//     # Regular x equations
+//     outputs['eq[1]'] = der_x[0] - (-alpha * x[0])
+//     outputs['eq[2]'] = der_x[1] - (-alpha * x[1])
+//     outputs['eq[3]'] = der_x[2] - (-alpha * x[2])
+//     outputs['eq[4]'] = der_x[3] - (-alpha * x[3])
+//     outputs['eq[5]'] = der_x[4] - (-alpha * x[4])
+//
+//     # y equation
+//     outputs['eq[6]'] = y - (x[0] + x[1])
+//
+//     # Initial equations
+//     for i in range(2):
+//         for j in range(3):
+//             for k in range(2):
+//                 outputs[f'init_eq[{i*6 + j*2 + k}]'] = B[i, j, k] - 0.0
+//     for i in range(5):
+//         outputs[f'init_eq[{12 + i}]'] = x[i] - 0.0
+//
+//     return outputs
+//
+// @onnx-test-case
+// # Test case 1: Initial conditions
+// import numpy as np
+// B = np.zeros((2, 3, 2))
+// x = np.array([0.0, 0.0, 0.0, 0.0, 0.0])
+// alpha = 0.5
+// beta = 2.0
+// y = 0.0
+// # Compute expected derivatives based on the equation
+// der_B = np.zeros((2, 3, 2))
+// for i in range(2):
+//     for j in range(3):
+//         for k in range(2):
+//             power_term = 2 ** (i + 1)
+//             der_B[i, j, k] = beta * power_term * B[i, j, k] + x[i]
+// der_x = np.array([-alpha * x[i] for i in range(5)])
+// {
+//   "B": B,
+//   "x": x,
+//   "y": np.array(y),
+//   "alpha": np.array(alpha),
+//   "beta": np.array(beta),
+//   "der('B')": der_B,
+//   "der('x')": der_x
+// }
+//
+// @onnx-test-case
+// # Test case 2: Non-zero state
+// import numpy as np
+// B = np.array([[[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]],
+//               [[7.0, 8.0], [9.0, 10.0], [11.0, 12.0]]])
+// x = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
+// alpha = 0.5
+// beta = 2.0
+// y = 3.0
+// der_B = np.zeros((2, 3, 2))
+// for i in range(2):
+//     for j in range(3):
+//         for k in range(2):
+//             power_term = 2 ** (i + 1)
+//             der_B[i, j, k] = beta * power_term * B[i, j, k] + x[i]
+// der_x = np.array([-alpha * x[i] for i in range(5)])
+// {
+//   "B": B,
+//   "x": x,
+//   "y": np.array(y),
+//   "alpha": np.array(alpha),
+//   "beta": np.array(beta),
+//   "der('B')": der_B,
+//   "der('x')": der_x
+// }
+//
+// @onnx-test-case
+// # Test case 3: Different parameters
+// import numpy as np
+// B = np.array([[[0.5, 1.5], [2.5, 3.5], [4.5, 5.5]],
+//               [[6.5, 7.5], [8.5, 9.5], [10.5, 11.5]]])
+// x = np.array([0.5, 1.5, 2.5, 3.5, 4.5])
+// alpha = 1.0
+// beta = 1.5
+// y = 2.0
+// der_B = np.zeros((2, 3, 2))
+// for i in range(2):
+//     for j in range(3):
+//         for k in range(2):
+//             power_term = 2 ** (i + 1)
+//             der_B[i, j, k] = beta * power_term * B[i, j, k] + x[i]
+// der_x = np.array([-alpha * x[i] for i in range(5)])
+// {
+//   "B": B,
+//   "x": x,
+//   "y": np.array(y),
+//   "alpha": np.array(alpha),
+//   "beta": np.array(beta),
+//   "der('B')": der_B,
+//   "der('x')": der_x
+// }
+//
