@@ -1,0 +1,172 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2025 Joris Gillis, YACODA
+
+//! base 0.1.0
+package 'ForLoopComplex'
+  model 'ForLoopComplex' "Complex test with for loops, dependencies, and extra variables"
+    parameter Real 'alpha' = 0.5 "Decay coefficient";
+    parameter Real 'beta' = 1.0 "Coupling coefficient";
+    parameter Real 'gamma' = 0.1 "Cross-coupling coefficient";
+
+    Real 'x'[5](fixed = true, start = 0.0) "State vector";
+    Real 'z'[5](fixed = true, start = 0.0) "Coupled state vector";
+    Real 'w'[5](fixed = true, start = 0.0) "Dependent state vector";
+    Real 'y' "Sum variable not in loop body";
+    Real 'sum' "Another variable not in loop body";
+
+  equation
+    // Loop 1: Coupled dynamics between x and z
+    for i in 1:5 loop
+      der('x'[i]) = -'alpha' * 'x'[i] + 'beta' * 'z'[i];
+      der('z'[i]) = 'gamma' * 'x'[i] - 'z'[i];
+    end for;
+
+    // Loop 2: w depends on x and uses y (which is not the loop index)
+    for i in 1:5 loop
+      der('w'[i]) = 'x'[i] - 'w'[i] + 'y';
+    end for;
+
+    // Equations for variables that don't appear in loop body
+    'y' = 'x'[1] + 'x'[2] + 'x'[3] + 'x'[4] + 'x'[5];
+    'sum' = 'w'[1] * 'alpha' + 'w'[2] * 'beta' + 'w'[3] * 'gamma';
+
+  end 'ForLoopComplex';
+end 'ForLoopComplex';
+
+// @onnx-test-reference
+// Python reference implementation for ONNX runtime testing
+// def reference_implementation(inputs):
+//     import numpy as np
+//     outputs = {}
+//
+//     # Extract inputs (arrays)
+//     x = inputs['x']
+//     z = inputs['z']
+//     w = inputs['w']
+//     y = inputs['y']
+//     sum_val = inputs['sum']
+//     alpha = inputs['alpha']
+//     beta = inputs['beta']
+//     gamma = inputs['gamma']
+//     der_x = inputs["der('x')"]
+//     der_z = inputs["der('z')"]
+//     der_w = inputs["der('w')"]
+//
+//     # Loop 1 equation 1: der(x[i]) = -alpha * x[i] + beta * z[i] for i in 1:5
+//     outputs['eq[0]'] = np.array([der_x[i] - (-alpha * x[i] + beta * z[i]) for i in range(5)])
+//
+//     # Loop 1 equation 2: der(z[i]) = gamma * x[i] - z[i] for i in 1:5
+//     outputs['eq[1]'] = np.array([der_z[i] - (gamma * x[i] - z[i]) for i in range(5)])
+//
+//     # Loop 2: der(w[i]) = x[i] - w[i] + y for i in 1:5
+//     outputs['eq[2]'] = np.array([der_w[i] - (x[i] - w[i] + y) for i in range(5)])
+//
+//     # y equation
+//     outputs['eq[3]'] = y - (x[0] + x[1] + x[2] + x[3] + x[4])
+//
+//     # sum equation
+//     outputs['eq[4]'] = sum_val - (w[0] * alpha + w[1] * beta + w[2] * gamma)
+//
+//     # Initial equations
+//     outputs['init_eq[0]'] = x[0] - 0.0
+//     outputs['init_eq[1]'] = x[1] - 0.0
+//     outputs['init_eq[2]'] = x[2] - 0.0
+//     outputs['init_eq[3]'] = x[3] - 0.0
+//     outputs['init_eq[4]'] = x[4] - 0.0
+//     outputs['init_eq[5]'] = z[0] - 0.0
+//     outputs['init_eq[6]'] = z[1] - 0.0
+//     outputs['init_eq[7]'] = z[2] - 0.0
+//     outputs['init_eq[8]'] = z[3] - 0.0
+//     outputs['init_eq[9]'] = z[4] - 0.0
+//     outputs['init_eq[10]'] = w[0] - 0.0
+//     outputs['init_eq[11]'] = w[1] - 0.0
+//     outputs['init_eq[12]'] = w[2] - 0.0
+//     outputs['init_eq[13]'] = w[3] - 0.0
+//     outputs['init_eq[14]'] = w[4] - 0.0
+//
+//     return outputs
+//
+// @onnx-test-case
+// # Test case 1: Initial conditions
+// import numpy as np
+// x = np.array([0.0, 0.0, 0.0, 0.0, 0.0])
+// z = np.array([0.0, 0.0, 0.0, 0.0, 0.0])
+// w = np.array([0.0, 0.0, 0.0, 0.0, 0.0])
+// alpha = 0.5
+// beta = 1.0
+// gamma = 0.1
+// y = 0.0
+// sum_val = 0.0
+// der_x = np.array([-alpha * x[i] + beta * z[i] for i in range(5)])
+// der_z = np.array([gamma * x[i] - z[i] for i in range(5)])
+// der_w = np.array([x[i] - w[i] + y for i in range(5)])
+// {
+//   "x": x,
+//   "z": z,
+//   "w": w,
+//   "y": np.array(y),
+//   "sum": np.array(sum_val),
+//   "alpha": np.array(alpha),
+//   "beta": np.array(beta),
+//   "gamma": np.array(gamma),
+//   "der('x')": der_x,
+//   "der('z')": der_z,
+//   "der('w')": der_w
+// }
+//
+// @onnx-test-case
+// # Test case 2: Non-zero state with coupling
+// import numpy as np
+// x = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
+// z = np.array([0.5, 1.0, 1.5, 2.0, 2.5])
+// w = np.array([0.1, 0.2, 0.3, 0.4, 0.5])
+// alpha = 0.5
+// beta = 1.0
+// gamma = 0.1
+// y = 15.0  # sum of x
+// sum_val = w[0] * alpha + w[1] * beta + w[2] * gamma
+// der_x = np.array([-alpha * x[i] + beta * z[i] for i in range(5)])
+// der_z = np.array([gamma * x[i] - z[i] for i in range(5)])
+// der_w = np.array([x[i] - w[i] + y for i in range(5)])
+// {
+//   "x": x,
+//   "z": z,
+//   "w": w,
+//   "y": np.array(y),
+//   "sum": np.array(sum_val),
+//   "alpha": np.array(alpha),
+//   "beta": np.array(beta),
+//   "gamma": np.array(gamma),
+//   "der('x')": der_x,
+//   "der('z')": der_z,
+//   "der('w')": der_w
+// }
+//
+// @onnx-test-case
+// # Test case 3: Different parameters
+// import numpy as np
+// x = np.array([0.5, 1.5, 2.5, 3.5, 4.5])
+// z = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
+// w = np.array([0.2, 0.4, 0.6, 0.8, 1.0])
+// alpha = 1.0
+// beta = 0.5
+// gamma = 0.2
+// y = 12.5  # sum of x
+// sum_val = w[0] * alpha + w[1] * beta + w[2] * gamma
+// der_x = np.array([-alpha * x[i] + beta * z[i] for i in range(5)])
+// der_z = np.array([gamma * x[i] - z[i] for i in range(5)])
+// der_w = np.array([x[i] - w[i] + y for i in range(5)])
+// {
+//   "x": x,
+//   "z": z,
+//   "w": w,
+//   "y": np.array(y),
+//   "sum": np.array(sum_val),
+//   "alpha": np.array(alpha),
+//   "beta": np.array(beta),
+//   "gamma": np.array(gamma),
+//   "der('x')": der_x,
+//   "der('z')": der_z,
+//   "der('w')": der_w
+// }
+//

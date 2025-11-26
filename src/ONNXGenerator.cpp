@@ -843,7 +843,7 @@ size_t ONNXGenerator::generateForEquationLoop(
             identity->add_output(var.name + "_out");
 
             // Add as loop output (final value, though we don't use it)
-            loopNode->add_output(var.name + "_final");
+            loopNode->add_output(var.name + "_final_" + std::to_string(equationIndex));
         }
     }
 
@@ -900,7 +900,7 @@ size_t ONNXGenerator::generateForEquationLoop(
         identity->add_output(derName + "_out");
 
         // Add as loop output (final value, though we don't use it)
-        loopNode->add_output(derName + "_final");
+        loopNode->add_output(derName + "_final_" + std::to_string(equationIndex));
 
         // Also add to derivativeInputs map for later reference
         if (baseVar) {
