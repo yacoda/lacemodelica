@@ -80,13 +80,6 @@ std::string createGatherNode(onnx::GraphProto* graph, const std::string& dataTen
                               const std::string& indexTensor, int axis, int& counter,
                               const std::string& prefix = "");
 
-// Add source location metadata to an ONNX value info
-void addSourceMetadata(onnx::ValueInfoProto* valueInfo, const std::string& sourceFile, size_t sourceLine);
-
-// Configure tensor type with element type and optional dimensions
-void configureTensorType(onnx::TypeProto_Tensor* tensorType, int elemType,
-                         const std::vector<std::string>& dimensions = {});
-
 // Create binary operation nodes (Add, Sub, Mul, Div, Pow, etc.)
 std::string createBinaryOp(onnx::GraphProto* graph, const std::string& opType,
                             const std::string& left, const std::string& right,

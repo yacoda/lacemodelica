@@ -46,6 +46,97 @@ const std::map<std::string, std::string> kMathFunctionMap = {
 };
 
 // -----------------------------------------------------------------------------
+// For-Loop Helper Structures
+// -----------------------------------------------------------------------------
+
+// Parsed information about a Modelica for-loop range
+struct ForLoopRange {
+    std::string loopVar;
+    int startVal;
+    int endVal;
+    int tripCount() const { return endVal - startVal + 1; }
+};
+
+// Parse for-loop range from grammar context
+static ForLoopRange parseForLoopRange(basemodelica::BaseModelicaParser::ForEquationContext* forEqCtx) {
+    ForLoopRange range;
+    auto forIndex = forEqCtx->forIndex();
+    range.loopVar = forIndex->IDENT()->getText();
+    std::string rangeText = forIndex->expression()->getText();
+
+    size_t colonPos = rangeText.find(':');
+    if (colonPos == std::string::npos) {
+        throw std::runtime_error("For-equation range must be in format start:end");
+    }
+    try {
+        range.startVal = std::stoi(rangeText.substr(0, colonPos));
+        range.endVal = std::stoi(rangeText.substr(colonPos + 1));
+    } catch (...) {
+        throw std::runtime_error("For-equation range must contain constant integers");
+    }
+    return range;
+}
+
+// Set up standard ONNX Loop body inputs (iter, cond) and condition passthrough
+// Returns the condition output name for reference
+static std::string setupLoopBodyIO(onnx::GraphProto* bodyGraph, const std::string& loopNodeName) {
+    // Add iter input (0-based iteration counter)
+    auto* iterInput = bodyGraph->add_input();
+    iterInput->set_name("iter");
+    auto* iterType = iterInput->mutable_type()->mutable_tensor_type();
+    iterType->set_elem_type(onnx::TensorProto::INT64);
+    iterType->mutable_shape();  // Scalar
+
+    // Add condition input
+    auto* condInput = bodyGraph->add_input();
+    condInput->set_name("cond_in");
+    auto* condInputType = condInput->mutable_type()->mutable_tensor_type();
+    condInputType->set_elem_type(onnx::TensorProto::BOOL);
+    condInputType->mutable_shape();  // Scalar
+
+    // Add condition output (passthrough)
+    std::string condOutName = loopNodeName + "_cond_out";
+    auto* condOutput = bodyGraph->add_output();
+    condOutput->set_name(condOutName);
+    auto* condOutputType = condOutput->mutable_type()->mutable_tensor_type();
+    condOutputType->set_elem_type(onnx::TensorProto::BOOL);
+    condOutputType->mutable_shape();  // Scalar
+
+    // Identity node to pass condition through
+    auto* condIdentity = bodyGraph->add_node();
+    condIdentity->set_op_type("Identity");
+    condIdentity->set_name(loopNodeName + "_cond_passthrough");
+    condIdentity->add_input("cond_in");
+    condIdentity->add_output(condOutName);
+
+    return condOutName;
+}
+
+// Scan equations for der() calls and return the set of derivative variable names
+static std::set<std::string> scanForDerivatives(
+    const std::vector<basemodelica::BaseModelicaParser::EquationContext*>& equations) {
+
+    std::set<std::string> derivatives;
+    for (auto* eq : equations) {
+        std::string eqText = eq->getText();
+        size_t pos = 0;
+        while ((pos = eqText.find("der(", pos)) != std::string::npos) {
+            size_t start = pos + 4;
+            size_t end = eqText.find(")", start);
+            if (end != std::string::npos) {
+                std::string derArg = eqText.substr(start, end - start);
+                size_t bracketPos = derArg.find('[');
+                std::string baseVar = stripQuotes(
+                    (bracketPos != std::string::npos) ? derArg.substr(0, bracketPos) : derArg);
+                derivatives.insert("der('" + baseVar + "')");
+            }
+            pos = end;
+        }
+    }
+    return derivatives;
+}
+
+// -----------------------------------------------------------------------------
 
 std::string ONNXGenerator::generate(const ModelInfo& info, const std::string& outputDir) {
     // Layered standard directory structure
@@ -182,7 +273,6 @@ void ONNXGenerator::generateONNXModel(const ModelInfo& info, const std::string& 
     // Create ONNX FunctionProto for each function with algorithm
     for (const auto& func : info.functions) {
         if (!func.algorithmStatements.empty()) {
-            std::cerr << "Creating FunctionProto for: " << func.name << std::endl;
             try {
                 createFunctionProto(func, info, &model);
             } catch (const std::exception& e) {
@@ -315,25 +405,17 @@ void ONNXGenerator::generateONNXModel(const ModelInfo& info, const std::string& 
     }
 
     // Infer shapes for all tensors in the graph
-    std::cout << "Inferring shapes..." << std::endl;
     try {
         onnx::shape_inference::InferShapes(model);
-        std::cout << "Shape inference successful" << std::endl;
     } catch (const std::exception& e) {
         std::cerr << "Warning: Shape inference failed: " << e.what() << std::endl;
-        std::cerr << "Continuing with partial shape information..." << std::endl;
     }
 
     // Validate ONNX model before serialization
-    std::cout << "Validating ONNX model..." << std::endl;
     try {
-        // Don't validate opset compatibility for custom functions
         onnx::checker::check_model(model, false, false, false);
-        std::cout << "ONNX model validation successful" << std::endl;
     } catch (const onnx::checker::ValidationError& e) {
         std::cerr << "Warning: ONNX validation failed: " << e.what() << std::endl;
-        std::cerr << "Continuing anyway for models with custom functions..." << std::endl;
-        // For now, just warn - custom functions aren't fully supported by validator
     }
 
     // Serialize to file
@@ -398,12 +480,6 @@ void ONNXGenerator::generateEquationOutputs(
             continue;
         }
 
-        // Debug: Check if this equation contains tan
-        std::string rhsText = eq.rhsContext ? eq.rhsContext->getText() : "";
-        if (rhsText.find("tan") != std::string::npos) {
-            std::cerr << "DEBUG: Equation " << i << " contains 'tan', RHS: " << rhsText.substr(0, 80) << "..." << std::endl;
-        }
-
         // Check if LHS is a tuple (outputExpressionList) for multi-output functions
         bool isMultiOutput = false;
         std::vector<std::string> outputVarNames;
@@ -417,7 +493,6 @@ void ONNXGenerator::generateEquationOutputs(
                     outputVarNames.push_back(stripQuotes(outExpr->getText()));
                 }
             }
-            std::cerr << "DEBUG: Found multi-output equation with " << outputVarNames.size() << " outputs" << std::endl;
         }
 
         if (isMultiOutput) {
@@ -499,10 +574,6 @@ void ONNXGenerator::generateEquationOutputs(
         const Variable* lhsVar = info.findVariable(lhsText);
         bool isBooleanEquation = (lhsVar && lhsVar->type == "Boolean");
 
-        if (isBooleanEquation) {
-            std::cerr << "DEBUG: Equation " << i << " is boolean: " << lhsText << std::endl;
-        }
-
         auto* eq_node = graph->add_node();
         if (isBooleanEquation) {
             eq_node->set_op_type("Equal");  // For boolean equations, check equality
@@ -572,8 +643,6 @@ size_t ONNXGenerator::generateIfEquation(
         throw std::runtime_error("Invalid if-equation context");
     }
 
-    std::cerr << "DEBUG: Processing if-equation" << std::endl;
-
     // Get all expressions (conditions) and equation lists from branches
     auto expressions = ifEqCtx->expression();  // [if_cond, elseif_cond1, elseif_cond2, ...]
 
@@ -601,16 +670,9 @@ size_t ONNXGenerator::generateIfEquation(
     }
     std::string lhsVarName = stripQuotes(firstSimpleExpr->getText());
 
-    std::cerr << "DEBUG: If-equation assigns to variable: " << lhsVarName << std::endl;
-
     // Build nested If structure for RHS values
     // We need to pair conditions with their corresponding equations
     // Structure: if cond1 then eq1; [elseif cond2 then eq2;]* [else eq_else;]? end if;
-
-    size_t numConditions = expressions.size();
-    size_t numEquations = allEquations.size();
-
-    std::cerr << "DEBUG: If-equation has " << numConditions << " conditions and " << numEquations << " equations" << std::endl;
 
     // Build the conditional RHS using nested If nodes
     // For: if c1 then v1 elseif c2 then v2 else v3
@@ -705,87 +767,33 @@ size_t ONNXGenerator::generateForEquationLoop(
         throw std::runtime_error("Invalid for-equation context");
     }
 
-    // Extract loop variable and range
-    auto forIndex = forEqCtx->forIndex();
-    std::string loopVar = forIndex->IDENT()->getText();
-    std::string rangeText = forIndex->expression()->getText();
-
-    // Parse range (assuming format "start:end")
-    int startVal, endVal;
-    size_t colonPos = rangeText.find(':');
-    if (colonPos == std::string::npos) {
-        throw std::runtime_error("For-equation range must be in format start:end");
-    }
-    try {
-        startVal = std::stoi(rangeText.substr(0, colonPos));
-        endVal = std::stoi(rangeText.substr(colonPos + 1));
-    } catch (...) {
-        throw std::runtime_error("For-equation range must contain constant integers");
-    }
-
-    int tripCount = endVal - startVal + 1;
-    std::cerr << "DEBUG: For-equation loop var=" << loopVar << " range=" << startVal << ":" << endVal << " trip_count=" << tripCount << std::endl;
-
-    // Get equations inside the loop
+    // Parse loop variable and range using helper
+    ForLoopRange range = parseForLoopRange(forEqCtx);
     auto loopEquations = forEqCtx->equation();
-    std::cerr << "DEBUG: For-equation contains " << loopEquations.size() << " inner equations" << std::endl;
 
-    // Create Loop node name first so we can use it for constants
+    // Create Loop node
     std::string loopNodeName = "for_loop_" + std::to_string(nodeCounter++);
-
-    // Return loop node name if requested
     if (outLoopNodeName) {
         *outLoopNodeName = loopNodeName;
     }
 
-    // Create trip count and condition constants for the loop
-    std::string tripCountTensor = createInt64Constant(graph, tripCount, nodeCounter, "trip_count_" + loopNodeName);
+    std::string tripCountTensor = createInt64Constant(graph, range.tripCount(), nodeCounter, "trip_count_" + loopNodeName);
     std::string condTensor = createBoolConstant(graph, true, nodeCounter);
 
-    // Create Loop node
     auto* loopNode = graph->add_node();
     loopNode->set_op_type("Loop");
     loopNode->set_name(loopNodeName);
     loopNode->add_input(tripCountTensor);
     loopNode->add_input(condTensor);
 
-    // Create loop body subgraph
+    // Create loop body subgraph with standard I/O
     auto* bodyAttr = loopNode->add_attribute();
     bodyAttr->set_name("body");
     bodyAttr->set_type(onnx::AttributeProto::GRAPH);
     auto* bodyGraph = bodyAttr->mutable_g();
     bodyGraph->set_name("loop_body_" + std::to_string(nodeCounter++));
 
-    // Loop body inputs: iteration number, condition
-    auto* iterInput = bodyGraph->add_input();
-    iterInput->set_name("iter");
-    auto* iterType = iterInput->mutable_type()->mutable_tensor_type();
-    iterType->set_elem_type(onnx::TensorProto::INT64);
-    // Scalar shape (empty dimensions)
-    iterType->mutable_shape();
-
-    auto* condInput = bodyGraph->add_input();
-    condInput->set_name("cond_in");
-    auto* condInputType = condInput->mutable_type()->mutable_tensor_type();
-    condInputType->set_elem_type(onnx::TensorProto::BOOL);
-    // Scalar shape (empty dimensions)
-    condInputType->mutable_shape();
-
-    // Loop body outputs: condition (pass-through)
-    auto* condOutput = bodyGraph->add_output();
-    std::string condOutName = loopNodeName + "_cond_out";
-    condOutput->set_name(condOutName);
-    auto* condOutputType = condOutput->mutable_type()->mutable_tensor_type();
-    condOutputType->set_elem_type(onnx::TensorProto::BOOL);
-    // Scalar shape (empty dimensions)
-    condOutputType->mutable_shape();
-
-    // Identity node to pass condition through
-    auto* condIdentity = bodyGraph->add_node();
-    condIdentity->set_op_type("Identity");
-    condIdentity->set_name(loopNodeName + "_cond_passthrough");
-    condIdentity->add_input("cond_in");
-    condIdentity->add_output(condOutName);
+    setupLoopBodyIO(bodyGraph, loopNodeName);
 
     // For nested loops, add parent loop variables as inputs
     // This allows inner loop to reference outer loop variables
@@ -799,37 +807,12 @@ size_t ONNXGenerator::generateForEquationLoop(
         }
     }
 
-    // Create 1-based loop variable for Modelica semantics
-    // Modelica: for i in 1:3 → i = 1, 2, 3
-    // ONNX iter: 0, 1, 2
-    // For expressions (e.g., 2^i), we need 1-based values
-    // For array subscripts (e.g., x[i]), we subtract 1 to get 0-based indexing
-
-    // Create 1-based loop variable: i_1based = iter + 1 (Modelica uses 1-based indexing)
+    // Create 1-based loop variable for Modelica semantics (Modelica uses 1-based, ONNX uses 0-based)
     std::string constOneTensor = createInt64Constant(bodyGraph, 1, nodeCounter, loopNodeName + "_const_one");
-    std::string loopVarTensor = createBinaryOp(bodyGraph, "Add", "iter", constOneTensor, nodeCounter, loopNodeName + "_" + loopVar);
+    std::string loopVarTensor = createBinaryOp(bodyGraph, "Add", "iter", constOneTensor, nodeCounter, loopNodeName + "_" + range.loopVar);
 
     // Pre-scan equations to discover which derivatives are needed
-    // We need to know this before building the loop body
-    std::set<std::string> requiredDerivatives;
-    for (auto* innerEq : loopEquations) {
-        std::string eqText = innerEq->getText();
-        size_t pos = 0;
-        while ((pos = eqText.find("der(", pos)) != std::string::npos) {
-            size_t start = pos + 4;
-            size_t end = eqText.find(")", start);
-            if (end != std::string::npos) {
-                std::string derArg = eqText.substr(start, end - start);
-                // Parse out the base variable (handle both der('x') and der('x'[i]))
-                size_t bracketPos = derArg.find('[');
-                std::string baseVar = stripQuotes(
-                    (bracketPos != std::string::npos) ? derArg.substr(0, bracketPos) : derArg);
-                std::string derName = "der('" + baseVar + "')";
-                requiredDerivatives.insert(derName);
-            }
-            pos = end;
-        }
-    }
+    std::set<std::string> requiredDerivatives = scanForDerivatives(loopEquations);
 
     // For top-level loops, add loop-carried dependencies for all variables
     // For nested loops, skip this - variables are already in scope from parent loop
@@ -877,8 +860,6 @@ size_t ONNXGenerator::generateForEquationLoop(
 
         // Check if this is a nested for-equation
         if (innerEq->forEquation()) {
-            std::cerr << "DEBUG: Processing nested for-equation in outer loop" << std::endl;
-
             // Create an Equation wrapper for the nested for-loop
             Equation nestedEq;
             nestedEq.forEquationContext = innerEq->forEquation();
@@ -896,14 +877,14 @@ size_t ONNXGenerator::generateForEquationLoop(
             // Add current loop variable (maps to "iter" in current body)
             // But we can't pass "iter" directly as it's a reserved name in ONNX Loop bodies
             // Create an Identity node to copy iter to a uniquely named tensor
-            std::string currentLoopIterCopy = "loop_iter_" + loopVar + "_" + std::to_string(bodyNodeCounter++);
+            std::string currentLoopIterCopy = "loop_iter_" + range.loopVar + "_" + std::to_string(bodyNodeCounter++);
             auto* iterCopyNode = bodyGraph->add_node();
             iterCopyNode->set_op_type("Identity");
-            iterCopyNode->set_name("copy_iter_for_nested_" + loopVar);
-            iterCopyNode->add_input(loopVarTensor);  // Input is "iter"
-            iterCopyNode->add_output(currentLoopIterCopy);  // Output is uniquely named
+            iterCopyNode->set_name("copy_iter_for_nested_" + range.loopVar);
+            iterCopyNode->add_input(loopVarTensor);
+            iterCopyNode->add_output(currentLoopIterCopy);
 
-            combinedLoopVarMap[loopVar] = currentLoopIterCopy;
+            combinedLoopVarMap[range.loopVar] = currentLoopIterCopy;
 
             // Recursively generate nested Loop node inside current loop body
             std::string nestedLoopNodeName;
@@ -1029,7 +1010,7 @@ size_t ONNXGenerator::generateForEquationLoop(
             }
         }
         // Add current loop variable
-        loopVarMap[loopVar] = loopVarTensor;
+        loopVarMap[range.loopVar] = loopVarTensor;
 
         // Convert LHS and RHS with loop variable substitution
         std::string lhsTensor, rhsTensor;
@@ -1082,13 +1063,12 @@ size_t ONNXGenerator::generateForEquationLoop(
             auto* graphOutputType = graphOutput->mutable_type()->mutable_tensor_type();
             graphOutputType->set_elem_type(onnx::TensorProto::DOUBLE);
             auto* graphOutputShape = graphOutputType->mutable_shape();
-            graphOutputShape->add_dim()->set_dim_value(tripCount);  // Array of residuals
+            graphOutputShape->add_dim()->set_dim_value(range.tripCount());  // Array of residuals
         }
 
         scanOutputCount++;
     }
 
-    std::cerr << "DEBUG: For-equation Loop node created with " << scanOutputCount << " scan outputs" << std::endl;
     return scanOutputCount;
 }
 
@@ -1096,8 +1076,6 @@ void ONNXGenerator::createFunctionProto(
     const Function& func,
     const ModelInfo& info,
     onnx::ModelProto* model) {
-
-    std::cerr << "Creating ONNX FunctionProto for '" << func.name << "'" << std::endl;
 
     // Create a new FunctionProto
     auto* functionProto = model->add_functions();
@@ -1133,9 +1111,6 @@ void ONNXGenerator::createFunctionProto(
         // Extract LHS variable name from componentReference
         std::string lhsVarName = stripQuotes(stmt.lhsContext->getText());
 
-        std::cerr << "  Processing statement " << stmtIndex << ": " << lhsVarName << " := "
-                  << stmt.rhsContext->getText().substr(0, 50) << "..." << std::endl;
-
         try {
             // Remember the current node count to identify newly created nodes
             int startNodeCount = functionProto->node_size();
@@ -1168,8 +1143,6 @@ void ONNXGenerator::createFunctionProto(
             // Store result in map
             variableToTensor[lhsVarName] = rhsTensor;
 
-            std::cerr << "  Mapped " << lhsVarName << " -> " << rhsTensor << std::endl;
-
         } catch (const std::exception& e) {
             std::cerr << "Warning: Failed to convert statement for " << lhsVarName;
             if (!stmt.sourceFile.empty()) {
@@ -1195,7 +1168,6 @@ void ONNXGenerator::createFunctionProto(
 
         // Add the output variable name as the function output
         functionProto->add_output(finalName);
-        std::cerr << "  Function output: " << finalName << std::endl;
     }
 }
 

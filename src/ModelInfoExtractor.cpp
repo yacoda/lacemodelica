@@ -617,11 +617,6 @@ void ModelInfoExtractor::extractFunctions(basemodelica::BaseModelicaParser::Base
         }
 
         info.addFunction(func);
-
-        std::cerr << "Extracted function: " << func.name
-                  << " with " << func.inputs.size() << " inputs, "
-                  << func.outputs.size() << " outputs, "
-                  << func.algorithmStatements.size() << " algorithm statements" << std::endl;
     }
 }
 

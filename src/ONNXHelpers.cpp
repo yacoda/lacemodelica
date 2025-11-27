@@ -117,32 +117,6 @@ std::string createGatherNode(onnx::GraphProto* graph, const std::string& dataTen
     return outputTensor;
 }
 
-void addSourceMetadata(onnx::ValueInfoProto* valueInfo, const std::string& sourceFile, size_t sourceLine) {
-    if (sourceFile.empty()) return;
-
-    auto* metaFile = valueInfo->add_metadata_props();
-    metaFile->set_key("source_file");
-    metaFile->set_value(sourceFile);
-
-    auto* metaLine = valueInfo->add_metadata_props();
-    metaLine->set_key("source_line");
-    metaLine->set_value(std::to_string(sourceLine));
-}
-
-void configureTensorType(onnx::TypeProto_Tensor* tensorType, int elemType,
-                         const std::vector<std::string>& dimensions) {
-    tensorType->set_elem_type(elemType);
-    auto* shape = tensorType->mutable_shape();
-    for (const auto& dim : dimensions) {
-        auto* shapeDim = shape->add_dim();
-        try {
-            shapeDim->set_dim_value(std::stoi(dim));
-        } catch (...) {
-            shapeDim->set_dim_param(dim);
-        }
-    }
-}
-
 std::string createBinaryOp(onnx::GraphProto* graph, const std::string& opType,
                             const std::string& left, const std::string& right,
                             int& counter, const std::string& prefix) {
