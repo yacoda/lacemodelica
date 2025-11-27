@@ -2,6 +2,7 @@
 // Copyright (c) 2025 Joris Gillis, YACODA
 
 #include "ONNXGenerator.h"
+#include "ONNXHelpers.hpp"
 #include "ParseTreeNavigator.h"
 #define ONNX_ML 1
 #define ONNX_NAMESPACE onnx
@@ -949,31 +950,9 @@ size_t ONNXGenerator::generateForEquationLoop(
         *outLoopNodeName = loopNodeName;
     }
 
-    // Create trip count constant
-    std::string tripCountTensor = "trip_count_" + loopNodeName;
-    auto* tripCountNode = graph->add_node();
-    tripCountNode->set_op_type("Constant");
-    tripCountNode->set_name(tripCountTensor);
-    tripCountNode->add_output(tripCountTensor);
-    auto* tripCountAttr = tripCountNode->add_attribute();
-    tripCountAttr->set_name("value");
-    tripCountAttr->set_type(onnx::AttributeProto::TENSOR);
-    auto* tripCountTensorProto = tripCountAttr->mutable_t();
-    tripCountTensorProto->set_data_type(onnx::TensorProto::INT64);
-    tripCountTensorProto->add_int64_data(tripCount);
-
-    // Create empty condition tensor (unconditional loop)
-    std::string condTensor = "loop_cond_" + loopNodeName;
-    auto* condNode = graph->add_node();
-    condNode->set_op_type("Constant");
-    condNode->set_name(condTensor);
-    condNode->add_output(condTensor);
-    auto* condAttr = condNode->add_attribute();
-    condAttr->set_name("value");
-    condAttr->set_type(onnx::AttributeProto::TENSOR);
-    auto* condTensorProto = condAttr->mutable_t();
-    condTensorProto->set_data_type(onnx::TensorProto::BOOL);
-    condTensorProto->add_int32_data(1);  // true
+    // Create trip count and condition constants for the loop
+    std::string tripCountTensor = createInt64Constant(graph, tripCount, nodeCounter, "trip_count_" + loopNodeName);
+    std::string condTensor = createBoolConstant(graph, true, nodeCounter);
 
     // Create Loop node
     auto* loopNode = graph->add_node();
@@ -1059,32 +1038,9 @@ size_t ONNXGenerator::generateForEquationLoop(
     // For expressions (e.g., 2^i), we need 1-based values
     // For array subscripts (e.g., x[i]), we subtract 1 to get 0-based indexing
 
-    // Create tensor for 1-based loop variable: i_1based = iter + 1
-    std::string loopVar1BasedTensor = loopNodeName + "_" + loopVar + "_1based";
-
-    // Create Constant node with value 1
-    std::string constOneTensor = loopNodeName + "_const_one";
-    auto* constOneNode = bodyGraph->add_node();
-    constOneNode->set_op_type("Constant");
-    constOneNode->set_name(constOneTensor);
-    constOneNode->add_output(constOneTensor);
-    auto* constOneAttr = constOneNode->add_attribute();
-    constOneAttr->set_name("value");
-    constOneAttr->set_type(onnx::AttributeProto::TENSOR);
-    auto* constOneTensorProto = constOneAttr->mutable_t();
-    constOneTensorProto->set_data_type(onnx::TensorProto::INT64);
-    constOneTensorProto->add_int64_data(1);
-
-    // Create Add node: loop_var_1based = iter + 1
-    auto* addNode = bodyGraph->add_node();
-    addNode->set_op_type("Add");
-    addNode->set_name(loopVar1BasedTensor + "_add");
-    addNode->add_input("iter");
-    addNode->add_input(constOneTensor);
-    addNode->add_output(loopVar1BasedTensor);
-
-    // Map loop variable to 1-based tensor for use in expressions
-    std::string loopVarTensor = loopVar1BasedTensor;
+    // Create 1-based loop variable: i_1based = iter + 1 (Modelica uses 1-based indexing)
+    std::string constOneTensor = createInt64Constant(bodyGraph, 1, nodeCounter, loopNodeName + "_const_one");
+    std::string loopVarTensor = createBinaryOp(bodyGraph, "Add", "iter", constOneTensor, nodeCounter, loopNodeName + "_" + loopVar);
 
     // Pre-scan equations to discover which derivatives are needed
     // We need to know this before building the loop body
@@ -1863,35 +1819,15 @@ std::string ONNXGenerator::convertSimpleExpression(
             throw std::runtime_error("No relation in logical factor");
         }
 
-        // Convert this logical factor to a tensor
         std::string factorTensor = convertRelation(relation, info, graph, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
 
-        // Check if logical factor has 'not' prefix
-        // If 'not' is present, logicalFactor will have 2 children: 'not' token and relation
-        // If 'not' is absent, it will have 1 child: just the relation
+        // Apply NOT if present (logicalFactor has >1 children when 'not' prefix exists)
         if (logicalFactor->children.size() > 1) {
-            // Apply NOT operator
-            auto* notNode = graph->add_node();
-            notNode->set_op_type("Not");
-            notNode->set_name("Not_" + std::to_string(nodeCounter));
-            notNode->add_input(factorTensor);
-            factorTensor = (tensorPrefix.empty() ? "" : tensorPrefix + "_") + "tensor_" + std::to_string(nodeCounter++);
-            notNode->add_output(factorTensor);
+            factorTensor = createUnaryOp(graph, "Not", factorTensor, nodeCounter, tensorPrefix);
         }
 
-        if (i == 0) {
-            // First factor
-            resultTensor = factorTensor;
-        } else {
-            // Subsequent factors - AND with previous result
-            auto* andNode = graph->add_node();
-            andNode->set_op_type("And");
-            andNode->set_name("And_" + std::to_string(nodeCounter));
-            andNode->add_input(resultTensor);
-            andNode->add_input(factorTensor);
-            resultTensor = (tensorPrefix.empty() ? "" : tensorPrefix + "_") + "tensor_" + std::to_string(nodeCounter++);
-            andNode->add_output(resultTensor);
-        }
+        // Chain with AND for subsequent factors
+        resultTensor = (i == 0) ? factorTensor : createBinaryOp(graph, "And", resultTensor, factorTensor, nodeCounter, tensorPrefix);
     }
 
     return resultTensor;
@@ -1998,53 +1934,30 @@ std::string ONNXGenerator::convertArithmeticExpression(
 
     // If we have more addOps than remaining terms, first addOp was a leading unary
     if (addOps.size() > terms.size() - 1) {
-        // Leading operator - apply it to the first term
         std::string opText = addOps[opIndex++]->getText();
-
         if (opText == "-") {
-            auto* node = graph->add_node();
-            std::string outputTensor = (tensorPrefix.empty() ? "" : tensorPrefix + "_") + "tensor_" + std::to_string(nodeCounter++);
-            node->set_op_type("Neg");
-            node->set_name("Neg_" + std::to_string(nodeCounter));
-            node->add_input(result);
-            node->add_output(outputTensor);
-            result = outputTensor;
-        } else if (opText == "+") {
-            // Unary plus - no-op
-        } else {
+            result = createUnaryOp(graph, "Neg", result, nodeCounter, tensorPrefix);
+        } else if (opText != "+") {  // Unary plus is a no-op
             throw std::runtime_error("Unsupported leading operator: " + opText);
         }
     }
 
-    // Process remaining terms with operators
+    // Process remaining terms with binary operators
     while (opIndex < addOps.size()) {
-        std::string opText = addOps[opIndex]->getText();
-        std::string rightTensor = convertTerm(terms[termIndex], info, graph, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
-        termIndex++;
-        opIndex++;
+        std::string opText = addOps[opIndex++]->getText();
+        std::string rightTensor = convertTerm(terms[termIndex++], info, graph, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
 
-        // Create ONNX node for the operation
-        auto* node = graph->add_node();
-        std::string outputTensor = (tensorPrefix.empty() ? "" : tensorPrefix + "_") + "tensor_" + std::to_string(nodeCounter++);
-
-        if (opText == "+") {
-            node->set_op_type("Add");
-        } else if (opText == "-") {
-            node->set_op_type("Sub");
-        } else if (opText == ".+") {
-            node->set_op_type("Add");  // Element-wise add
-        } else if (opText == ".-") {
-            node->set_op_type("Sub");  // Element-wise sub
+        // Map Modelica operators to ONNX operators (element-wise variants are the same)
+        std::string onnxOp;
+        if (opText == "+" || opText == ".+") {
+            onnxOp = "Add";
+        } else if (opText == "-" || opText == ".-") {
+            onnxOp = "Sub";
         } else {
             throw std::runtime_error("Unsupported add operator: " + opText);
         }
 
-        node->set_name(node->op_type() + "_" + std::to_string(nodeCounter));
-        node->add_input(result);
-        node->add_input(rightTensor);
-        node->add_output(outputTensor);
-
-        result = outputTensor;
+        result = createBinaryOp(graph, onnxOp, result, rightTensor, nodeCounter, tensorPrefix);
     }
 
     return result;
@@ -2086,37 +1999,22 @@ std::string ONNXGenerator::convertTerm(
         std::string opText = mulOps[i]->getText();
         std::string rightTensor = convertFactor(factors[i + 1], info, graph, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
 
-        // Create ONNX node for the operation
-        auto* node = graph->add_node();
-        std::string outputTensor = (tensorPrefix.empty() ? "" : tensorPrefix + "_") + "tensor_" + std::to_string(nodeCounter++);
-
+        // Determine ONNX operator
+        std::string onnxOp;
         if (opText == "*") {
-            // Check if both operands are matrices (2D arrays)
-            // If so, use MatMul for matrix multiplication; otherwise use Mul
+            // Use MatMul for matrix-matrix multiplication, Mul otherwise
             bool leftIsMatrix = isMatrixVariable(result, info);
             bool rightIsMatrix = isMatrixVariable(rightTensor, info);
-
-            if (leftIsMatrix && rightIsMatrix) {
-                node->set_op_type("MatMul");
-            } else {
-                node->set_op_type("Mul");
-            }
-        } else if (opText == "/") {
-            node->set_op_type("Div");
+            onnxOp = (leftIsMatrix && rightIsMatrix) ? "MatMul" : "Mul";
+        } else if (opText == "/" || opText == "./") {
+            onnxOp = "Div";
         } else if (opText == ".*") {
-            node->set_op_type("Mul");  // Element-wise multiply
-        } else if (opText == "./") {
-            node->set_op_type("Div");  // Element-wise divide
+            onnxOp = "Mul";
         } else {
             throw std::runtime_error("Unsupported mul operator: " + opText);
         }
 
-        node->set_name(node->op_type() + "_" + std::to_string(nodeCounter));
-        node->add_input(result);
-        node->add_input(rightTensor);
-        node->add_output(outputTensor);
-
-        result = outputTensor;
+        result = createBinaryOp(graph, onnxOp, result, rightTensor, nodeCounter, tensorPrefix);
     }
 
     return result;
@@ -2143,17 +2041,7 @@ std::string ONNXGenerator::convertFactor(
     // Handle power operator if present
     if (primaries.size() > 1) {
         std::string exponentTensor = convertPrimary(primaries[1], info, graph, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
-
-        auto* node = graph->add_node();
-        std::string outputTensor = (tensorPrefix.empty() ? "" : tensorPrefix + "_") + "tensor_" + std::to_string(nodeCounter++);
-
-        node->set_op_type("Pow");
-        node->set_name("Pow_" + std::to_string(nodeCounter));
-        node->add_input(result);
-        node->add_input(exponentTensor);
-        node->add_output(outputTensor);
-
-        result = outputTensor;
+        result = createBinaryOp(graph, "Pow", result, exponentTensor, nodeCounter, tensorPrefix);
     }
 
     return result;
@@ -2345,49 +2233,10 @@ std::string ONNXGenerator::convertPrimary(
 
                             // Check if this is a loop variable (variable tensor, not constant)
                             if (variableMap && variableMap->count(indexExpr) > 0) {
-                                // Dynamic indexing with loop variable
-                                // The loop variable is 1-based (Modelica), but array indices need 0-based
-                                // So subtract 1: index_0based = loop_var_1based - 1
+                                // Dynamic indexing: convert 1-based Modelica index to 0-based ONNX index
                                 std::string loopVar1Based = variableMap->at(indexExpr);
-
-                                // Create Constant node with value 1
-                                std::string constOneTensor = (tensorPrefix.empty() ? "" : tensorPrefix + "_") + "const_one_" + std::to_string(nodeCounter++);
-                                auto* constOneNode = graph->add_node();
-                                constOneNode->set_op_type("Constant");
-                                constOneNode->set_name(constOneTensor);
-                                constOneNode->add_output(constOneTensor);
-                                auto* constOneAttr = constOneNode->add_attribute();
-                                constOneAttr->set_name("value");
-                                constOneAttr->set_type(onnx::AttributeProto::TENSOR);
-                                auto* constOneTensorProto = constOneAttr->mutable_t();
-                                constOneTensorProto->set_data_type(onnx::TensorProto::INT64);
-                                constOneTensorProto->add_int64_data(1);
-
-                                // Create Sub node: index_0based = loop_var_1based - 1
-                                std::string index0Based = (tensorPrefix.empty() ? "" : tensorPrefix + "_") + "index_0based_" + std::to_string(nodeCounter++);
-                                auto* subNode = graph->add_node();
-                                subNode->set_op_type("Sub");
-                                subNode->set_name(index0Based + "_sub");
-                                subNode->add_input(loopVar1Based);
-                                subNode->add_input(constOneTensor);
-                                subNode->add_output(index0Based);
-
-                                // Use Gather with 0-based index
-                                auto* gatherNode = graph->add_node();
-                                std::string outputTensor = (tensorPrefix.empty() ? "" : tensorPrefix + "_") + "tensor_" + std::to_string(nodeCounter++);
-                                gatherNode->set_op_type("Gather");
-                                gatherNode->set_name("Gather_" + std::to_string(nodeCounter));
-                                gatherNode->add_input(currentTensor);
-                                gatherNode->add_input(index0Based);
-                                gatherNode->add_output(outputTensor);
-
-                                // Set axis attribute (always axis=0 since each Gather reduces rank by 1)
-                                auto* axisAttr = gatherNode->add_attribute();
-                                axisAttr->set_name("axis");
-                                axisAttr->set_type(onnx::AttributeProto::INT);
-                                axisAttr->set_i(0);
-
-                                currentTensor = outputTensor;
+                                std::string index0Based = convertTo0BasedIndex(graph, loopVar1Based, nodeCounter, tensorPrefix);
+                                currentTensor = createGatherNode(graph, currentTensor, index0Based, 0, nodeCounter, tensorPrefix);
                             } else {
                                 // Static indexing with constant - not supported in mixed mode yet
                                 throw std::runtime_error("Mixed static and dynamic indexing not yet fully supported");
@@ -2640,49 +2489,10 @@ std::string ONNXGenerator::convertPrimary(
 
                 // Check if this is a loop variable (variable tensor, not constant)
                 if (variableMap && variableMap->count(indexExpr) > 0) {
-                    // Dynamic indexing with loop variable
-                    // The loop variable is 1-based (Modelica), but array indices need 0-based
-                    // So subtract 1: index_0based = loop_var_1based - 1
+                    // Dynamic indexing: convert 1-based Modelica index to 0-based ONNX index
                     std::string loopVar1Based = variableMap->at(indexExpr);
-
-                    // Create Constant node with value 1
-                    std::string constOneTensor = (tensorPrefix.empty() ? "" : tensorPrefix + "_") + "const_one_" + std::to_string(nodeCounter++);
-                    auto* constOneNode = graph->add_node();
-                    constOneNode->set_op_type("Constant");
-                    constOneNode->set_name(constOneTensor);
-                    constOneNode->add_output(constOneTensor);
-                    auto* constOneAttr = constOneNode->add_attribute();
-                    constOneAttr->set_name("value");
-                    constOneAttr->set_type(onnx::AttributeProto::TENSOR);
-                    auto* constOneTensorProto = constOneAttr->mutable_t();
-                    constOneTensorProto->set_data_type(onnx::TensorProto::INT64);
-                    constOneTensorProto->add_int64_data(1);
-
-                    // Create Sub node: index_0based = loop_var_1based - 1
-                    std::string index0Based = (tensorPrefix.empty() ? "" : tensorPrefix + "_") + "index_0based_" + std::to_string(nodeCounter++);
-                    auto* subNode = graph->add_node();
-                    subNode->set_op_type("Sub");
-                    subNode->set_name(index0Based + "_sub");
-                    subNode->add_input(loopVar1Based);
-                    subNode->add_input(constOneTensor);
-                    subNode->add_output(index0Based);
-
-                    // Use Gather with 0-based index
-                    auto* gatherNode = graph->add_node();
-                    std::string outputTensor = (tensorPrefix.empty() ? "" : tensorPrefix + "_") + "tensor_" + std::to_string(nodeCounter++);
-                    gatherNode->set_op_type("Gather");
-                    gatherNode->set_name("Gather_" + std::to_string(nodeCounter));
-                    gatherNode->add_input(currentTensor);
-                    gatherNode->add_input(index0Based);
-                    gatherNode->add_output(outputTensor);
-
-                    // Set axis attribute (always axis=0 since each Gather reduces rank by 1)
-                    auto* axisAttr = gatherNode->add_attribute();
-                    axisAttr->set_name("axis");
-                    axisAttr->set_type(onnx::AttributeProto::INT);
-                    axisAttr->set_i(0);
-
-                    currentTensor = outputTensor;
+                    std::string index0Based = convertTo0BasedIndex(graph, loopVar1Based, nodeCounter, tensorPrefix);
+                    currentTensor = createGatherNode(graph, currentTensor, index0Based, 0, nodeCounter, tensorPrefix);
                 } else {
                     // Static indexing with constant - not supported in mixed mode yet
                     throw std::runtime_error("Mixed static and dynamic indexing not yet fully supported");

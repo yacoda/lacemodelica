@@ -149,6 +149,7 @@ add_executable(lacemodelica
     src/ModelInfoExtractor.cpp
     src/FMUGenerator.cpp
     src/ONNXGenerator.cpp
+    src/ONNXHelpers.cpp
     src/ParseTreeNavigator.cpp
     ${GENERATED_SOURCES}
 )
