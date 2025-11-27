@@ -151,6 +151,8 @@ add_executable(lacemodelica
     src/ONNXGenerator.cpp
     src/ONNXHelpers.cpp
     src/ParseTreeNavigator.cpp
+    src/ExpressionConverter.cpp
+    src/EquationGenerator.cpp
     ${GENERATED_SOURCES}
 )
 
