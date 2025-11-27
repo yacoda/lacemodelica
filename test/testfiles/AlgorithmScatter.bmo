@@ -3,6 +3,7 @@
 
 //! base 0.1.0
 package 'AlgorithmScatter'
+  // 1D array scatter
   pure function 'arrayfun'
     input Real 'arr'[2];
     output Real 'result'[2];
@@ -12,10 +13,40 @@ package 'AlgorithmScatter'
     'result' := 2*'result';
   end 'arrayfun';
 
+  // 2D matrix scatter
+  pure function 'matrixfun'
+    input Real 'mat'[2,2];
+    output Real 'result'[2,2];
+  algorithm
+    'result'[1,1] := 'mat'[1,1] + 1;
+    'result'[1,2] := 'mat'[1,2] * 2;
+    'result'[2,1] := 'mat'[2,1] - 1;
+    'result'[2,2] := 'mat'[2,2] / 2;
+  end 'matrixfun';
+
+  // 3D tensor scatter
+  pure function 'tensorfun'
+    input Real 't'[2,2,2];
+    output Real 'result'[2,2,2];
+  algorithm
+    'result'[1,1,1] := 't'[1,1,1] + 10;
+    'result'[1,1,2] := 't'[1,1,2] + 20;
+    'result'[1,2,1] := 't'[1,2,1] + 30;
+    'result'[1,2,2] := 't'[1,2,2] + 40;
+    'result'[2,1,1] := 't'[2,1,1] + 50;
+    'result'[2,1,2] := 't'[2,1,2] + 60;
+    'result'[2,2,1] := 't'[2,2,1] + 70;
+    'result'[2,2,2] := 't'[2,2,2] + 80;
+  end 'tensorfun';
+
   model 'AlgorithmScatter'
     Real 'x'[2](start = 0.0);
+    Real 'y'[2,2](start = 0.0);
+    Real 'z'[2,2,2](start = 0.0);
   equation
     der('x') = 'arrayfun'('x');
+    der('y') = 'matrixfun'('y');
+    der('z') = 'tensorfun'('z');
   end 'AlgorithmScatter';
 end 'AlgorithmScatter';
 
@@ -28,54 +59,93 @@ end 'AlgorithmScatter';
 //     # Extract inputs
 //     x = inputs['x']
 //     der_x = inputs["der(x)"]
+//     y = inputs['y']
+//     der_y = inputs["der(y)"]
+//     z = inputs['z']
+//     der_z = inputs["der(z)"]
 //
-//     # Function arrayfun:
-//     # result[0] = sin(x[0])   (index 1 in Modelica -> 0 in Python)
-//     # result[1] = cos(x[1])   (index 2 in Modelica -> 1 in Python)
-//     # result = 2 * result
-//     result = np.zeros(2)
-//     result[0] = np.sin(x[0])
-//     result[1] = np.cos(x[1])
-//     result = 2 * result
+//     # Function arrayfun (1D):
+//     # result[0] = sin(x[0]), result[1] = cos(x[1]), result = 2 * result
+//     result_1d = np.zeros(2)
+//     result_1d[0] = np.sin(x[0])
+//     result_1d[1] = np.cos(x[1])
+//     result_1d = 2 * result_1d
 //
 //     # Equation 0: der(x) = arrayfun(x)
-//     # Residual: der(x) - arrayfun(x) = 0
-//     outputs['eq[0]'] = der_x - result
+//     outputs['eq[0]'] = der_x - result_1d
 //
-//     # Initial value for x (start = 0.0 for both elements)
+//     # Function matrixfun (2D):
+//     # result[0,0] = mat[0,0] + 1, result[0,1] = mat[0,1] * 2
+//     # result[1,0] = mat[1,0] - 1, result[1,1] = mat[1,1] / 2
+//     result_2d = np.zeros((2, 2))
+//     result_2d[0, 0] = y[0, 0] + 1
+//     result_2d[0, 1] = y[0, 1] * 2
+//     result_2d[1, 0] = y[1, 0] - 1
+//     result_2d[1, 1] = y[1, 1] / 2
+//
+//     # Equation 1: der(y) = matrixfun(y)
+//     outputs['eq[1]'] = der_y - result_2d
+//
+//     # Function tensorfun (3D):
+//     # Each element adds 10, 20, 30, 40, 50, 60, 70, 80 respectively
+//     result_3d = np.zeros((2, 2, 2))
+//     result_3d[0, 0, 0] = z[0, 0, 0] + 10
+//     result_3d[0, 0, 1] = z[0, 0, 1] + 20
+//     result_3d[0, 1, 0] = z[0, 1, 0] + 30
+//     result_3d[0, 1, 1] = z[0, 1, 1] + 40
+//     result_3d[1, 0, 0] = z[1, 0, 0] + 50
+//     result_3d[1, 0, 1] = z[1, 0, 1] + 60
+//     result_3d[1, 1, 0] = z[1, 1, 0] + 70
+//     result_3d[1, 1, 1] = z[1, 1, 1] + 80
+//
+//     # Equation 2: der(z) = tensorfun(z)
+//     outputs['eq[2]'] = der_z - result_3d
+//
+//     # Initial values
 //     outputs['start[0]'] = np.array([0.0, 0.0])
+//     outputs['start[1]'] = np.zeros((2, 2))
+//     outputs['start[2]'] = np.zeros((2, 2, 2))
 //
 //     return outputs
 //
 // @onnx-test-case
-// # Test case 1: x = [0.0, 0.0]
+// # Test case 1: All zeros
 // import numpy as np
 // x = np.array([0.0, 0.0])
-// # arrayfun([0.0, 0.0]) = 2*[sin(0), cos(0)] = 2*[0, 1] = [0, 2]
+// y = np.zeros((2, 2))
+// z = np.zeros((2, 2, 2))
+// # arrayfun([0,0]) = 2*[sin(0), cos(0)] = [0, 2]
 // der_x = np.array([0.0, 2.0])
+// # matrixfun(zeros) = [[1, 0], [-1, 0]]
+// der_y = np.array([[1.0, 0.0], [-1.0, 0.0]])
+// # tensorfun(zeros) = [[[10,20],[30,40]], [[50,60],[70,80]]]
+// der_z = np.array([[[10.0, 20.0], [30.0, 40.0]], [[50.0, 60.0], [70.0, 80.0]]])
 // {
 //   "x": x,
-//   "der(x)": der_x
+//   "der(x)": der_x,
+//   "y": y,
+//   "der(y)": der_y,
+//   "z": z,
+//   "der(z)": der_z
 // }
 //
 // @onnx-test-case
-// # Test case 2: x = [pi/2, 0]
+// # Test case 2: Non-zero values
 // import numpy as np
 // x = np.array([np.pi/2, 0.0])
+// y = np.array([[1.0, 2.0], [3.0, 4.0]])
+// z = np.ones((2, 2, 2))
 // # arrayfun([pi/2, 0]) = 2*[sin(pi/2), cos(0)] = 2*[1, 1] = [2, 2]
 // der_x = np.array([2.0, 2.0])
+// # matrixfun([[1,2],[3,4]]) = [[2, 4], [2, 2]]
+// der_y = np.array([[2.0, 4.0], [2.0, 2.0]])
+// # tensorfun(ones) = ones + [10,20,30,40,50,60,70,80]
+// der_z = np.array([[[11.0, 21.0], [31.0, 41.0]], [[51.0, 61.0], [71.0, 81.0]]])
 // {
 //   "x": x,
-//   "der(x)": der_x
-// }
-//
-// @onnx-test-case
-// # Test case 3: x = [0, pi/2]
-// import numpy as np
-// x = np.array([0.0, np.pi/2])
-// # arrayfun([0, pi/2]) = 2*[sin(0), cos(pi/2)] = 2*[0, 0] = [0, 0]
-// der_x = np.array([0.0, 0.0])
-// {
-//   "x": x,
-//   "der(x)": der_x
+//   "der(x)": der_x,
+//   "y": y,
+//   "der(y)": der_y,
+//   "z": z,
+//   "der(z)": der_z
 // }
