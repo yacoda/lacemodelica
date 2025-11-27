@@ -53,7 +53,7 @@ end 'RTCToolsBasic';
 //     outfall_QIn_Q = inputs['outfall.QIn.Q']
 //     outfall_Q = inputs['outfall.Q']
 //     outfall_Q_nominal = inputs['outfall.Q_nominal']
-//     der_storage_V = inputs["der('storage.V')"]
+//     der_storage_V = inputs["der(storage.V)"]
 //
 //     # Equation 0: inflow.QOut.Q = storage.QIn.Q
 //     outputs['eq[0]'] = inflow_QOut_Q - storage_QIn_Q
@@ -118,7 +118,7 @@ end 'RTCToolsBasic';
 //   "outfall.QIn.Q": np.array(outfall_QIn_Q),
 //   "outfall.Q": np.array(outfall_Q),
 //   "outfall.Q_nominal": np.array(outfall_Q_nominal),
-//   "der('storage.V')": np.array(der_storage_V)
+//   "der(storage.V)": np.array(der_storage_V)
 // }
 //
 // @onnx-test-case
@@ -155,6 +155,6 @@ end 'RTCToolsBasic';
 //   "outfall.QIn.Q": np.array(outfall_QIn_Q),
 //   "outfall.Q": np.array(outfall_Q),
 //   "outfall.Q_nominal": np.array(outfall_Q_nominal),
-//   "der('storage.V')": np.array(der_storage_V)
+//   "der(storage.V)": np.array(der_storage_V)
 // }
 //

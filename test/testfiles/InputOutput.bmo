@@ -20,7 +20,7 @@ end 'InputOutput';
 //     # Extract inputs (already numpy scalars)
 //     u = inputs['u']
 //     x = inputs['x']
-//     der_x = inputs["der('x')"]
+//     der_x = inputs["der(x)"]
 //     gain = inputs['gain']
 //     y = inputs['y']
 //
@@ -45,7 +45,7 @@ end 'InputOutput';
 // {
 //   "u": np.array(u),
 //   "x": np.array(x),
-//   "der('x')": np.array(der_x),
+//   "der(x)": np.array(der_x),
 //   "gain": np.array(gain),
 //   "y": np.array(y)
 // }
@@ -62,7 +62,7 @@ end 'InputOutput';
 // {
 //   "u": np.array(u),
 //   "x": np.array(x),
-//   "der('x')": np.array(der_x),
+//   "der(x)": np.array(der_x),
 //   "gain": np.array(gain),
 //   "y": np.array(y)
 // }
@@ -79,7 +79,7 @@ end 'InputOutput';
 // {
 //   "u": np.array(u),
 //   "x": np.array(x),
-//   "der('x')": np.array(der_x),
+//   "der(x)": np.array(der_x),
 //   "gain": np.array(gain),
 //   "y": np.array(y)
 // }

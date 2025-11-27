@@ -24,7 +24,7 @@ end 'TrigFunctions';
 //
 //     # Extract inputs
 //     angle = inputs['angle']
-//     der_angle = inputs["der('angle')"]
+//     der_angle = inputs["der(angle)"]
 //     sine_value = inputs['sine_value']
 //     cosine_value = inputs['cosine_value']
 //     tangent_value = inputs['tangent_value']
@@ -68,7 +68,7 @@ end 'TrigFunctions';
 // angle = np.array(0.0)
 // {
 //   "angle": angle,
-//   "der('angle')": np.array(0.1),
+//   "der(angle)": np.array(0.1),
 //   "sine_value": np.array(np.sin(angle)),
 //   "cosine_value": np.array(np.cos(angle)),
 //   "tangent_value": np.array(np.tan(angle)),
@@ -81,7 +81,7 @@ end 'TrigFunctions';
 // angle = np.array(np.pi / 4)
 // {
 //   "angle": angle,
-//   "der('angle')": np.array(0.1),
+//   "der(angle)": np.array(0.1),
 //   "sine_value": np.array(np.sin(angle)),
 //   "cosine_value": np.array(np.cos(angle)),
 //   "tangent_value": np.array(np.tan(angle)),
@@ -94,7 +94,7 @@ end 'TrigFunctions';
 // angle = np.array(np.pi / 6)
 // {
 //   "angle": angle,
-//   "der('angle')": np.array(0.1),
+//   "der(angle)": np.array(0.1),
 //   "sine_value": np.array(np.sin(angle)),
 //   "cosine_value": np.array(np.cos(angle)),
 //   "tangent_value": np.array(np.tan(angle)),

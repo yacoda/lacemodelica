@@ -27,9 +27,9 @@ end 'MultiDecl';
 //     k1 = inputs['k1']
 //     k2 = inputs['k2']
 //     k3 = inputs['k3']
-//     der_x = inputs["der('x')"]
-//     der_y = inputs["der('y')"]
-//     der_z = inputs["der('z')"]
+//     der_x = inputs["der(x)"]
+//     der_y = inputs["der(y)"]
+//     der_z = inputs["der(z)"]
 //
 //     # Equation 0: der(x) = -k1*x + k2*y
 //     outputs['eq[0]'] = der_x - (-k1 * x + k2 * y)
@@ -66,9 +66,9 @@ end 'MultiDecl';
 //   "k1": np.array(k1),
 //   "k2": np.array(k2),
 //   "k3": np.array(k3),
-//   "der('x')": np.array(der_x),
-//   "der('y')": np.array(der_y),
-//   "der('z')": np.array(der_z)
+//   "der(x)": np.array(der_x),
+//   "der(y)": np.array(der_y),
+//   "der(z)": np.array(der_z)
 // }
 //
 // @onnx-test-case
@@ -90,9 +90,9 @@ end 'MultiDecl';
 //   "k1": np.array(k1),
 //   "k2": np.array(k2),
 //   "k3": np.array(k3),
-//   "der('x')": np.array(der_x),
-//   "der('y')": np.array(der_y),
-//   "der('z')": np.array(der_z)
+//   "der(x)": np.array(der_x),
+//   "der(y)": np.array(der_y),
+//   "der(z)": np.array(der_z)
 // }
 //
 // @onnx-test-case
@@ -114,8 +114,8 @@ end 'MultiDecl';
 //   "k1": np.array(k1),
 //   "k2": np.array(k2),
 //   "k3": np.array(k3),
-//   "der('x')": np.array(der_x),
-//   "der('y')": np.array(der_y),
-//   "der('z')": np.array(der_z)
+//   "der(x)": np.array(der_x),
+//   "der(y)": np.array(der_y),
+//   "der(z)": np.array(der_z)
 // }
 //

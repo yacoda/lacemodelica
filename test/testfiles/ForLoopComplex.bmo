@@ -48,9 +48,9 @@ end 'ForLoopComplex';
 //     alpha = inputs['alpha']
 //     beta = inputs['beta']
 //     gamma = inputs['gamma']
-//     der_x = inputs["der('x')"]
-//     der_z = inputs["der('z')"]
-//     der_w = inputs["der('w')"]
+//     der_x = inputs["der(x)"]
+//     der_z = inputs["der(z)"]
+//     der_w = inputs["der(w)"]
 //
 //     # Loop 1 equation 1: der(x[i]) = -alpha * x[i] + beta * z[i] for i in 1:5
 //     outputs['eq[0]'] = np.array([der_x[i] - (-alpha * x[i] + beta * z[i]) for i in range(5)])
@@ -109,9 +109,9 @@ end 'ForLoopComplex';
 //   "alpha": np.array(alpha),
 //   "beta": np.array(beta),
 //   "gamma": np.array(gamma),
-//   "der('x')": der_x,
-//   "der('z')": der_z,
-//   "der('w')": der_w
+//   "der(x)": der_x,
+//   "der(z)": der_z,
+//   "der(w)": der_w
 // }
 //
 // @onnx-test-case
@@ -137,9 +137,9 @@ end 'ForLoopComplex';
 //   "alpha": np.array(alpha),
 //   "beta": np.array(beta),
 //   "gamma": np.array(gamma),
-//   "der('x')": der_x,
-//   "der('z')": der_z,
-//   "der('w')": der_w
+//   "der(x)": der_x,
+//   "der(z)": der_z,
+//   "der(w)": der_w
 // }
 //
 // @onnx-test-case
@@ -165,8 +165,8 @@ end 'ForLoopComplex';
 //   "alpha": np.array(alpha),
 //   "beta": np.array(beta),
 //   "gamma": np.array(gamma),
-//   "der('x')": der_x,
-//   "der('z')": der_z,
-//   "der('w')": der_w
+//   "der(x)": der_x,
+//   "der(z)": der_z,
+//   "der(w)": der_w
 // }
 //

@@ -27,7 +27,7 @@ end 'IfEquation';
 //     time = inputs['time']
 //     x = inputs['x']
 //     y = inputs['y']
-//     der_y = inputs["der('y')"]
+//     der_y = inputs["der(y)"]
 //
 //     # Equation 0: if time < 0.5 then x = 1.0 elseif true then x = 2.0 end if
 //     # This becomes: x - (if time < 0.5 then 1.0 else 2.0) = 0
@@ -52,7 +52,7 @@ end 'IfEquation';
 //   "time": np.array(0.3),
 //   "x": np.array(1.0),
 //   "y": np.array(0.0),
-//   "der('y')": np.array(1.0)
+//   "der(y)": np.array(1.0)
 // }
 //
 // @onnx-test-case
@@ -62,7 +62,7 @@ end 'IfEquation';
 //   "time": np.array(0.7),
 //   "x": np.array(2.0),
 //   "y": np.array(0.0),
-//   "der('y')": np.array(2.0)
+//   "der(y)": np.array(2.0)
 // }
 //
 // @onnx-test-case
@@ -72,7 +72,7 @@ end 'IfEquation';
 //   "time": np.array(0.5),
 //   "x": np.array(2.0),
 //   "y": np.array(0.0),
-//   "der('y')": np.array(2.0)
+//   "der(y)": np.array(2.0)
 // }
 //
 // @onnx-test-case
@@ -82,5 +82,5 @@ end 'IfEquation';
 //   "time": np.array(0.0),
 //   "x": np.array(1.0),
 //   "y": np.array(0.0),
-//   "der('y')": np.array(1.0)
+//   "der(y)": np.array(1.0)
 // }

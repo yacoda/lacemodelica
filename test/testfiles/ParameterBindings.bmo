@@ -83,10 +83,10 @@ end 'ParameterBindings';
 //     y = inputs['y']
 //     z = inputs['z']
 //     w = inputs['w']
-//     der_x = inputs["der('x')"]
-//     der_y = inputs["der('y')"]
-//     der_z = inputs["der('z')"]
-//     der_w = inputs["der('w')"]
+//     der_x = inputs["der(x)"]
+//     der_y = inputs["der(y)"]
+//     der_z = inputs["der(z)"]
+//     der_w = inputs["der(w)"]
 //
 //     # Compute equation residuals (LHS - RHS = 0)
 //     # Equation 0: der('x') = 'scaled_value' * 'x'
@@ -144,10 +144,10 @@ end 'ParameterBindings';
 //   "y": np.array(0.0),
 //   "z": np.array(0.0),
 //   "w": np.array(0.0),
-//   "der('x')": np.array(0.0),
-//   "der('y')": np.array(0.0),
-//   "der('z')": np.array(0.0),
-//   "der('w')": np.array(0.0)
+//   "der(x)": np.array(0.0),
+//   "der(y)": np.array(0.0),
+//   "der(z)": np.array(0.0),
+//   "der(w)": np.array(0.0)
 // }
 //
 // @onnx-test-case
@@ -176,10 +176,10 @@ end 'ParameterBindings';
 //   "y": np.array(3.0),
 //   "z": np.array(5.0),
 //   "w": np.array(10.0),
-//   "der('x')": np.array(scaled_value * x),
-//   "der('y')": np.array(7.0),
-//   "der('z')": np.array(90.0),
-//   "der('w')": np.array(185.0)
+//   "der(x)": np.array(scaled_value * x),
+//   "der(y)": np.array(7.0),
+//   "der(z)": np.array(90.0),
+//   "der(w)": np.array(185.0)
 // }
 //
 // @onnx-test-case
@@ -208,9 +208,9 @@ end 'ParameterBindings';
 //   "y": np.array(1.0),
 //   "z": np.array(2.5),
 //   "w": np.array(5.0),
-//   "der('x')": np.array(scaled_value * x),
-//   "der('y')": np.array(6.0),
-//   "der('z')": np.array(55.0),
-//   "der('w')": np.array(93.5)
+//   "der(x)": np.array(scaled_value * x),
+//   "der(y)": np.array(6.0),
+//   "der(z)": np.array(55.0),
+//   "der(w)": np.array(93.5)
 // }
 //

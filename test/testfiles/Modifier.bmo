@@ -21,7 +21,7 @@ end 'Modifier';
 //     # Extract inputs
 //     x = inputs['x']
 //     a = inputs['a']
-//     der_x = inputs["der('x')"]
+//     der_x = inputs["der(x)"]
 //
 //     # Equation 0: der(x) = a*x
 //     outputs['eq[0]'] = der_x - (a * x)
@@ -37,7 +37,7 @@ end 'Modifier';
 // {
 //   "x": np.array(x),
 //   "a": np.array(a),
-//   "der('x')": np.array(der_x)
+//   "der(x)": np.array(der_x)
 // }
 //
 // @onnx-test-case
@@ -49,7 +49,7 @@ end 'Modifier';
 // {
 //   "x": np.array(x),
 //   "a": np.array(a),
-//   "der('x')": np.array(der_x)
+//   "der(x)": np.array(der_x)
 // }
 //
 // @onnx-test-case
@@ -61,6 +61,6 @@ end 'Modifier';
 // {
 //   "x": np.array(x),
 //   "a": np.array(a),
-//   "der('x')": np.array(der_x)
+//   "der(x)": np.array(der_x)
 // }
 //

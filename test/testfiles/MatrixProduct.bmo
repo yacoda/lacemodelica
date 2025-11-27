@@ -31,8 +31,8 @@ end 'MatrixProduct';
 //     A = inputs['A']  # 3x4 matrix
 //     B = inputs['B']  # 4x2 matrix
 //     C = inputs['C']  # 3x2 matrix (result of A * B)
-//     der_A = inputs["der('A')"]  # 3x4 matrix
-//     der_B = inputs["der('B')"]  # 4x2 matrix
+//     der_A = inputs["der(A)"]  # 3x4 matrix
+//     der_B = inputs["der(B)"]  # 4x2 matrix
 //     y = inputs['y']  # scalar
 //
 //     # Equation 0: der(A) = -alpha * A => der(A) + alpha * A = 0
@@ -72,8 +72,8 @@ end 'MatrixProduct';
 //   "B": B,
 //   "C": C,
 //   "y": np.array(y),
-//   "der('A')": der_A,
-//   "der('B')": der_B
+//   "der(A)": der_A,
+//   "der(B)": der_B
 // }
 //
 // @onnx-test-case
@@ -93,8 +93,8 @@ end 'MatrixProduct';
 //   "B": B,
 //   "C": C,
 //   "y": np.array(y),
-//   "der('A')": der_A,
-//   "der('B')": der_B
+//   "der(A)": der_A,
+//   "der(B)": der_B
 // }
 //
 // @onnx-test-case
@@ -114,6 +114,6 @@ end 'MatrixProduct';
 //   "B": B,
 //   "C": C,
 //   "y": np.array(y),
-//   "der('A')": der_A,
-//   "der('B')": der_B
+//   "der(A)": der_A,
+//   "der(B)": der_B
 // }

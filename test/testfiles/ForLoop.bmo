@@ -31,8 +31,8 @@ end 'ForLoop';
 //     z = inputs['z']
 //     y = inputs['y']
 //     alpha = inputs['alpha']
-//     der_x = inputs["der('x')"]
-//     der_z = inputs["der('z')"]
+//     der_x = inputs["der(x)"]
+//     der_z = inputs["der(z)"]
 //
 //     # For loop equation 1: der(x[i]) = -alpha * x[i] for i in 1:3
 //     # Loop outputs scan array of residuals
@@ -68,8 +68,8 @@ end 'ForLoop';
 //   "z": z,
 //   "y": np.array(y),
 //   "alpha": np.array(alpha),
-//   "der('x')": der_x,
-//   "der('z')": der_z
+//   "der(x)": der_x,
+//   "der(z)": der_z
 // }
 //
 // @onnx-test-case
@@ -86,8 +86,8 @@ end 'ForLoop';
 //   "z": z,
 //   "y": np.array(y),
 //   "alpha": np.array(alpha),
-//   "der('x')": der_x,
-//   "der('z')": der_z
+//   "der(x)": der_x,
+//   "der(z)": der_z
 // }
 //
 // @onnx-test-case
@@ -104,7 +104,7 @@ end 'ForLoop';
 //   "z": z,
 //   "y": np.array(y),
 //   "alpha": np.array(alpha),
-//   "der('x')": der_x,
-//   "der('z')": der_z
+//   "der(x)": der_x,
+//   "der(z)": der_z
 // }
 //

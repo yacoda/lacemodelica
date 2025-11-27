@@ -89,7 +89,7 @@ std::set<std::string> scanForDerivatives(
                 size_t bracketPos = derArg.find('[');
                 std::string baseVar = stripQuotes(
                     (bracketPos != std::string::npos) ? derArg.substr(0, bracketPos) : derArg);
-                derivatives.insert("der('" + baseVar + "')");
+                derivatives.insert("der(" + baseVar + ")");
             }
             pos = end;
         }
@@ -118,8 +118,9 @@ void addTopLevelLoopPassthroughs(
 
     // Add pre-discovered derivatives as passthroughs
     for (const std::string& derName : requiredDerivatives) {
-        size_t start = derName.find("'") + 1;
-        size_t end = derName.rfind("'");
+        // Extract base variable name from der(x) format
+        size_t start = derName.find("(") + 1;
+        size_t end = derName.rfind(")");
         std::string baseVarName = derName.substr(start, end - start);
         const Variable* baseVar = info.findVariable(baseVarName);
         std::vector<std::string> dims = baseVar ? baseVar->dimensions : std::vector<std::string>{};

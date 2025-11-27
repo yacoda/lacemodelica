@@ -31,7 +31,7 @@ end 'StructuralParameters';
 //     useAdvanced = inputs['useAdvanced']
 //     gain = inputs['gain']
 //     x = inputs['x']  # Array of size n (3 in this case)
-//     der_x = inputs["der('x')"]  # Array of size n
+//     der_x = inputs["der(x)"]  # Array of size n
 //     y = inputs['y']
 //
 //     # Equation 0: der(x[1]) = -gain * x[1] + x[2]
@@ -72,7 +72,7 @@ end 'StructuralParameters';
 //   "gain": np.array(gain),
 //   "x": x,
 //   "y": np.array(y),
-//   "der('x')": der_x
+//   "der(x)": der_x
 // }
 //
 // @onnx-test-case
@@ -95,7 +95,7 @@ end 'StructuralParameters';
 //   "gain": np.array(gain),
 //   "x": x,
 //   "y": np.array(y),
-//   "der('x')": der_x
+//   "der(x)": der_x
 // }
 //
 // @onnx-test-case
@@ -118,5 +118,5 @@ end 'StructuralParameters';
 //   "gain": np.array(gain),
 //   "x": x,
 //   "y": np.array(y),
-//   "der('x')": der_x
+//   "der(x)": der_x
 // }

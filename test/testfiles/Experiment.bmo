@@ -20,7 +20,7 @@ end 'Experiment';
 //
 //     # Extract inputs
 //     x = inputs['x']
-//     der_x = inputs["der('x')"]
+//     der_x = inputs["der(x)"]
 //
 //     # Equation 0: der(x) = x
 //     outputs['eq[0]'] = der_x - x
@@ -34,7 +34,7 @@ end 'Experiment';
 // der_x = 1.0
 // {
 //   "x": np.array(x),
-//   "der('x')": np.array(der_x)
+//   "der(x)": np.array(der_x)
 // }
 //
 // @onnx-test-case
@@ -44,7 +44,7 @@ end 'Experiment';
 // der_x = 2.71828
 // {
 //   "x": np.array(x),
-//   "der('x')": np.array(der_x)
+//   "der(x)": np.array(der_x)
 // }
 //
 // @onnx-test-case
@@ -54,6 +54,6 @@ end 'Experiment';
 // der_x = 0.0
 // {
 //   "x": np.array(x),
-//   "der('x')": np.array(der_x)
+//   "der(x)": np.array(der_x)
 // }
 //

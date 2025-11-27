@@ -27,8 +27,8 @@ end 'Precedence';
 //     z = inputs['z']
 //     w = inputs['w']
 //     v = inputs['v']
-//     der_x = inputs["der('x')"]
-//     der_y = inputs["der('y')"]
+//     der_x = inputs["der(x)"]
+//     der_y = inputs["der(y)"]
 //
 //     # Compute equation residuals (LHS - RHS = 0)
 //
@@ -72,8 +72,8 @@ end 'Precedence';
 //   "z": np.array(x + y * 2.0),
 //   "w": np.array((x + y) * 2.0),
 //   "v": np.array((x * y) / ((x + 1.0) * (y + 1.0))),
-//   "der('x')": np.array(0.1),
-//   "der('y')": np.array(-0.2)
+//   "der(x)": np.array(0.1),
+//   "der(y)": np.array(-0.2)
 // }
 //
 // @onnx-test-case
@@ -87,8 +87,8 @@ end 'Precedence';
 //   "z": np.array(x + y * 2.0),
 //   "w": np.array((x + y) * 2.0),
 //   "v": np.array((x * y) / ((x + 1.0) * (y + 1.0))),
-//   "der('x')": np.array(0.1),
-//   "der('y')": np.array(-0.2)
+//   "der(x)": np.array(0.1),
+//   "der(y)": np.array(-0.2)
 // }
 //
 // @onnx-test-case
@@ -102,6 +102,6 @@ end 'Precedence';
 //   "z": np.array(x + y * 2.0),
 //   "w": np.array((x + y) * 2.0),
 //   "v": np.array((x * y) / ((x + 1.0) * (y + 1.0))),
-//   "der('x')": np.array(0.1),
-//   "der('y')": np.array(-0.2)
+//   "der(x)": np.array(0.1),
+//   "der(y)": np.array(-0.2)
 // }

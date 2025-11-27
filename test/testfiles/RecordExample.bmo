@@ -25,8 +25,8 @@ end 'RecordExample';
 //     p_x = inputs['p.x']
 //     p_y = inputs['p.y']
 //     distance = inputs['distance']
-//     der_p_x = inputs["der('p.x')"]
-//     der_p_y = inputs["der('p.y')"]
+//     der_p_x = inputs["der(p.x)"]
+//     der_p_y = inputs["der(p.y)"]
 //
 //     # Equation 0: der(p.x) = -p.y
 //     outputs['eq[0]'] = der_p_x - (-p_y)
@@ -55,8 +55,8 @@ end 'RecordExample';
 //   "p.x": np.array(p_x),
 //   "p.y": np.array(p_y),
 //   "distance": np.array(distance),
-//   "der('p.x')": np.array(der_p_x),
-//   "der('p.y')": np.array(der_p_y)
+//   "der(p.x)": np.array(der_p_x),
+//   "der(p.y)": np.array(der_p_y)
 // }
 //
 // @onnx-test-case
@@ -71,8 +71,8 @@ end 'RecordExample';
 //   "p.x": np.array(p_x),
 //   "p.y": np.array(p_y),
 //   "distance": np.array(distance),
-//   "der('p.x')": np.array(der_p_x),
-//   "der('p.y')": np.array(der_p_y)
+//   "der(p.x)": np.array(der_p_x),
+//   "der(p.y)": np.array(der_p_y)
 // }
 //
 // @onnx-test-case
@@ -87,7 +87,7 @@ end 'RecordExample';
 //   "p.x": np.array(p_x),
 //   "p.y": np.array(p_y),
 //   "distance": np.array(distance),
-//   "der('p.x')": np.array(der_p_x),
-//   "der('p.y')": np.array(der_p_y)
+//   "der(p.x)": np.array(der_p_x),
+//   "der(p.y)": np.array(der_p_y)
 // }
 //

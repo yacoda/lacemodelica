@@ -25,7 +25,7 @@ end 'MatrixState';
 //     # Extract inputs (already numpy arrays)
 //     alpha = inputs['alpha']
 //     A = inputs['A']  # 3x4 matrix
-//     der_A = inputs["der('A')"]  # 3x4 matrix
+//     der_A = inputs["der(A)"]  # 3x4 matrix
 //     y = inputs['y']  # scalar
 //
 //     # Equation 0: der(A) = -alpha * A => der(A) + alpha * A = 0
@@ -53,7 +53,7 @@ end 'MatrixState';
 //   "alpha": np.array(0.5),
 //   "A": A,
 //   "y": np.array(y),
-//   "der('A')": der_A
+//   "der(A)": der_A
 // }
 //
 // @onnx-test-case
@@ -68,7 +68,7 @@ end 'MatrixState';
 //   "alpha": np.array(0.5),
 //   "A": A,
 //   "y": np.array(y),
-//   "der('A')": der_A
+//   "der(A)": der_A
 // }
 //
 // @onnx-test-case
@@ -83,5 +83,5 @@ end 'MatrixState';
 //   "alpha": np.array(0.5),
 //   "A": A,
 //   "y": np.array(y),
-//   "der('A')": der_A
+//   "der(A)": der_A
 // }

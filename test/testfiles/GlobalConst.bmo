@@ -27,7 +27,7 @@ end 'GlobalConst';
 //
 //     # Extract inputs (already numpy scalars)
 //     x = inputs['x']
-//     der_x = inputs["der('x')"]
+//     der_x = inputs["der(x)"]
 //     sine_wave = inputs['sine_wave']
 //     exp_decay = inputs['exp_decay']
 //
@@ -52,7 +52,7 @@ end 'GlobalConst';
 // exp_decay = E ** (-x)
 // {
 //   "x": np.array(x),
-//   "der('x')": np.array(der_x),
+//   "der(x)": np.array(der_x),
 //   "sine_wave": np.array(sine_wave),
 //   "exp_decay": np.array(exp_decay)
 // }
@@ -68,7 +68,7 @@ end 'GlobalConst';
 // exp_decay = E ** (-x)
 // {
 //   "x": np.array(x),
-//   "der('x')": np.array(der_x),
+//   "der(x)": np.array(der_x),
 //   "sine_wave": np.array(sine_wave),
 //   "exp_decay": np.array(exp_decay)
 // }
@@ -85,7 +85,7 @@ end 'GlobalConst';
 // exp_decay = E ** (-x)
 // {
 //   "x": np.array(x),
-//   "der('x')": np.array(der_x),
+//   "der(x)": np.array(der_x),
 //   "sine_wave": np.array(sine_wave),
 //   "exp_decay": np.array(exp_decay)
 // }

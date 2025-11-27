@@ -24,8 +24,8 @@ end 'DerExpression';
 //     y = inputs['y']
 //     z = inputs['z']
 //     dz_dt = inputs['dz_dt']
-//     der_x = inputs["der('x')"]
-//     der_y = inputs["der('y')"]
+//     der_x = inputs["der(x)"]
+//     der_y = inputs["der(y)"]
 //
 //     # Compute equation residuals
 //     outputs['eq[0]'] = der_x - (-x)
@@ -53,8 +53,8 @@ end 'DerExpression';
 //   "y": np.array(y),
 //   "z": np.array(z),
 //   "dz_dt": np.array(dz_dt),
-//   "der('x')": np.array(der_x),
-//   "der('y')": np.array(der_y)
+//   "der(x)": np.array(der_x),
+//   "der(y)": np.array(der_y)
 // }
 //
 // @onnx-test-case
@@ -72,8 +72,8 @@ end 'DerExpression';
 //   "y": np.array(y),
 //   "z": np.array(z),
 //   "dz_dt": np.array(dz_dt),
-//   "der('x')": np.array(der_x),
-//   "der('y')": np.array(der_y)
+//   "der(x)": np.array(der_x),
+//   "der(y)": np.array(der_y)
 // }
 //
 // @onnx-test-case
@@ -91,6 +91,6 @@ end 'DerExpression';
 //   "y": np.array(y),
 //   "z": np.array(z),
 //   "dz_dt": np.array(dz_dt),
-//   "der('x')": np.array(der_x),
-//   "der('y')": np.array(der_y)
+//   "der(x)": np.array(der_x),
+//   "der(y)": np.array(der_y)
 // }

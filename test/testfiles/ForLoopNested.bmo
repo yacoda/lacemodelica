@@ -41,8 +41,8 @@ end 'ForLoopNested';
 //     y = inputs['y']
 //     alpha = inputs['alpha']
 //     beta = inputs['beta']
-//     der_A = inputs["der('A')"]  # shape (3, 4)
-//     der_x = inputs["der('x')"]  # shape (3,)
+//     der_A = inputs["der(A)"]  # shape (3, 4)
+//     der_x = inputs["der(x)"]  # shape (3,)
 //
 //     # Outer loop i in 1:3
 //     # First equation in outer loop: der(x[i]) = -alpha * x[i]
@@ -85,8 +85,8 @@ end 'ForLoopNested';
 //   "y": np.array(y),
 //   "alpha": np.array(alpha),
 //   "beta": np.array(beta),
-//   "der('A')": der_A,
-//   "der('x')": der_x
+//   "der(A)": der_A,
+//   "der(x)": der_x
 // }
 //
 // @onnx-test-case
@@ -105,8 +105,8 @@ end 'ForLoopNested';
 //   "y": np.array(y),
 //   "alpha": np.array(alpha),
 //   "beta": np.array(beta),
-//   "der('A')": der_A,
-//   "der('x')": der_x
+//   "der(A)": der_A,
+//   "der(x)": der_x
 // }
 //
 // @onnx-test-case
@@ -125,7 +125,7 @@ end 'ForLoopNested';
 //   "y": np.array(y),
 //   "alpha": np.array(alpha),
 //   "beta": np.array(beta),
-//   "der('A')": der_A,
-//   "der('x')": der_x
+//   "der(A)": der_A,
+//   "der(x)": der_x
 // }
 //

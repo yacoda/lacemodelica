@@ -19,7 +19,7 @@ end 'NegativeVariable';
 //
 //     # Extract inputs
 //     x = inputs['x']
-//     der_x = inputs["der('x')"]
+//     der_x = inputs["der(x)"]
 //
 //     # Compute equation residual: der(x) = -x
 //     # Rearranged: der(x) - (-x) = 0 or der(x) + x = 0
@@ -33,7 +33,7 @@ end 'NegativeVariable';
 // import numpy as np
 // {
 //   "x": np.array(1.0),
-//   "der('x')": np.array(-1.0)
+//   "der(x)": np.array(-1.0)
 // }
 //
 // @onnx-test-case
@@ -41,7 +41,7 @@ end 'NegativeVariable';
 // import numpy as np
 // {
 //   "x": np.array(2.5),
-//   "der('x')": np.array(-2.5)
+//   "der(x)": np.array(-2.5)
 // }
 //
 // @onnx-test-case
@@ -49,5 +49,5 @@ end 'NegativeVariable';
 // import numpy as np
 // {
 //   "x": np.array(-3.0),
-//   "der('x')": np.array(3.0)
+//   "der(x)": np.array(3.0)
 // }

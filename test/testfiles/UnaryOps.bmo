@@ -19,7 +19,7 @@ end 'UnaryOps';
 //
 //     # Extract inputs (already numpy scalars)
 //     x = inputs['x']
-//     der_x = inputs["der('x')"]
+//     der_x = inputs["der(x)"]
 //     y = inputs['y']
 //     z = inputs['z']
 //
@@ -43,7 +43,7 @@ end 'UnaryOps';
 // z = -((x + 1.0) * y)
 // {
 //   "x": np.array(x),
-//   "der('x')": np.array(der_x),
+//   "der(x)": np.array(der_x),
 //   "y": np.array(y),
 //   "z": np.array(z)
 // }
@@ -58,7 +58,7 @@ end 'UnaryOps';
 // z = -((x + 1.0) * y)
 // {
 //   "x": np.array(x),
-//   "der('x')": np.array(der_x),
+//   "der(x)": np.array(der_x),
 //   "y": np.array(y),
 //   "z": np.array(z)
 // }
@@ -73,7 +73,7 @@ end 'UnaryOps';
 // z = -((x + 1.0) * y)
 // {
 //   "x": np.array(x),
-//   "der('x')": np.array(der_x),
+//   "der(x)": np.array(der_x),
 //   "y": np.array(y),
 //   "z": np.array(z)
 // }

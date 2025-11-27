@@ -22,7 +22,7 @@ end 'IfExpression';
 //     threshold = inputs['threshold']
 //     x = inputs['x']
 //     y = inputs['y']
-//     der_x = inputs["der('x')"]
+//     der_x = inputs["der(x)"]
 //
 //     # Compute equation residuals
 //     outputs['eq[0]'] = der_x - (-0.3 * x)
@@ -49,7 +49,7 @@ end 'IfExpression';
 //   "threshold": np.array(threshold),
 //   "x": np.array(x),
 //   "y": np.array(y),
-//   "der('x')": np.array(der_x)
+//   "der(x)": np.array(der_x)
 // }
 //
 // @onnx-test-case
@@ -63,7 +63,7 @@ end 'IfExpression';
 //   "threshold": np.array(threshold),
 //   "x": np.array(x),
 //   "y": np.array(y),
-//   "der('x')": np.array(der_x)
+//   "der(x)": np.array(der_x)
 // }
 //
 // @onnx-test-case
@@ -77,5 +77,5 @@ end 'IfExpression';
 //   "threshold": np.array(threshold),
 //   "x": np.array(x),
 //   "y": np.array(y),
-//   "der('x')": np.array(der_x)
+//   "der(x)": np.array(der_x)
 // }

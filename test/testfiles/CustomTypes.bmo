@@ -23,7 +23,7 @@ end 'CustomTypes';
 //     v = inputs['v']
 //     i = inputs['i']
 //     R = inputs['R']
-//     der_v = inputs["der('v')"]
+//     der_v = inputs["der(v)"]
 //
 //     # Equation 0: der(v) = 1.0
 //     outputs['eq[0]'] = der_v - 1.0
@@ -47,7 +47,7 @@ end 'CustomTypes';
 //   "v": np.array(v),
 //   "i": np.array(i),
 //   "R": np.array(R),
-//   "der('v')": np.array(der_v)
+//   "der(v)": np.array(der_v)
 // }
 //
 // @onnx-test-case
@@ -61,7 +61,7 @@ end 'CustomTypes';
 //   "v": np.array(v),
 //   "i": np.array(i),
 //   "R": np.array(R),
-//   "der('v')": np.array(der_v)
+//   "der(v)": np.array(der_v)
 // }
 //
 // @onnx-test-case
@@ -75,5 +75,5 @@ end 'CustomTypes';
 //   "v": np.array(v),
 //   "i": np.array(i),
 //   "R": np.array(R),
-//   "der('v')": np.array(der_v)
+//   "der(v)": np.array(der_v)
 // }

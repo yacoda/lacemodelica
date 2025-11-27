@@ -33,8 +33,8 @@ end 'MultiOutputFunction';
 //     theta = inputs['theta']
 //     x = inputs['x']
 //     y = inputs['y']
-//     der_r = inputs["der('r')"]
-//     der_theta = inputs["der('theta')"]
+//     der_r = inputs["der(r)"]
+//     der_theta = inputs["der(theta)"]
 //
 //     # Equation 0: der(r) = 0.01
 //     outputs['eq[0]'] = der_r - 0.01
@@ -68,8 +68,8 @@ end 'MultiOutputFunction';
 //   "theta": np.array(theta),
 //   "x": np.array(x),
 //   "y": np.array(y),
-//   "der('r')": np.array(der_r),
-//   "der('theta')": np.array(der_theta)
+//   "der(r)": np.array(der_r),
+//   "der(theta)": np.array(der_theta)
 // }
 //
 // @onnx-test-case
@@ -86,8 +86,8 @@ end 'MultiOutputFunction';
 //   "theta": np.array(theta),
 //   "x": np.array(x),
 //   "y": np.array(y),
-//   "der('r')": np.array(der_r),
-//   "der('theta')": np.array(der_theta)
+//   "der(r)": np.array(der_r),
+//   "der(theta)": np.array(der_theta)
 // }
 //
 // @onnx-test-case
@@ -104,7 +104,7 @@ end 'MultiOutputFunction';
 //   "theta": np.array(theta),
 //   "x": np.array(x),
 //   "y": np.array(y),
-//   "der('r')": np.array(der_r),
-//   "der('theta')": np.array(der_theta)
+//   "der(r)": np.array(der_r),
+//   "der(theta)": np.array(der_theta)
 // }
 //

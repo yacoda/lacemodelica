@@ -24,7 +24,7 @@ end 'Comparisons';
 //     # Extract inputs (already numpy scalars)
 //     ref = inputs['ref']
 //     x = inputs['x']
-//     der_x = inputs["der('x')"]
+//     der_x = inputs["der(x)"]
 //     lt = inputs['lt']
 //     le = inputs['le']
 //     gt = inputs['gt']
@@ -63,7 +63,7 @@ end 'Comparisons';
 // {
 //   "ref": np.array(ref),
 //   "x": np.array(x),
-//   "der('x')": np.array(der_x),
+//   "der(x)": np.array(der_x),
 //   "lt": np.array(lt),
 //   "le": np.array(le),
 //   "gt": np.array(gt),
@@ -87,7 +87,7 @@ end 'Comparisons';
 // {
 //   "ref": np.array(ref),
 //   "x": np.array(x),
-//   "der('x')": np.array(der_x),
+//   "der(x)": np.array(der_x),
 //   "lt": np.array(lt),
 //   "le": np.array(le),
 //   "gt": np.array(gt),
@@ -111,7 +111,7 @@ end 'Comparisons';
 // {
 //   "ref": np.array(ref),
 //   "x": np.array(x),
-//   "der('x')": np.array(der_x),
+//   "der(x)": np.array(der_x),
 //   "lt": np.array(lt),
 //   "le": np.array(le),
 //   "gt": np.array(gt),

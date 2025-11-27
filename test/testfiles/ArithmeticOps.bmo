@@ -23,7 +23,7 @@ end 'ArithmeticOps';
 //
 //     # Extract inputs (already numpy scalars)
 //     x = inputs['x']
-//     der_x = inputs["der('x')"]
+//     der_x = inputs["der(x)"]
 //     squared = inputs['squared']
 //     cubed = inputs['cubed']
 //     sqrt_approx = inputs['sqrt_approx']
@@ -55,7 +55,7 @@ end 'ArithmeticOps';
 // complex_val = ((x + 1.0) ** 2) / (((x - 0.5) ** 2) + 1.0)
 // {
 //   "x": np.array(x),
-//   "der('x')": np.array(der_x),
+//   "der(x)": np.array(der_x),
 //   "squared": np.array(squared),
 //   "cubed": np.array(cubed),
 //   "sqrt_approx": np.array(sqrt_approx),
@@ -74,7 +74,7 @@ end 'ArithmeticOps';
 // complex_val = ((x + 1.0) ** 2) / (((x - 0.5) ** 2) + 1.0)
 // {
 //   "x": np.array(x),
-//   "der('x')": np.array(der_x),
+//   "der(x)": np.array(der_x),
 //   "squared": np.array(squared),
 //   "cubed": np.array(cubed),
 //   "sqrt_approx": np.array(sqrt_approx),
@@ -93,7 +93,7 @@ end 'ArithmeticOps';
 // complex_val = ((x + 1.0) ** 2) / (((x - 0.5) ** 2) + 1.0)
 // {
 //   "x": np.array(x),
-//   "der('x')": np.array(der_x),
+//   "der(x)": np.array(der_x),
 //   "squared": np.array(squared),
 //   "cubed": np.array(cubed),
 //   "sqrt_approx": np.array(sqrt_approx),

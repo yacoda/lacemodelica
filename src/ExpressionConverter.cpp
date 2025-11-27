@@ -510,12 +510,12 @@ std::string ExpressionConverter::convertDerCall(
         compRef = primary ? primary->componentReference() : nullptr;
     }
 
-    // Handle array element derivative: der(x[i]) -> der('x')[i]
+    // Handle array element derivative: der(x[i]) -> der(x)[i]
     if (compRef && !compRef->arraySubscripts().empty()) {
         std::string baseVarName = stripQuotes(compRef->IDENT(0)->getText());
 
         if (ctx.derivativeInputs) {
-            std::string derInputName = "der('" + baseVarName + "')";
+            std::string derInputName = "der(" + baseVarName + ")";
 
             if (ctx.derivativeInputs->find(derInputName) == ctx.derivativeInputs->end()) {
                 std::vector<std::string> dimensions;
@@ -533,7 +533,7 @@ std::string ExpressionConverter::convertDerCall(
 
     // Handle simple variable derivative
     if (isSimpleVariable && ctx.derivativeInputs) {
-        std::string derInputName = "der('" + varName + "')";
+        std::string derInputName = "der(" + varName + ")";
 
         if (ctx.derivativeInputs->find(derInputName) == ctx.derivativeInputs->end()) {
             std::vector<std::string> dimensions;

@@ -44,7 +44,7 @@ end 'FunctionInputOutput';
 //     a = inputs['a']
 //     b = inputs['b']
 //     c = inputs['c']
-//     der_x = inputs["der('x')"]
+//     der_x = inputs["der(x)"]
 //
 //     # Helper functions
 //     def polynomial(x, a, b, c):
@@ -82,7 +82,7 @@ end 'FunctionInputOutput';
 //   "a": np.array(a),
 //   "b": np.array(b),
 //   "c": np.array(c),
-//   "der('x')": np.array(der_x)
+//   "der(x)": np.array(der_x)
 // }
 //
 // @onnx-test-case
@@ -100,7 +100,7 @@ end 'FunctionInputOutput';
 //   "a": np.array(a),
 //   "b": np.array(b),
 //   "c": np.array(c),
-//   "der('x')": np.array(der_x)
+//   "der(x)": np.array(der_x)
 // }
 //
 // @onnx-test-case
@@ -118,6 +118,6 @@ end 'FunctionInputOutput';
 //   "a": np.array(a),
 //   "b": np.array(b),
 //   "c": np.array(c),
-//   "der('x')": np.array(der_x)
+//   "der(x)": np.array(der_x)
 // }
 //

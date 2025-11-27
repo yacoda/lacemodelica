@@ -24,8 +24,8 @@ end 'LogicalOps';
 //     # Extract inputs (already numpy scalars)
 //     x = inputs['x']
 //     y = inputs['y']
-//     der_x = inputs["der('x')"]
-//     der_y = inputs["der('y')"]
+//     der_x = inputs["der(x)"]
+//     der_y = inputs["der(y)"]
 //     inRange = inputs['inRange']
 //     isPositive = inputs['isPositive']
 //     control = inputs['control']
@@ -63,8 +63,8 @@ end 'LogicalOps';
 // {
 //   "x": np.array(x),
 //   "y": np.array(y),
-//   "der('x')": np.array(der_x),
-//   "der('y')": np.array(der_y),
+//   "der(x)": np.array(der_x),
+//   "der(y)": np.array(der_y),
 //   "inRange": np.array(inRange),
 //   "isPositive": np.array(isPositive),
 //   "control": np.array(control)
@@ -83,8 +83,8 @@ end 'LogicalOps';
 // {
 //   "x": np.array(x),
 //   "y": np.array(y),
-//   "der('x')": np.array(der_x),
-//   "der('y')": np.array(der_y),
+//   "der(x)": np.array(der_x),
+//   "der(y)": np.array(der_y),
 //   "inRange": np.array(inRange),
 //   "isPositive": np.array(isPositive),
 //   "control": np.array(control)
@@ -103,8 +103,8 @@ end 'LogicalOps';
 // {
 //   "x": np.array(x),
 //   "y": np.array(y),
-//   "der('x')": np.array(der_x),
-//   "der('y')": np.array(der_y),
+//   "der(x)": np.array(der_x),
+//   "der(y)": np.array(der_y),
 //   "inRange": np.array(inRange),
 //   "isPositive": np.array(isPositive),
 //   "control": np.array(control)

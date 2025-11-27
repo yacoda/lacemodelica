@@ -33,7 +33,7 @@ end 'NewtonCoolingBase';
 //     m = inputs['m']
 //     c_p = inputs['c_p']
 //     T = inputs['T']
-//     der_T = inputs["der('T')"]
+//     der_T = inputs["der(T)"]
 //
 //     # Compute equation residual: m * c_p * der(T) = h * A * (T_inf - T)
 //     # Rearranged: m * c_p * der(T) - h * A * (T_inf - T) = 0
@@ -68,7 +68,7 @@ end 'NewtonCoolingBase';
 //   "m": m,
 //   "c_p": c_p,
 //   "T": T,
-//   "der('T')": der_T
+//   "der(T)": der_T
 // }
 //
 // @onnx-test-case
@@ -90,5 +90,5 @@ end 'NewtonCoolingBase';
 //   "m": m,
 //   "c_p": c_p,
 //   "T": T,
-//   "der('T')": der_T
+//   "der(T)": der_T
 // }

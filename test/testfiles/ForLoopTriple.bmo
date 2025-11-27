@@ -46,8 +46,8 @@ end 'ForLoopTriple';
 //     y = inputs['y']
 //     alpha = inputs['alpha']
 //     beta = inputs['beta']
-//     der_B = inputs["der('B')"]  # shape (2, 3, 2)
-//     der_x = inputs["der('x')"]  # shape (5,)
+//     der_B = inputs["der(B)"]  # shape (2, 3, 2)
+//     der_x = inputs["der(x)"]  # shape (5,)
 //
 //     # Triple nested loop: for i in 1:2, j in 1:3, k in 1:2
 //     # der(B[i,j,k]) = beta * 2^i * B[i,j,k] + x[i]
@@ -108,8 +108,8 @@ end 'ForLoopTriple';
 //   "y": np.array(y),
 //   "alpha": np.array(alpha),
 //   "beta": np.array(beta),
-//   "der('B')": der_B,
-//   "der('x')": der_x
+//   "der(B)": der_B,
+//   "der(x)": der_x
 // }
 //
 // @onnx-test-case
@@ -134,8 +134,8 @@ end 'ForLoopTriple';
 //   "y": np.array(y),
 //   "alpha": np.array(alpha),
 //   "beta": np.array(beta),
-//   "der('B')": der_B,
-//   "der('x')": der_x
+//   "der(B)": der_B,
+//   "der(x)": der_x
 // }
 //
 // @onnx-test-case
@@ -160,7 +160,7 @@ end 'ForLoopTriple';
 //   "y": np.array(y),
 //   "alpha": np.array(alpha),
 //   "beta": np.array(beta),
-//   "der('B')": der_B,
-//   "der('x')": der_x
+//   "der(B)": der_B,
+//   "der(x)": der_x
 // }
 //

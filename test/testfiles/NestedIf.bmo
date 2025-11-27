@@ -19,7 +19,7 @@ end 'NestedIf';
 //
 //     # Extract inputs
 //     x = inputs['x']
-//     der_x = inputs["der('x')"]
+//     der_x = inputs["der(x)"]
 //     mode = inputs['mode']
 //     output = inputs['output']
 //
@@ -60,7 +60,7 @@ end 'NestedIf';
 // mode = np.array(1.0)
 // {
 //   "x": x,
-//   "der('x')": np.array(1.0),
+//   "der(x)": np.array(1.0),
 //   "mode": mode,
 //   "output": np.array(mode * x)
 // }
@@ -72,7 +72,7 @@ end 'NestedIf';
 // mode = np.array(2.0)
 // {
 //   "x": x,
-//   "der('x')": np.array(1.0),
+//   "der(x)": np.array(1.0),
 //   "mode": mode,
 //   "output": np.array(mode * x)
 // }
@@ -84,7 +84,7 @@ end 'NestedIf';
 // mode = np.array(3.0)
 // {
 //   "x": x,
-//   "der('x')": np.array(1.0),
+//   "der(x)": np.array(1.0),
 //   "mode": mode,
 //   "output": np.array(mode * x)
 // }
@@ -96,7 +96,7 @@ end 'NestedIf';
 // mode = np.array(4.0)
 // {
 //   "x": x,
-//   "der('x')": np.array(1.0),
+//   "der(x)": np.array(1.0),
 //   "mode": mode,
 //   "output": np.array(mode * x)
 // }
@@ -108,7 +108,7 @@ end 'NestedIf';
 // mode = np.array(2.0)
 // {
 //   "x": x,
-//   "der('x')": np.array(1.0),
+//   "der(x)": np.array(1.0),
 //   "mode": mode,
 //   "output": np.array(mode * x)
 // }
