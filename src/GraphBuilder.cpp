@@ -141,6 +141,37 @@ std::string GraphBuilder::addInt64ArrayConstant(const std::vector<int64_t>& valu
     return name;
 }
 
+std::string GraphBuilder::addDoubleZerosConstant(const std::vector<int64_t>& shape) {
+    std::string name = prefix_.empty()
+        ? ("zeros_" + std::to_string(nodeCounter_++))
+        : (prefix_ + "_zeros_" + std::to_string(nodeCounter_++));
+
+    auto* node = graph_->add_node();
+    node->set_op_type("Constant");
+    node->set_name(name);
+    node->add_output(name);
+
+    auto* attr = node->add_attribute();
+    attr->set_name("value");
+    attr->set_type(onnx::AttributeProto::TENSOR);
+    auto* tensor = attr->mutable_t();
+    tensor->set_data_type(onnx::TensorProto::DOUBLE);
+
+    // Calculate total size and add dimensions
+    int64_t totalSize = 1;
+    for (int64_t dim : shape) {
+        tensor->add_dims(dim);
+        totalSize *= dim;
+    }
+
+    // Initialize with zeros
+    for (int64_t i = 0; i < totalSize; i++) {
+        tensor->add_double_data(0.0);
+    }
+
+    return name;
+}
+
 // -----------------------------------------------------------------------------
 // Operations
 // -----------------------------------------------------------------------------
@@ -206,6 +237,59 @@ std::string GraphBuilder::addGatherND(const std::string& data,
     node->set_name(outputTensor + "_GatherND");
     node->add_input(data);
     node->add_input(indexTensor);
+    node->add_output(outputTensor);
+
+    return outputTensor;
+}
+
+std::string GraphBuilder::addScatterND(const std::string& data,
+                                        const std::vector<int64_t>& indices,
+                                        const std::string& updates) {
+    // Create indices tensor with shape [1, rank] for updating a single element
+    // For example, to update index [0] in a 1D array, indices should be [[0]]
+    std::string name = prefix_.empty()
+        ? ("scatter_idx_" + std::to_string(nodeCounter_++))
+        : (prefix_ + "_scatter_idx_" + std::to_string(nodeCounter_++));
+
+    auto* constNode = graph_->add_node();
+    constNode->set_op_type("Constant");
+    constNode->set_name(name);
+    constNode->add_output(name);
+
+    auto* attr = constNode->add_attribute();
+    attr->set_name("value");
+    attr->set_type(onnx::AttributeProto::TENSOR);
+    auto* tensor = attr->mutable_t();
+    tensor->set_data_type(onnx::TensorProto::INT64);
+    tensor->add_dims(1);  // batch dimension
+    tensor->add_dims(indices.size());  // index rank
+    for (int64_t val : indices) {
+        tensor->add_int64_data(val);
+    }
+
+    std::string outputTensor = makeTensorName();
+
+    auto* node = graph_->add_node();
+    node->set_op_type("ScatterND");
+    node->set_name(outputTensor + "_ScatterND");
+    node->add_input(data);
+    node->add_input(name);
+    node->add_input(updates);
+    node->add_output(outputTensor);
+
+    return outputTensor;
+}
+
+std::string GraphBuilder::addUnsqueeze(const std::string& input,
+                                        const std::vector<int64_t>& axes) {
+    std::string axesTensor = addInt64ArrayConstant(axes);
+    std::string outputTensor = makeTensorName();
+
+    auto* node = graph_->add_node();
+    node->set_op_type("Unsqueeze");
+    node->set_name(outputTensor + "_Unsqueeze");
+    node->add_input(input);
+    node->add_input(axesTensor);
     node->add_output(outputTensor);
 
     return outputTensor;

@@ -134,13 +134,101 @@ void ONNXGenerator::createFunctionProto(
 
     for (size_t stmtIndex = 0; stmtIndex < func.algorithmStatements.size(); stmtIndex++) {
         const auto& stmt = func.algorithmStatements[stmtIndex];
-        std::string lhsVarName = stripQuotes(stmt.lhsContext->getText());
+
+        // Parse LHS to check for indexed assignment (e.g., result[1] := ...)
+        auto* lhsCompRef = dynamic_cast<basemodelica::BaseModelicaParser::ComponentReferenceContext*>(stmt.lhsContext);
+
+        std::string baseVarName;
+        std::vector<int64_t> lhsIndices;  // 0-based indices for ScatterND
+        bool isIndexedAssignment = false;
+
+        if (lhsCompRef) {
+            baseVarName = stripQuotes(lhsCompRef->IDENT(0)->getText());
+
+            auto arraySubscripts = lhsCompRef->arraySubscripts();
+            if (!arraySubscripts.empty()) {
+                auto subscriptList = arraySubscripts[0]->subscript();
+                for (auto sub : subscriptList) {
+                    if (auto subExpr = sub->expression()) {
+                        try {
+                            int modelicaIndex = std::stoi(subExpr->getText());
+                            lhsIndices.push_back(modelicaIndex - 1);  // Convert to 0-based
+                            isIndexedAssignment = true;
+                        } catch (...) {
+                            throw std::runtime_error("Dynamic indices in LHS not yet supported: " +
+                                                   subExpr->getText());
+                        }
+                    }
+                }
+            }
+        }
+
+        std::string lhsVarName = isIndexedAssignment ? baseVarName : stripQuotes(stmt.lhsContext->getText());
 
         try {
             onnx::GraphProto tempGraph;
             std::map<std::string, std::vector<std::string>> localDerivativeInputs;
             ConversionContext funcCtx(info, &tempGraph, nodeCounter, &variableToTensor, &localDerivativeInputs);
             std::string rhsTensor = ExpressionConverter::convert(stmt.rhsContext, funcCtx);
+
+            std::string finalTensor = rhsTensor;
+
+            if (isIndexedAssignment) {
+                // Use GraphBuilder to add ScatterND nodes to tempGraph
+                GraphBuilder builder(&tempGraph, nodeCounter);
+
+                // Get current tensor for this variable
+                std::string currentTensor;
+                if (variableToTensor.find(baseVarName) != variableToTensor.end()) {
+                    currentTensor = variableToTensor[baseVarName];
+                } else {
+                    // First use - need to create a zeros tensor for output variables
+                    // Look up the output variable to get its dimensions
+                    std::vector<int64_t> shape;
+                    for (const auto& output : func.outputs) {
+                        if (output.name == baseVarName) {
+                            for (const auto& dim : output.dimensions) {
+                                try {
+                                    shape.push_back(std::stoi(dim));
+                                } catch (...) {
+                                    throw std::runtime_error("Symbolic dimensions not supported for scatter initialization: " + dim);
+                                }
+                            }
+                            break;
+                        }
+                    }
+                    if (shape.empty()) {
+                        throw std::runtime_error("Could not find dimensions for output variable: " + baseVarName);
+                    }
+
+                    // Create zeros tensor as initial value
+                    currentTensor = builder.addDoubleZerosConstant(shape);
+                    variableToTensor[baseVarName] = currentTensor;
+                }
+
+                // Unsqueeze RHS to be [1] shaped for ScatterND updates
+                std::string updatesTensor = builder.addUnsqueeze(rhsTensor, {0});
+
+                // ScatterND: update the specific index of the array
+                finalTensor = builder.addScatterND(currentTensor, lhsIndices, updatesTensor);
+            }
+
+            // Convert initializers from tempGraph to Constant nodes in functionProto
+            // (FunctionProto doesn't support initializers, so we need to create Constant nodes)
+            for (int i = 0; i < tempGraph.initializer_size(); i++) {
+                const auto& init = tempGraph.initializer(i);
+                auto* constNode = functionProto->add_node();
+                constNode->set_op_type("Constant");
+                constNode->set_name(init.name());
+                constNode->add_output(init.name());
+
+                auto* attr = constNode->add_attribute();
+                attr->set_name("value");
+                attr->set_type(onnx::AttributeProto::TENSOR);
+                attr->mutable_t()->CopyFrom(init);
+
+                addSourceLocationMetadata(constNode, stmt.sourceFile, stmt.sourceLine);
+            }
 
             for (int i = 0; i < tempGraph.node_size(); i++) {
                 auto* node = functionProto->add_node();
@@ -157,7 +245,7 @@ void ONNXGenerator::createFunctionProto(
                 meta_lhs->set_value(lhsVarName);
             }
 
-            variableToTensor[lhsVarName] = rhsTensor;
+            variableToTensor[lhsVarName] = finalTensor;
 
         } catch (const std::exception& e) {
             std::cerr << "Warning: Failed to convert statement for " << lhsVarName;

@@ -544,6 +544,9 @@ void ModelInfoExtractor::extractFunctions(basemodelica::BaseModelicaParser::Base
                         var.sourceFile = sourceFile;
                         var.sourceLine = compDecl->getStart()->getLine();
 
+                        // Extract dimensions for arrays
+                        var.dimensions = extractDimensions(compDecl->declaration());
+
                         // Determine if input or output
                         if (typePrefix.find("input") != std::string::npos) {
                             func.inputs.push_back(var);

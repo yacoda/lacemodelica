@@ -1,0 +1,81 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2025 Joris Gillis, YACODA
+
+//! base 0.1.0
+package 'AlgorithmScatter'
+  pure function 'arrayfun'
+    input Real 'arr'[2];
+    output Real 'result'[2];
+  algorithm
+    'result'[1] := sin('arr'[1]);
+    'result'[2] := cos('arr'[2]);
+    'result' := 2*'result';
+  end 'arrayfun';
+
+  model 'AlgorithmScatter'
+    Real 'x'[2](start = 0.0);
+  equation
+    der('x') = 'arrayfun'('x');
+  end 'AlgorithmScatter';
+end 'AlgorithmScatter';
+
+// @onnx-test-reference
+// Python reference implementation for ONNX runtime testing
+// def reference_implementation(inputs):
+//     import numpy as np
+//     outputs = {}
+//
+//     # Extract inputs
+//     x = inputs['x']
+//     der_x = inputs["der(x)"]
+//
+//     # Function arrayfun:
+//     # result[0] = sin(x[0])   (index 1 in Modelica -> 0 in Python)
+//     # result[1] = cos(x[1])   (index 2 in Modelica -> 1 in Python)
+//     # result = 2 * result
+//     result = np.zeros(2)
+//     result[0] = np.sin(x[0])
+//     result[1] = np.cos(x[1])
+//     result = 2 * result
+//
+//     # Equation 0: der(x) = arrayfun(x)
+//     # Residual: der(x) - arrayfun(x) = 0
+//     outputs['eq[0]'] = der_x - result
+//
+//     # Initial value for x (start = 0.0 for both elements)
+//     outputs['start[0]'] = np.array([0.0, 0.0])
+//
+//     return outputs
+//
+// @onnx-test-case
+// # Test case 1: x = [0.0, 0.0]
+// import numpy as np
+// x = np.array([0.0, 0.0])
+// # arrayfun([0.0, 0.0]) = 2*[sin(0), cos(0)] = 2*[0, 1] = [0, 2]
+// der_x = np.array([0.0, 2.0])
+// {
+//   "x": x,
+//   "der(x)": der_x
+// }
+//
+// @onnx-test-case
+// # Test case 2: x = [pi/2, 0]
+// import numpy as np
+// x = np.array([np.pi/2, 0.0])
+// # arrayfun([pi/2, 0]) = 2*[sin(pi/2), cos(0)] = 2*[1, 1] = [2, 2]
+// der_x = np.array([2.0, 2.0])
+// {
+//   "x": x,
+//   "der(x)": der_x
+// }
+//
+// @onnx-test-case
+// # Test case 3: x = [0, pi/2]
+// import numpy as np
+// x = np.array([0.0, np.pi/2])
+// # arrayfun([0, pi/2]) = 2*[sin(0), cos(pi/2)] = 2*[0, 0] = [0, 0]
+// der_x = np.array([0.0, 0.0])
+// {
+//   "x": x,
+//   "der(x)": der_x
+// }

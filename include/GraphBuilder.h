@@ -64,6 +64,7 @@ public:
     std::string addDoubleConstant(double value);
     std::string addBoolConstant(bool value);
     std::string addInt64ArrayConstant(const std::vector<int64_t>& values);
+    std::string addDoubleZerosConstant(const std::vector<int64_t>& shape);
 
     // --- Operation nodes ---
 
@@ -76,9 +77,15 @@ public:
 
     std::string addGather(const std::string& data, const std::string& indices, int axis = 0);
     std::string addGatherND(const std::string& data, const std::vector<int64_t>& indices);
+    std::string addScatterND(const std::string& data,
+                             const std::vector<int64_t>& indices,
+                             const std::string& updates);
 
     // Convert Modelica 1-based index to ONNX 0-based
     std::string convertToZeroBasedIndex(const std::string& oneBasedTensor);
+
+    // Reshape a scalar to 1D for scatter operations
+    std::string addUnsqueeze(const std::string& input, const std::vector<int64_t>& axes);
 
     // --- Control flow ---
 
