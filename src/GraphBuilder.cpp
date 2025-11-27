@@ -28,19 +28,24 @@ GraphBuilder GraphBuilder::withPrefix(const std::string& newPrefix) const {
 // -----------------------------------------------------------------------------
 // Tensor Naming
 // -----------------------------------------------------------------------------
+// ONNX validates SSA across all subgraphs, so names must be globally unique.
+// The prefix_ is used to ensure uniqueness across nested scopes.
 
 std::string GraphBuilder::makeTensorName() {
     if (prefix_.empty()) {
-        return "tensor_" + std::to_string(nodeCounter_++);
+        return "t" + std::to_string(nodeCounter_++);
     }
-    return prefix_ + "_tensor_" + std::to_string(nodeCounter_++);
+    return prefix_ + "_t" + std::to_string(nodeCounter_++);
 }
 
 std::string GraphBuilder::makeTensorName(const std::string& hint) {
     if (hint.empty()) {
         return makeTensorName();
     }
-    return hint + "_" + std::to_string(nodeCounter_++);
+    if (prefix_.empty()) {
+        return hint + "_" + std::to_string(nodeCounter_++);
+    }
+    return prefix_ + "_" + hint + "_" + std::to_string(nodeCounter_++);
 }
 
 // -----------------------------------------------------------------------------
@@ -52,9 +57,11 @@ std::string GraphBuilder::addInt64Constant(int64_t value) {
 }
 
 std::string GraphBuilder::addInt64Constant(int64_t value, const std::string& nameHint) {
-    std::string name = nameHint.empty()
-        ? ("const_i64_" + std::to_string(nodeCounter_++))
-        : nameHint;
+    // Use prefix for global SSA uniqueness
+    std::string base = nameHint.empty() ? "i64" : nameHint;
+    std::string name = prefix_.empty()
+        ? (base + "_" + std::to_string(nodeCounter_++))
+        : (prefix_ + "_" + base + "_" + std::to_string(nodeCounter_++));
 
     auto* node = graph_->add_node();
     node->set_op_type("Constant");
@@ -72,7 +79,9 @@ std::string GraphBuilder::addInt64Constant(int64_t value, const std::string& nam
 }
 
 std::string GraphBuilder::addDoubleConstant(double value) {
-    std::string name = "const_f64_" + std::to_string(nodeCounter_++);
+    std::string name = prefix_.empty()
+        ? ("f64_" + std::to_string(nodeCounter_++))
+        : (prefix_ + "_f64_" + std::to_string(nodeCounter_++));
 
     auto* node = graph_->add_node();
     node->set_op_type("Constant");
@@ -90,7 +99,9 @@ std::string GraphBuilder::addDoubleConstant(double value) {
 }
 
 std::string GraphBuilder::addBoolConstant(bool value) {
-    std::string name = "const_bool_" + std::to_string(nodeCounter_++);
+    std::string name = prefix_.empty()
+        ? ("bool_" + std::to_string(nodeCounter_++))
+        : (prefix_ + "_bool_" + std::to_string(nodeCounter_++));
 
     auto* node = graph_->add_node();
     node->set_op_type("Constant");
@@ -108,7 +119,9 @@ std::string GraphBuilder::addBoolConstant(bool value) {
 }
 
 std::string GraphBuilder::addInt64ArrayConstant(const std::vector<int64_t>& values) {
-    std::string name = "const_indices_" + std::to_string(nodeCounter_++);
+    std::string name = prefix_.empty()
+        ? ("indices_" + std::to_string(nodeCounter_++))
+        : (prefix_ + "_indices_" + std::to_string(nodeCounter_++));
 
     auto* node = graph_->add_node();
     node->set_op_type("Constant");
@@ -199,16 +212,18 @@ std::string GraphBuilder::addGatherND(const std::string& data,
 }
 
 std::string GraphBuilder::convertToZeroBasedIndex(const std::string& oneBasedTensor) {
-    int constCounter = nodeCounter_++;
-    std::string constOne = addInt64Constant(1,
-        (prefix_.empty() ? "" : prefix_ + "_") + "const_one_" + std::to_string(constCounter));
+    std::string constOne = addInt64Constant(1, "one");
 
-    std::string zeroBasedTensor = (prefix_.empty() ? "" : prefix_ + "_") +
-                                   "index_0based_" + std::to_string(nodeCounter_++);
+    std::string zeroBasedTensor = prefix_.empty()
+        ? ("idx0_" + std::to_string(nodeCounter_++))
+        : (prefix_ + "_idx0_" + std::to_string(nodeCounter_++));
 
     auto* subNode = graph_->add_node();
     subNode->set_op_type("Sub");
-    subNode->set_name(zeroBasedTensor + "_Sub");
+    std::string nodeName = prefix_.empty()
+        ? ("to_0based_" + std::to_string(nodeCounter_))
+        : (prefix_ + "_to_0based_" + std::to_string(nodeCounter_));
+    subNode->set_name(nodeName);
     subNode->add_input(oneBasedTensor);
     subNode->add_input(constOne);
     subNode->add_output(zeroBasedTensor);
@@ -397,17 +412,19 @@ void GraphBuilder::addLoopPassthrough(
     const std::vector<std::string>& dimensions,
     const std::string& outputSuffix) {
 
-    // Add to loop node inputs
+    // ONNX validates SSA globally across all subgraphs, so we need globally unique names.
+
+    // Add to loop node inputs (outer graph scope)
     loopNode->add_input(inputName);
 
-    // Add to loop body inputs
+    // Add to loop body inputs (using loop-prefixed name for global uniqueness)
     auto* bodyInput = bodyGraph->add_input();
     bodyInput->set_name(bodyInputName);
     auto* inputType = bodyInput->mutable_type()->mutable_tensor_type();
     inputType->set_elem_type(elemType);
     addShapeDimensions(inputType->mutable_shape(), dimensions);
 
-    // Add to loop body outputs (passthrough)
+    // Add to loop body outputs (globally unique name)
     std::string bodyOutName = loopNodeName + "_" + bodyInputName + "_out";
     auto* bodyOutput = bodyGraph->add_output();
     bodyOutput->set_name(bodyOutName);
@@ -418,12 +435,12 @@ void GraphBuilder::addLoopPassthrough(
     // Create Identity node for passthrough
     auto* identity = bodyGraph->add_node();
     identity->set_op_type("Identity");
-    identity->set_name(loopNodeName + "_" + bodyInputName + "_passthrough");
+    identity->set_name(loopNodeName + "_" + bodyInputName + "_pass");
     identity->add_input(bodyInputName);
     identity->add_output(bodyOutName);
 
-    // Add to loop node outputs
-    loopNode->add_output(bodyInputName + outputSuffix);
+    // Add to loop node outputs (outer graph scope - needs loop name for uniqueness)
+    loopNode->add_output(loopNodeName + "_" + bodyInputName + outputSuffix);
 }
 
 } // namespace lacemodelica

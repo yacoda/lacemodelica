@@ -39,7 +39,8 @@ public:
     //   prefix: Output name prefix ("eq" or "init_eq")
     //   info: Model information for variable lookups
     //   graph: Target ONNX graph
-    //   nodeCounter: Counter for unique node names
+    //   nodeCounter: Counter for unique tensor/node names (SSA)
+    //   loopCounter: Counter for loop names (loop_0, loop_1, ...)
     //   derivativeInputs: Map to track discovered derivative variables
     static void generateOutputs(
         const std::vector<Equation>& equations,
@@ -47,6 +48,7 @@ public:
         const ModelInfo& info,
         onnx::GraphProto* graph,
         int& nodeCounter,
+        int& loopCounter,
         std::map<std::string, std::vector<std::string>>& derivativeInputs);
 
 private:
@@ -59,6 +61,7 @@ private:
         const ModelInfo& info,
         onnx::GraphProto* graph,
         int& nodeCounter,
+        int& loopCounter,
         std::map<std::string, std::vector<std::string>>& derivativeInputs,
         bool isNested = false,
         std::map<std::string, std::string>* parentLoopVarMap = nullptr,

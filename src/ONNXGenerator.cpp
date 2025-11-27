@@ -307,10 +307,11 @@ void ONNXGenerator::generateONNXModel(const ModelInfo& info, const std::string& 
 
     // Generate equation outputs
     int nodeCounter = 0;
+    int loopCounter = 0;  // Separate counter for clean loop naming
     std::map<std::string, std::vector<std::string>> derivativeInputs;
 
-    EquationGenerator::generateOutputs(info.equations, "eq", info, graph, nodeCounter, derivativeInputs);
-    EquationGenerator::generateOutputs(info.initialEquations, "init_eq", info, graph, nodeCounter, derivativeInputs);
+    EquationGenerator::generateOutputs(info.equations, "eq", info, graph, nodeCounter, loopCounter, derivativeInputs);
+    EquationGenerator::generateOutputs(info.initialEquations, "init_eq", info, graph, nodeCounter, loopCounter, derivativeInputs);
 
     // Generate bound outputs (start, min, max)
     ConversionContext ctx(info, graph, nodeCounter, nullptr, &derivativeInputs);

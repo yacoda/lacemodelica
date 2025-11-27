@@ -40,21 +40,23 @@ ForLoopRange parseForLoopRange(basemodelica::BaseModelicaParser::ForEquationCont
 }
 
 std::string setupLoopBodyIO(onnx::GraphProto* bodyGraph, const std::string& loopNodeName) {
+    // ONNX checker validates SSA across all subgraphs, so names must be globally unique.
+
     // Add iter input (0-based iteration counter)
     auto* iterInput = bodyGraph->add_input();
-    iterInput->set_name("iter");
+    iterInput->set_name("i");
     auto* iterType = iterInput->mutable_type()->mutable_tensor_type();
     iterType->set_elem_type(onnx::TensorProto::INT64);
     iterType->mutable_shape();  // Scalar
 
     // Add condition input
     auto* condInput = bodyGraph->add_input();
-    condInput->set_name("cond_in");
+    condInput->set_name("cond");
     auto* condInputType = condInput->mutable_type()->mutable_tensor_type();
     condInputType->set_elem_type(onnx::TensorProto::BOOL);
     condInputType->mutable_shape();  // Scalar
 
-    // Add condition output (passthrough)
+    // Add condition output (passthrough) - use loop name for uniqueness
     std::string condOutName = loopNodeName + "_cond_out";
     auto* condOutput = bodyGraph->add_output();
     condOutput->set_name(condOutName);
@@ -65,8 +67,8 @@ std::string setupLoopBodyIO(onnx::GraphProto* bodyGraph, const std::string& loop
     // Identity node to pass condition through
     auto* condIdentity = bodyGraph->add_node();
     condIdentity->set_op_type("Identity");
-    condIdentity->set_name(loopNodeName + "_cond_passthrough");
-    condIdentity->add_input("cond_in");
+    condIdentity->set_name(loopNodeName + "_cond_pass");
+    condIdentity->add_input("cond");
     condIdentity->add_output(condOutName);
 
     return condOutName;
@@ -145,9 +147,11 @@ std::string addLoopScanOutput(
     bool isNested,
     int tripCount) {
 
-    // Add scan output to loop body
-    auto* scanOutput = bodyGraph->add_output();
+    // ONNX validates SSA globally, so use loop-prefixed names for uniqueness.
+
+    // Add scan output to loop body (globally unique name)
     std::string scanOutName = loopNodeName + "_scan_" + std::to_string(scanIndex);
+    auto* scanOutput = bodyGraph->add_output();
     scanOutput->set_name(scanOutName);
     auto* scanType = scanOutput->mutable_type()->mutable_tensor_type();
     scanType->set_elem_type(onnx::TensorProto::DOUBLE);
@@ -156,15 +160,12 @@ std::string addLoopScanOutput(
     // Identity to connect residual to scan output
     auto* scanIdentity = bodyGraph->add_node();
     scanIdentity->set_op_type("Identity");
-    scanIdentity->set_name(loopNodeName + "_scan_identity_" + std::to_string(scanIndex));
+    scanIdentity->set_name(loopNodeName + "_to_scan_" + std::to_string(scanIndex));
     scanIdentity->add_input(residualTensor);
     scanIdentity->add_output(scanOutName);
 
-    // Add scan output to loop node
+    // Add scan output to loop node (outer graph scope)
     std::string loopOutputName = prefix + "[" + std::to_string(equationIndex + scanIndex) + "]";
-    if (isNested) {
-        loopOutputName += "_" + loopNodeName;
-    }
     loopNode->add_output(loopOutputName);
 
     // Add to graph outputs (only if this is a top-level loop)
@@ -224,6 +225,7 @@ void EquationGenerator::generateOutputs(
     const ModelInfo& info,
     onnx::GraphProto* graph,
     int& nodeCounter,
+    int& loopCounter,
     std::map<std::string, std::vector<std::string>>& derivativeInputs) {
 
     ConversionContext ctx(info, graph, nodeCounter, nullptr, &derivativeInputs);
@@ -233,7 +235,7 @@ void EquationGenerator::generateOutputs(
         const auto& eq = equations[i];
 
         if (eq.isForEquation()) {
-            size_t numOutputs = generateForLoop(eq, prefix, equationOutputIndex, info, graph, nodeCounter, derivativeInputs);
+            size_t numOutputs = generateForLoop(eq, prefix, equationOutputIndex, info, graph, nodeCounter, loopCounter, derivativeInputs);
             equationOutputIndex += numOutputs;
             continue;
         }
@@ -427,6 +429,7 @@ size_t EquationGenerator::generateForLoop(
     const ModelInfo& info,
     onnx::GraphProto* graph,
     int& nodeCounter,
+    int& loopCounter,
     std::map<std::string, std::vector<std::string>>& derivativeInputs,
     bool isNested,
     std::map<std::string, std::string>* parentLoopVarMap,
@@ -441,12 +444,14 @@ size_t EquationGenerator::generateForLoop(
     auto loopEquations = forEqCtx->equation();
 
     GraphBuilder builder(graph, nodeCounter);
-    std::string loopNodeName = "for_loop_" + std::to_string(nodeCounter++);
+    // Use separate loopCounter for clean loop naming (loop_0, loop_1, ...)
+    std::string loopNodeName = "loop_" + std::to_string(loopCounter++);
     if (outLoopNodeName) {
         *outLoopNodeName = loopNodeName;
     }
 
-    std::string tripCountTensor = builder.addInt64Constant(range.tripCount(), "trip_count_" + loopNodeName);
+    // These constants are in the outer graph scope
+    std::string tripCountTensor = builder.addInt64Constant(range.tripCount(), "n_" + loopNodeName);
     std::string condTensor = builder.addBoolConstant(true);
 
     auto* loopNode = graph->add_node();
@@ -459,12 +464,12 @@ size_t EquationGenerator::generateForLoop(
     bodyAttr->set_name("body");
     bodyAttr->set_type(onnx::AttributeProto::GRAPH);
     auto* bodyGraph = bodyAttr->mutable_g();
-    bodyGraph->set_name("loop_body_" + std::to_string(nodeCounter++));
+    bodyGraph->set_name("body");
 
     setupLoopBodyIO(bodyGraph, loopNodeName);
 
     if (isNested && parentLoopVarMap) {
-        std::string outputSuffix = "_final_" + std::to_string(equationIndex);
+        std::string outputSuffix = "_out";
         for (const auto& [varName, tensorName] : *parentLoopVarMap) {
             builder.addLoopPassthrough(loopNode, bodyGraph, loopNodeName,
                                        tensorName, "parent_" + varName,
@@ -473,19 +478,20 @@ size_t EquationGenerator::generateForLoop(
         }
     }
 
+    // Inside loop body - use loop prefix for global SSA uniqueness
     auto bodyBuilder = builder.forSubgraph(bodyGraph, loopNodeName);
-    std::string constOneTensor = bodyBuilder.addInt64Constant(1, loopNodeName + "_const_one");
-    std::string loopVarTensor = bodyBuilder.withPrefix(loopNodeName + "_" + range.loopVar).addBinaryOp("Add", "iter", constOneTensor);
+    std::string constOneTensor = bodyBuilder.addInt64Constant(1, "one");
+    std::string loopVarTensor = bodyBuilder.addBinaryOp("Add", "i", constOneTensor);
 
     std::set<std::string> requiredDerivatives = scanForDerivatives(loopEquations);
 
     if (!isNested) {
-        std::string outputSuffix = "_final_" + std::to_string(equationIndex);
+        std::string outputSuffix = "_out";
         addTopLevelLoopPassthroughs(loopNode, bodyGraph, loopNodeName, outputSuffix,
                                     info, requiredDerivatives, derivativeInputs);
     }
 
-    int bodyNodeCounter = 0;
+    // Use the same counter for the entire loop body to ensure SSA uniqueness
     size_t scanOutputCount = 0;
 
     for (size_t eqIdx = 0; eqIdx < loopEquations.size(); eqIdx++) {
@@ -502,10 +508,11 @@ size_t EquationGenerator::generateForLoop(
                 combinedLoopVarMap = *parentLoopVarMap;
             }
 
-            std::string currentLoopIterCopy = "loop_iter_" + range.loopVar + "_" + std::to_string(bodyNodeCounter++);
+            // Copy current loop variable for nested loop (globally unique names)
+            std::string currentLoopIterCopy = loopNodeName + "_" + range.loopVar + "_" + std::to_string(nodeCounter++);
             auto* iterCopyNode = bodyGraph->add_node();
             iterCopyNode->set_op_type("Identity");
-            iterCopyNode->set_name("copy_iter_for_nested_" + range.loopVar);
+            iterCopyNode->set_name(loopNodeName + "_copy_" + range.loopVar);
             iterCopyNode->add_input(loopVarTensor);
             iterCopyNode->add_output(currentLoopIterCopy);
 
@@ -519,6 +526,7 @@ size_t EquationGenerator::generateForLoop(
                 info,
                 bodyGraph,
                 nodeCounter,
+                loopCounter,
                 derivativeInputs,
                 true,
                 &combinedLoopVarMap,
@@ -538,8 +546,6 @@ size_t EquationGenerator::generateForLoop(
             }
 
             for (size_t i = 0; i < nestedOutputCount; i++) {
-                std::string collectedOutputName = "collected_nested_" + std::to_string(scanOutputCount + i);
-
                 std::string nestedOutputName;
                 if (nestedLoopNode) {
                     size_t outputIndex = nestedCarriedCount + i;
@@ -548,8 +554,9 @@ size_t EquationGenerator::generateForLoop(
                     }
                 }
 
+                // Globally unique names (ONNX validates SSA across all subgraphs)
+                std::string scanOutName = loopNodeName + "_nested_scan_" + std::to_string(scanOutputCount + i);
                 auto* scanOutput = bodyGraph->add_output();
-                std::string scanOutName = loopNodeName + "_scan_" + std::to_string(scanOutputCount + i);
                 scanOutput->set_name(scanOutName);
                 auto* scanType = scanOutput->mutable_type()->mutable_tensor_type();
                 scanType->set_elem_type(onnx::TensorProto::DOUBLE);
@@ -558,19 +565,21 @@ size_t EquationGenerator::generateForLoop(
 
                 auto* scanIdentity = bodyGraph->add_node();
                 scanIdentity->set_op_type("Identity");
-                scanIdentity->set_name(loopNodeName + "_scan_identity_nested_" + std::to_string(scanOutputCount + i));
+                scanIdentity->set_name(loopNodeName + "_to_nested_" + std::to_string(scanOutputCount + i));
                 scanIdentity->add_input(nestedOutputName);
                 scanIdentity->add_output(scanOutName);
 
-                loopNode->add_output(collectedOutputName);
+                // Outer graph scope - loop node output
+                std::string loopOutputName = prefix + "[" + std::to_string(equationIndex + scanOutputCount + i) + "]_nested";
+                loopNode->add_output(loopOutputName);
 
                 if (!isNested) {
                     std::string topLevelEqName = prefix + "[" + std::to_string(equationIndex + scanOutputCount + i) + "]";
 
                     auto* renameNode = graph->add_node();
                     renameNode->set_op_type("Identity");
-                    renameNode->set_name("rename_collected_" + std::to_string(scanOutputCount + i));
-                    renameNode->add_input(collectedOutputName);
+                    renameNode->set_name("to_" + topLevelEqName);
+                    renameNode->add_input(loopOutputName);
                     renameNode->add_output(topLevelEqName);
 
                     auto* graphOutput = graph->add_output();
@@ -605,7 +614,8 @@ size_t EquationGenerator::generateForLoop(
 
         std::string lhsTensor, rhsTensor;
         try {
-            ConversionContext bodyCtx(info, bodyGraph, bodyNodeCounter, &loopVarMap, &derivativeInputs, loopNodeName);
+            // Use loop prefix for global SSA uniqueness
+            ConversionContext bodyCtx(info, bodyGraph, nodeCounter, &loopVarMap, &derivativeInputs, loopNodeName);
             lhsTensor = ExpressionConverter::convert(simpleExpr, bodyCtx);
             rhsTensor = ExpressionConverter::convert(fullExpr, bodyCtx);
         } catch (const std::exception& e) {
@@ -613,10 +623,11 @@ size_t EquationGenerator::generateForLoop(
             continue;
         }
 
-        std::string residualTensor = loopNodeName + "_residual_" + std::to_string(scanOutputCount);
+        // Globally unique residual name (ONNX validates SSA across all subgraphs)
+        std::string residualTensor = loopNodeName + "_res_" + std::to_string(nodeCounter++);
         auto* subNode = bodyGraph->add_node();
         subNode->set_op_type("Sub");
-        subNode->set_name(residualTensor);
+        subNode->set_name(loopNodeName + "_sub_" + std::to_string(nodeCounter));
         subNode->add_input(lhsTensor);
         subNode->add_input(rhsTensor);
         subNode->add_output(residualTensor);
