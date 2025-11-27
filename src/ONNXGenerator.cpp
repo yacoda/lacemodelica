@@ -87,6 +87,340 @@ static void generateBoundOutput(
 }
 
 // -----------------------------------------------------------------------------
+// Algorithm For-Loop Helpers
+// -----------------------------------------------------------------------------
+
+// Parsed information about a Modelica for-loop range (for statements)
+struct AlgorithmForLoopRange {
+    std::string loopVar;
+    int startVal;
+    int endVal;
+    int tripCount() const { return endVal - startVal + 1; }
+};
+
+// Parse for-loop range from ForStatementContext
+static AlgorithmForLoopRange parseAlgorithmForLoopRange(
+    basemodelica::BaseModelicaParser::ForStatementContext* forStmtCtx) {
+    AlgorithmForLoopRange range;
+    auto forIndex = forStmtCtx->forIndex();
+    range.loopVar = forIndex->IDENT()->getText();
+    std::string rangeText = forIndex->expression()->getText();
+
+    size_t colonPos = rangeText.find(':');
+    if (colonPos == std::string::npos) {
+        throw std::runtime_error("For-statement range must be in format start:end");
+    }
+    try {
+        range.startVal = std::stoi(rangeText.substr(0, colonPos));
+        range.endVal = std::stoi(rangeText.substr(colonPos + 1));
+    } catch (...) {
+        throw std::runtime_error("For-statement range must contain constant integers");
+    }
+    return range;
+}
+
+// Generate ONNX Loop for an algorithm for-statement
+// Updates variableToTensor with any modified loop-carried variables
+static void generateAlgorithmForLoop(
+    basemodelica::BaseModelicaParser::ForStatementContext* forStmtCtx,
+    onnx::FunctionProto* functionProto,
+    const Function& func,
+    const ModelInfo& info,
+    std::map<std::string, std::string>& variableToTensor,
+    int& nodeCounter,
+    int& loopCounter,
+    const std::string& sourceFile,
+    size_t sourceLine) {
+
+    AlgorithmForLoopRange range = parseAlgorithmForLoopRange(forStmtCtx);
+    auto loopStatements = forStmtCtx->statement();
+
+    // Create a temporary graph to build the loop structure
+    onnx::GraphProto tempGraph;
+    GraphBuilder builder(&tempGraph, nodeCounter);
+
+    std::string loopNodeName = "loop_" + std::to_string(loopCounter++);
+
+    // Trip count and initial condition
+    std::string tripCountTensor = builder.addInt64Constant(range.tripCount(), "n_" + loopNodeName);
+    std::string condTensor = builder.addBoolConstant(true);
+
+    auto* loopNode = tempGraph.add_node();
+    loopNode->set_op_type("Loop");
+    loopNode->set_name(loopNodeName);
+    loopNode->add_input(tripCountTensor);
+    loopNode->add_input(condTensor);
+
+    auto* bodyAttr = loopNode->add_attribute();
+    bodyAttr->set_name("body");
+    bodyAttr->set_type(onnx::AttributeProto::GRAPH);
+    auto* bodyGraph = bodyAttr->mutable_g();
+    bodyGraph->set_name("body");
+
+    // Set up loop body standard inputs (iter, cond)
+    setupLoopBodyIO(bodyGraph, loopNodeName);
+
+    // Create body builder
+    auto bodyBuilder = builder.forSubgraph(bodyGraph, loopNodeName);
+
+    // Convert 0-based iter to 1-based Modelica index
+    std::string constOneTensor = bodyBuilder.addInt64Constant(1, "one");
+    std::string loopVarTensor = bodyBuilder.addBinaryOp("Add", "i", constOneTensor);
+
+    // Map loop variable to its tensor
+    std::map<std::string, std::string> loopVarMap;
+    loopVarMap[range.loopVar] = loopVarTensor;
+
+    // Identify loop-carried dependencies
+    // Variables that are both read AND written in the loop body
+    std::set<std::string> writtenVars;
+    std::set<std::string> readVars;
+
+    // First pass: identify written variables
+    for (auto* innerStmt : loopStatements) {
+        if (innerStmt->componentReference() && innerStmt->expression()) {
+            std::string varName = stripQuotes(innerStmt->componentReference()->IDENT(0)->getText());
+            writtenVars.insert(varName);
+        }
+    }
+
+    // Variables that exist before the loop and are written are loop-carried
+    std::vector<std::string> carriedVars;
+    for (const auto& varName : writtenVars) {
+        if (variableToTensor.find(varName) != variableToTensor.end()) {
+            carriedVars.push_back(varName);
+        }
+    }
+
+    // Set up loop-carried inputs/outputs
+    std::map<std::string, std::string> bodyInputTensors;  // varName -> body input tensor name
+    std::map<std::string, std::string> bodyOutputTensors; // varName -> body output tensor name
+
+    for (const auto& varName : carriedVars) {
+        std::string externalTensor = variableToTensor[varName];
+
+        // Add as loop input
+        loopNode->add_input(externalTensor);
+
+        // Add body input
+        std::string bodyInputName = loopNodeName + "_" + varName + "_in";
+        auto* bodyInput = bodyGraph->add_input();
+        bodyInput->set_name(bodyInputName);
+        auto* inputType = bodyInput->mutable_type()->mutable_tensor_type();
+        inputType->set_elem_type(onnx::TensorProto::DOUBLE);
+        inputType->mutable_shape();  // Scalar
+
+        bodyInputTensors[varName] = bodyInputName;
+
+        // Prepare output name (will be set during statement processing)
+        std::string bodyOutputName = loopNodeName + "_" + varName + "_out";
+        bodyOutputTensors[varName] = bodyOutputName;
+    }
+
+    // Map for variable tensors inside the loop body
+    std::map<std::string, std::string> bodyVariableMap;
+
+    // Initialize with carried variables
+    for (const auto& varName : carriedVars) {
+        bodyVariableMap[varName] = bodyInputTensors[varName];
+    }
+
+    // Track passthrough variables (need to add outputs after carried outputs)
+    std::vector<std::string> passthroughVars;
+
+    // Also pass through inputs from function that are needed in loop
+    for (const auto& [varName, tensorName] : variableToTensor) {
+        if (bodyVariableMap.find(varName) == bodyVariableMap.end()) {
+            // Not a carried variable - pass it through
+            loopNode->add_input(tensorName);
+
+            std::string bodyInputName = loopNodeName + "_" + varName + "_pass";
+            auto* bodyInput = bodyGraph->add_input();
+            bodyInput->set_name(bodyInputName);
+            auto* inputType = bodyInput->mutable_type()->mutable_tensor_type();
+            inputType->set_elem_type(onnx::TensorProto::DOUBLE);
+            // Check if it's an array
+            for (const auto& input : func.inputs) {
+                if (input.name == varName && !input.dimensions.empty()) {
+                    auto* shape = inputType->mutable_shape();
+                    for (const auto& dim : input.dimensions) {
+                        try {
+                            shape->add_dim()->set_dim_value(std::stoi(dim));
+                        } catch (...) {
+                            shape->add_dim()->set_dim_param(dim);
+                        }
+                    }
+                    break;
+                }
+            }
+
+            bodyVariableMap[varName] = bodyInputName;
+            passthroughVars.push_back(varName);
+        }
+    }
+
+    // Process statements in the loop body
+    for (auto* innerStmt : loopStatements) {
+        if (!innerStmt->componentReference() || !innerStmt->expression()) {
+            continue;  // Skip non-assignment statements for now
+        }
+
+        auto* lhsCompRef = innerStmt->componentReference();
+        std::string baseVarName = stripQuotes(lhsCompRef->IDENT(0)->getText());
+
+        // Check for indexed assignment
+        std::vector<int64_t> lhsIndices;
+        bool isIndexedAssignment = false;
+        bool hasDynamicIndex = false;
+
+        auto arraySubscripts = lhsCompRef->arraySubscripts();
+        if (!arraySubscripts.empty()) {
+            auto subscriptList = arraySubscripts[0]->subscript();
+            for (auto sub : subscriptList) {
+                if (auto subExpr = sub->expression()) {
+                    std::string indexText = subExpr->getText();
+                    // Check if it's the loop variable
+                    if (indexText == range.loopVar) {
+                        hasDynamicIndex = true;
+                        isIndexedAssignment = true;
+                    } else {
+                        try {
+                            int modelicaIndex = std::stoi(indexText);
+                            lhsIndices.push_back(modelicaIndex - 1);
+                            isIndexedAssignment = true;
+                        } catch (...) {
+                            hasDynamicIndex = true;
+                            isIndexedAssignment = true;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Convert RHS expression
+        onnx::GraphProto rhsGraph;
+        std::map<std::string, std::vector<std::string>> localDerivativeInputs;
+        ConversionContext bodyCtx(info, &rhsGraph, nodeCounter, &loopVarMap, &localDerivativeInputs, loopNodeName);
+
+        // Add body variables to context
+        for (const auto& [varName, tensorName] : bodyVariableMap) {
+            loopVarMap[varName] = tensorName;
+        }
+
+        std::string rhsTensor = ExpressionConverter::convert(innerStmt->expression(), bodyCtx);
+
+        // Copy nodes to body graph
+        for (int i = 0; i < rhsGraph.initializer_size(); i++) {
+            const auto& init = rhsGraph.initializer(i);
+            auto* constNode = bodyGraph->add_node();
+            constNode->set_op_type("Constant");
+            constNode->set_name(init.name());
+            constNode->add_output(init.name());
+
+            auto* attr = constNode->add_attribute();
+            attr->set_name("value");
+            attr->set_type(onnx::AttributeProto::TENSOR);
+            attr->mutable_t()->CopyFrom(init);
+        }
+
+        for (int i = 0; i < rhsGraph.node_size(); i++) {
+            auto* node = bodyGraph->add_node();
+            node->CopyFrom(rhsGraph.node(i));
+        }
+
+        // Update the variable tensor mapping
+        bodyVariableMap[baseVarName] = rhsTensor;
+    }
+
+    // Add carried variable outputs
+    for (const auto& varName : carriedVars) {
+        std::string finalTensor = bodyVariableMap[varName];
+        std::string bodyOutputName = bodyOutputTensors[varName];
+
+        // Add output to body graph
+        auto* bodyOutput = bodyGraph->add_output();
+        bodyOutput->set_name(bodyOutputName);
+        auto* outputType = bodyOutput->mutable_type()->mutable_tensor_type();
+        outputType->set_elem_type(onnx::TensorProto::DOUBLE);
+        outputType->mutable_shape();
+
+        // Identity to rename final tensor to output
+        auto* identityNode = bodyGraph->add_node();
+        identityNode->set_op_type("Identity");
+        identityNode->set_name(loopNodeName + "_out_" + varName);
+        identityNode->add_input(finalTensor);
+        identityNode->add_output(bodyOutputName);
+
+        // Add loop output
+        std::string loopOutputName = loopNodeName + "_" + varName + "_result";
+        loopNode->add_output(loopOutputName);
+
+        // Update external variable mapping
+        variableToTensor[varName] = loopOutputName;
+    }
+
+    // Add passthrough variable outputs (MUST come after carried outputs in ONNX Loop)
+    for (const auto& varName : passthroughVars) {
+        std::string bodyInputName = loopNodeName + "_" + varName + "_pass";
+        std::string bodyOutputName = loopNodeName + "_" + varName + "_pass_out";
+
+        // Add passthrough output to body graph
+        auto* bodyOutput = bodyGraph->add_output();
+        bodyOutput->set_name(bodyOutputName);
+        auto* outputType = bodyOutput->mutable_type()->mutable_tensor_type();
+        outputType->set_elem_type(onnx::TensorProto::DOUBLE);
+
+        // Set shape if it's an array
+        for (const auto& input : func.inputs) {
+            if (input.name == varName && !input.dimensions.empty()) {
+                auto* shape = outputType->mutable_shape();
+                for (const auto& dim : input.dimensions) {
+                    try {
+                        shape->add_dim()->set_dim_value(std::stoi(dim));
+                    } catch (...) {
+                        shape->add_dim()->set_dim_param(dim);
+                    }
+                }
+                break;
+            }
+        }
+
+        // Identity to pass through
+        auto* identityNode = bodyGraph->add_node();
+        identityNode->set_op_type("Identity");
+        identityNode->set_name(loopNodeName + "_pass_" + varName);
+        identityNode->add_input(bodyInputName);
+        identityNode->add_output(bodyOutputName);
+
+        // Add loop output
+        std::string loopOutputName = loopNodeName + "_" + varName + "_final";
+        loopNode->add_output(loopOutputName);
+    }
+
+    // Copy everything from tempGraph to functionProto
+    for (int i = 0; i < tempGraph.initializer_size(); i++) {
+        const auto& init = tempGraph.initializer(i);
+        auto* constNode = functionProto->add_node();
+        constNode->set_op_type("Constant");
+        constNode->set_name(init.name());
+        constNode->add_output(init.name());
+
+        auto* attr = constNode->add_attribute();
+        attr->set_name("value");
+        attr->set_type(onnx::AttributeProto::TENSOR);
+        attr->mutable_t()->CopyFrom(init);
+
+        addSourceLocationMetadata(constNode, sourceFile, sourceLine);
+    }
+
+    for (int i = 0; i < tempGraph.node_size(); i++) {
+        auto* node = functionProto->add_node();
+        node->CopyFrom(tempGraph.node(i));
+        addSourceLocationMetadata(node, sourceFile, sourceLine);
+    }
+}
+
+// -----------------------------------------------------------------------------
 // Function Proto Generation
 // -----------------------------------------------------------------------------
 
@@ -136,9 +470,21 @@ void ONNXGenerator::createFunctionProto(
     }
 
     int nodeCounter = 0;
+    int loopCounter = 0;
 
     for (size_t stmtIndex = 0; stmtIndex < func.algorithmStatements.size(); stmtIndex++) {
         const auto& stmt = func.algorithmStatements[stmtIndex];
+
+        // Check if this is a for-statement
+        if (stmt.isForStatement()) {
+            auto* forStmtCtx = dynamic_cast<basemodelica::BaseModelicaParser::ForStatementContext*>(stmt.forStatementContext);
+            if (forStmtCtx) {
+                generateAlgorithmForLoop(forStmtCtx, functionProto, func, info,
+                                         variableToTensor, nodeCounter, loopCounter,
+                                         stmt.sourceFile, stmt.sourceLine);
+                continue;
+            }
+        }
 
         // Check if this is a multi-output assignment: (a, b) := func(x)
         auto* lhsOutputList = dynamic_cast<basemodelica::BaseModelicaParser::OutputExpressionListContext*>(stmt.lhsContext);

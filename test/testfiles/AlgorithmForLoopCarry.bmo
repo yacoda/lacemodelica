@@ -1,0 +1,102 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2025 Joris Gillis, YACODA
+
+//! base 0.1.0
+package 'AlgorithmForLoopCarry'
+  // Function that evaluates a polynomial using Horner's method
+  // p(x) = c[1] + c[2]*x + c[3]*x^2 (coefficients in ascending order)
+  // Horner's method: ((c[3])*x + c[2])*x + c[1]
+  pure function 'polyEval' "Evaluate polynomial using Horner's method"
+    input Real 'coeffs'[3];
+    input Real 'x';
+    output Real 'result';
+  algorithm
+    'result' := 'coeffs'[3];
+    for i in 1:2 loop
+      'result' := 'result' * 'x' + 'coeffs'[3 - i];
+    end for;
+  end 'polyEval';
+
+  model 'AlgorithmForLoopCarry' "Model using function with loop carry dependency"
+    parameter Real 'c'[3] = {1.0, 2.0, 3.0};  // p(x) = 1 + 2x + 3x^2
+    Real 'x'(start = 1.0);
+    Real 'y';
+  equation
+    der('x') = 0.1;
+    'y' = 'polyEval'('c', 'x');
+  end 'AlgorithmForLoopCarry';
+end 'AlgorithmForLoopCarry';
+
+// @onnx-test-reference
+// Python reference implementation for ONNX runtime testing
+// def reference_implementation(inputs):
+//     import numpy as np
+//     outputs = {}
+//
+//     # Extract inputs
+//     x = inputs['x']
+//     der_x = inputs["der(x)"]
+//     y = inputs['y']
+//     c = inputs['c']
+//
+//     # Equation 0: der(x) = 0.1
+//     outputs['eq[0]'] = der_x - 0.1
+//
+//     # Equation 1: y = polyEval(c, x)
+//     # Horner's method: acc = c[2], then acc = acc*x + c[1], then acc = acc*x + c[0]
+//     # For p(x) = c[0] + c[1]*x + c[2]*x^2
+//     acc = c[2]
+//     for i in range(1, 3):
+//         acc = acc * x + c[2 - i]
+//     outputs['eq[1]'] = y - acc
+//
+//     # Initial value
+//     outputs['start[0]'] = np.array(1.0)
+//
+//     return outputs
+//
+// @onnx-test-case
+// # Test case 1: c = [1, 2, 3], x = 2.0
+// # p(2) = 1 + 2*2 + 3*4 = 1 + 4 + 12 = 17
+// import numpy as np
+// x = 2.0
+// der_x = 0.1
+// c = np.array([1.0, 2.0, 3.0])
+// y = 17.0
+// {
+//   "x": np.array(x),
+//   "der(x)": np.array(der_x),
+//   "y": np.array(y),
+//   "c": c
+// }
+//
+// @onnx-test-case
+// # Test case 2: c = [1, 2, 3], x = 0.0
+// # p(0) = 1 + 0 + 0 = 1
+// import numpy as np
+// x = 0.0
+// der_x = 0.1
+// c = np.array([1.0, 2.0, 3.0])
+// y = 1.0
+// {
+//   "x": np.array(x),
+//   "der(x)": np.array(der_x),
+//   "y": np.array(y),
+//   "c": c
+// }
+//
+// @onnx-test-case
+// # Test case 3: c = [0, 1, 1], x = -1.0
+// # p(-1) = 0 + 1*(-1) + 1*1 = -1 + 1 = 0
+// import numpy as np
+// x = -1.0
+// der_x = 0.1
+// c = np.array([0.0, 1.0, 1.0])
+// y = 0.0
+// {
+//   "x": np.array(x),
+//   "der(x)": np.array(der_x),
+//   "y": np.array(y),
+//   "c": c
+// }
+//

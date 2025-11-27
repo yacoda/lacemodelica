@@ -44,15 +44,22 @@ def validate_onnx_model(test_name: str, verbose: bool = False) -> bool:
         print(f'No reference implementation or test cases found in {bmo_path}')
         return False
 
-    # Load ONNX model and convert float64 to float32 for compatibility
+    # Load ONNX model - try float64 first, fall back to float32 conversion if needed
     onnx_path = Path(__file__).parent / 'output' / f'{test_name}_fmu' / 'extra' / 'org.lacemodelica.ls-onnx-serialization' / 'model.onnx'
     if not onnx_path.exists():
         print(f'ONNX file not found: {onnx_path}')
         return False
 
     model = onnx.load(str(onnx_path))
-    model_f32 = convert_float64_to_float32(model)
-    session = ort.InferenceSession(model_f32.SerializeToString())
+    use_float32 = False
+    try:
+        # Try loading with float64 first
+        session = ort.InferenceSession(model.SerializeToString())
+    except Exception:
+        # Fall back to float32 conversion if needed (e.g., for trig ops)
+        model_f32 = convert_float64_to_float32(model)
+        session = ort.InferenceSession(model_f32.SerializeToString())
+        use_float32 = True
     input_names = [inp.name for inp in session.get_inputs()]
     output_names = [out.name for out in session.get_outputs()]
 
@@ -75,11 +82,13 @@ def validate_onnx_model(test_name: str, verbose: bool = False) -> bool:
         for k, v in test_case.items():
             if k not in input_names:
                 continue
-            # Convert to appropriate dtype - bool stays bool, others become float32
+            # Convert to appropriate dtype - bool stays bool, others become float32/64
             if v.dtype == np.bool_:
                 onnx_inputs[k] = v
-            else:
+            elif use_float32:
                 onnx_inputs[k] = v.astype(np.float32)
+            else:
+                onnx_inputs[k] = v.astype(np.float64)
 
         onnx_outputs = session.run(output_names, onnx_inputs)
         onnx_results = dict(zip(output_names, onnx_outputs))

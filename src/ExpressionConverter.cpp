@@ -10,6 +10,7 @@
 #include <onnx/onnx_pb.h>
 
 #include <stdexcept>
+#include <cctype>
 
 namespace lacemodelica {
 
@@ -436,19 +437,99 @@ std::string ExpressionConverter::convertPrimary(
         std::string varName = stripQuotes(compRef->IDENT(0)->getText());
 
         std::string baseTensor;
+        bool isLoopIndex = false;
         if (ctx.variableMap && ctx.variableMap->find(varName) != ctx.variableMap->end()) {
             baseTensor = ctx.variableMap->at(varName);
+            // Detect loop index variables (single letter like i, j, k in loop context)
+            // These are int64 and need to be cast to double for arithmetic compatibility
+            if (!ctx.tensorPrefix.empty() && varName.size() == 1 && std::isalpha(varName[0])) {
+                isLoopIndex = true;
+            }
         } else {
             baseTensor = varName;
         }
 
         auto subscripts = compRef->arraySubscripts();
         if (subscripts.empty()) {
+            // Cast loop index to double for arithmetic compatibility with double constants
+            if (isLoopIndex) {
+                std::string doubleTensor = builder.makeTensorName("idx_dbl");
+                auto* castNode = ctx.graph->add_node();
+                castNode->set_op_type("Cast");
+                castNode->set_name(doubleTensor + "_Cast");
+                castNode->add_input(baseTensor);
+                castNode->add_output(doubleTensor);
+                auto* toAttr = castNode->add_attribute();
+                toAttr->set_name("to");
+                toAttr->set_type(onnx::AttributeProto::INT);
+                toAttr->set_i(11);  // ONNX TensorProto::DOUBLE
+                return doubleTensor;
+            }
             return baseTensor;
         }
 
         auto subscriptList = subscripts[0]->subscript();
-        return builder.applySubscripts(baseTensor, subscriptList, ctx.variableMap);
+
+        // Check if any subscript contains a complex expression (not just a constant or simple loop var)
+        bool hasComplexSubscript = false;
+        for (auto sub : subscriptList) {
+            if (sub->getText() == ":") {
+                continue;  // Slice notation - handled by applySubscripts
+            }
+            auto subExpr = sub->expression();
+            if (!subExpr) continue;
+
+            std::string indexText = subExpr->getText();
+
+            // Check if it's a simple loop variable reference
+            if (ctx.variableMap && ctx.variableMap->count(indexText) > 0) {
+                continue;  // Simple loop var - handled by applySubscripts
+            }
+
+            // Check if it's a constant value (number or boolean)
+            if (isConstValue(indexText)) {
+                continue;  // Static constant - handled by applySubscripts
+            }
+
+            // Complex expression (like "3-i") - needs special handling
+            hasComplexSubscript = true;
+            break;
+        }
+
+        if (!hasComplexSubscript) {
+            return builder.applySubscripts(baseTensor, subscriptList, ctx.variableMap);
+        }
+
+        // Handle complex subscript expressions by converting them
+        std::string currentTensor = baseTensor;
+        for (auto sub : subscriptList) {
+            auto subExpr = sub->expression();
+            if (!subExpr) {
+                throw std::runtime_error("Invalid array subscript");
+            }
+
+            // Convert the subscript expression to a tensor
+            std::string indexTensor = convert(subExpr, ctx);
+
+            // Cast to int64 if needed (subscript expressions may produce double)
+            std::string indexInt64 = builder.makeTensorName("idx_int64");
+            auto* castNode = ctx.graph->add_node();
+            castNode->set_op_type("Cast");
+            castNode->set_name(indexInt64 + "_Cast");
+            castNode->add_input(indexTensor);
+            castNode->add_output(indexInt64);
+            auto* toAttr = castNode->add_attribute();
+            toAttr->set_name("to");
+            toAttr->set_type(onnx::AttributeProto::INT);
+            toAttr->set_i(7);  // ONNX TensorProto::INT64
+
+            // Convert from 1-based Modelica to 0-based ONNX
+            std::string index0Based = builder.convertToZeroBasedIndex(indexInt64);
+
+            // Use Gather to index the array
+            currentTensor = builder.addGather(currentTensor, index0Based, 0);
+        }
+        return currentTensor;
     }
 
     // 5. Parenthesized expression

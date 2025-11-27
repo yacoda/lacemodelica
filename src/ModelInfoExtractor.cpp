@@ -585,7 +585,12 @@ void ModelInfoExtractor::extractFunctions(basemodelica::BaseModelicaParser::Base
                 stmt.rhsContext = statement;  // Store the whole statement to access function call info
                 func.algorithmStatements.push_back(stmt);
             }
-            // Note: We're skipping other statement types (function calls, if, for, while, etc.)
+            // Check if this is a for-statement
+            else if (statement->forStatement()) {
+                stmt.forStatementContext = statement->forStatement();
+                func.algorithmStatements.push_back(stmt);
+            }
+            // Note: We're skipping other statement types (function calls, if, while, etc.)
             // These would need special handling in the future
         }
 

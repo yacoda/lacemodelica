@@ -24,10 +24,15 @@ inline bool isConstValue(const std::string& value) {
     // Boolean literals
     if (value == "true" || value == "false") return true;
 
-    // Try to parse as number
+    // Try to parse as number - must consume entire string
     try {
-        std::stod(value);
-        return true;
+        size_t pos = 0;
+        std::stod(value, &pos);
+        // Skip trailing whitespace
+        while (pos < value.size() && std::isspace(value[pos])) {
+            pos++;
+        }
+        return pos == value.size();
     } catch (...) {
         return false;
     }

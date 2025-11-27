@@ -1,0 +1,95 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2025 Joris Gillis, YACODA
+
+//! base 0.1.0
+package 'AlgorithmForLoop'
+  // Function with a for loop that accumulates a sum (loop carry dependency)
+  pure function 'sumArray' "Sum elements of an array"
+    input Real 'arr'[3];
+    output Real 'result';
+  algorithm
+    'result' := 0.0;
+    for i in 1:3 loop
+      'result' := 'result' + 'arr'[i];
+    end for;
+  end 'sumArray';
+
+  model 'AlgorithmForLoop' "Model using function with for loop"
+    parameter Real 'a'[3] = {1.0, 2.0, 3.0};
+    Real 'x'(start = 0.0);
+    Real 'y';
+  equation
+    der('x') = 0.1;
+    'y' = 'sumArray'('a');
+  end 'AlgorithmForLoop';
+end 'AlgorithmForLoop';
+
+// @onnx-test-reference
+// Python reference implementation for ONNX runtime testing
+// def reference_implementation(inputs):
+//     import numpy as np
+//     outputs = {}
+//
+//     # Extract inputs
+//     x = inputs['x']
+//     der_x = inputs["der(x)"]
+//     y = inputs['y']
+//     a = inputs['a']
+//
+//     # Equation 0: der(x) = 0.1
+//     outputs['eq[0]'] = der_x - 0.1
+//
+//     # Equation 1: y = sumArray(a)
+//     # The function sums the array elements
+//     sum_result = 0.0
+//     for i in range(3):
+//         sum_result = sum_result + a[i]
+//     outputs['eq[1]'] = y - sum_result
+//
+//     # Initial value
+//     outputs['start[0]'] = np.array(0.0)
+//
+//     return outputs
+//
+// @onnx-test-case
+// # Test case 1: a = [1.0, 2.0, 3.0], sum = 6.0
+// import numpy as np
+// x = 0.0
+// der_x = 0.1
+// a = np.array([1.0, 2.0, 3.0])
+// y = 6.0
+// {
+//   "x": np.array(x),
+//   "der(x)": np.array(der_x),
+//   "y": np.array(y),
+//   "a": a
+// }
+//
+// @onnx-test-case
+// # Test case 2: a = [0.5, 1.5, 2.5], sum = 4.5
+// import numpy as np
+// x = 1.0
+// der_x = 0.1
+// a = np.array([0.5, 1.5, 2.5])
+// y = 4.5
+// {
+//   "x": np.array(x),
+//   "der(x)": np.array(der_x),
+//   "y": np.array(y),
+//   "a": a
+// }
+//
+// @onnx-test-case
+// # Test case 3: a = [-1.0, 0.0, 1.0], sum = 0.0
+// import numpy as np
+// x = 2.0
+// der_x = 0.1
+// a = np.array([-1.0, 0.0, 1.0])
+// y = 0.0
+// {
+//   "x": np.array(x),
+//   "der(x)": np.array(der_x),
+//   "y": np.array(y),
+//   "a": a
+// }
+//

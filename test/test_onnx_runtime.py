@@ -191,7 +191,7 @@ def convert_float64_to_float32(model):
 
     convert_graph(model.graph)
 
-    # Also convert constants in function definitions
+    # Also convert constants and subgraphs in function definitions
     for func in model.functions:
         for node in func.node:
             if node.op_type == 'Constant':
@@ -205,6 +205,14 @@ def convert_float64_to_float32(model):
                             # Replace the tensor
                             new_tensor = onnx.numpy_helper.from_array(data_f32)
                             attr.t.CopyFrom(new_tensor)
+
+            # Handle subgraphs in function nodes (e.g., Loop inside a function)
+            for attr in node.attribute:
+                if attr.HasField('g'):
+                    convert_graph(attr.g)
+                if attr.graphs:
+                    for subgraph in attr.graphs:
+                        convert_graph(subgraph)
 
     return model
 

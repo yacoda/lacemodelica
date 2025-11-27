@@ -54,10 +54,13 @@ struct Variable {
 };
 
 struct Statement {
-    antlr4::ParserRuleContext* lhsContext;  // componentReference on left of :=
-    antlr4::ParserRuleContext* rhsContext;  // expression on right of :=
+    antlr4::ParserRuleContext* lhsContext = nullptr;  // componentReference on left of :=
+    antlr4::ParserRuleContext* rhsContext = nullptr;  // expression on right of :=
+    antlr4::ParserRuleContext* forStatementContext = nullptr;  // AST node for for-statement
     std::string sourceFile;
     size_t sourceLine = 0;
+
+    bool isForStatement() const { return forStatementContext != nullptr; }
 };
 
 struct Function {
