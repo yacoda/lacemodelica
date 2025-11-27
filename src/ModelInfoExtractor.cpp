@@ -289,10 +289,30 @@ void ModelInfoExtractor::extractEquations(basemodelica::BaseModelicaParser::Base
 }
 
 void ModelInfoExtractor::processEquation(basemodelica::BaseModelicaParser::EquationContext* equation, std::vector<Equation>& target) {
-    // Check for unsupported equation types first
+    // Handle if-equations
     if (equation->ifEquation()) {
-        throw std::runtime_error("If-equations are not supported (" + sourceFile + ":" +
-                                 std::to_string(equation->getStart()->getLine()) + ")");
+        Equation eq;
+        eq.ifEquationContext = equation->ifEquation();
+        eq.sourceFile = sourceFile;
+        eq.sourceLine = equation->getStart()->getLine();
+        if (equation->comment()) {
+            eq.comment = extractDescription(equation->comment());
+        }
+        target.push_back(eq);
+
+        // Scan for der() calls in the if-equation body
+        std::string eqText = equation->getText();
+        size_t pos = 0;
+        while ((pos = eqText.find("der(", pos)) != std::string::npos) {
+            size_t start = pos + 4;
+            size_t end = eqText.find(")", start);
+            if (end != std::string::npos) {
+                std::string varName = eqText.substr(start, end - start);
+                derivativeCalls.insert(varName);
+            }
+            pos = end;
+        }
+        return;
     }
     if (equation->forEquation()) {
         // Store the for-equation context for later ONNX generation

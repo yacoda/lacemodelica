@@ -164,6 +164,20 @@ def convert_float64_to_float32(model):
                 if value_info.type.tensor_type.elem_type == TensorProto.DOUBLE:
                     value_info.type.tensor_type.elem_type = TensorProto.FLOAT
 
+        # Handle Constant nodes - convert tensor attribute from double to float
+        for node in graph.node:
+            if node.op_type == 'Constant':
+                for attr in node.attribute:
+                    if attr.name == 'value' and attr.HasField('t'):
+                        if attr.t.data_type == TensorProto.DOUBLE:
+                            # Get the data as float64
+                            data = onnx.numpy_helper.to_array(attr.t)
+                            # Convert to float32
+                            data_f32 = data.astype(np.float32)
+                            # Replace the tensor
+                            new_tensor = onnx.numpy_helper.from_array(data_f32)
+                            attr.t.CopyFrom(new_tensor)
+
         # Recursively handle subgraphs in nodes (e.g., If, Loop, Scan)
         for node in graph.node:
             for attr in node.attribute:

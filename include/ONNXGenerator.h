@@ -50,6 +50,31 @@ private:
         std::string* outLoopNodeName = nullptr
     );
 
+    // Generate ONNX If node for an if-equation
+    // Returns the number of equation outputs generated
+    static size_t generateIfEquation(
+        const Equation& eq,
+        const std::string& prefix,
+        size_t equationIndex,
+        const ModelInfo& info,
+        onnx::GraphProto* graph,
+        int& nodeCounter,
+        std::map<std::string, std::vector<std::string>>& derivativeInputs
+    );
+
+    // Helper to build nested If structure for if-equation RHS
+    static std::string buildIfEquationRhs(
+        const std::vector<basemodelica::BaseModelicaParser::ExpressionContext*>& conditions,
+        const std::vector<basemodelica::BaseModelicaParser::EquationContext*>& equations,
+        size_t branchIndex,
+        const ModelInfo& info,
+        onnx::GraphProto* graph,
+        int& nodeCounter,
+        const std::map<std::string, std::string>* variableMap,
+        std::map<std::string, std::vector<std::string>>* derivativeInputs,
+        const std::string& tensorPrefix
+    );
+
     // Create ONNX FunctionProto for a function with algorithm
     static void createFunctionProto(
         const Function& func,
@@ -81,6 +106,18 @@ private:
 
     static std::string convertIfExpression(
         basemodelica::BaseModelicaParser::IfExpressionContext* expr,
+        const ModelInfo& info,
+        onnx::GraphProto* graph,
+        int& nodeCounter,
+        const std::map<std::string, std::string>* variableMap = nullptr,
+        std::map<std::string, std::vector<std::string>>* derivativeInputs = nullptr,
+        const std::string& tensorPrefix = ""
+    );
+
+    // Helper for nested if-elseif-else chains
+    static std::string convertNestedIfElse(
+        const std::vector<basemodelica::BaseModelicaParser::ExpressionNoDecorationContext*>& expressions,
+        size_t startIdx,
         const ModelInfo& info,
         onnx::GraphProto* graph,
         int& nodeCounter,

@@ -16,3 +16,71 @@ package 'IfEquation'
     der('y') = 'x';
   end 'IfEquation';
 end 'IfEquation';
+
+// @onnx-test-reference
+// Python reference implementation for ONNX runtime testing
+// def reference_implementation(inputs):
+//     import numpy as np
+//     outputs = {}
+//
+//     # Extract inputs
+//     time = inputs['time']
+//     x = inputs['x']
+//     y = inputs['y']
+//     der_y = inputs["der('y')"]
+//
+//     # Equation 0: if time < 0.5 then x = 1.0 elseif true then x = 2.0 end if
+//     # This becomes: x - (if time < 0.5 then 1.0 else 2.0) = 0
+//     if time < 0.5:
+//         x_expected = 1.0
+//     else:
+//         x_expected = 2.0
+//     eq_0 = x - x_expected
+//     outputs['eq[0]'] = np.array(eq_0)
+//
+//     # Equation 1: der('y') = 'x'
+//     # Rearranged: der('y') - x = 0
+//     eq_1 = der_y - x
+//     outputs['eq[1]'] = np.array(eq_1)
+//
+//     return outputs
+//
+// @onnx-test-case
+// # Test case 1: time < 0.5, so x should be 1.0
+// import numpy as np
+// {
+//   "time": np.array(0.3),
+//   "x": np.array(1.0),
+//   "y": np.array(0.0),
+//   "der('y')": np.array(1.0)
+// }
+//
+// @onnx-test-case
+// # Test case 2: time >= 0.5, so x should be 2.0
+// import numpy as np
+// {
+//   "time": np.array(0.7),
+//   "x": np.array(2.0),
+//   "y": np.array(0.0),
+//   "der('y')": np.array(2.0)
+// }
+//
+// @onnx-test-case
+// # Test case 3: Boundary case at time = 0.5
+// import numpy as np
+// {
+//   "time": np.array(0.5),
+//   "x": np.array(2.0),
+//   "y": np.array(0.0),
+//   "der('y')": np.array(2.0)
+// }
+//
+// @onnx-test-case
+// # Test case 4: time = 0.0 (start)
+// import numpy as np
+// {
+//   "time": np.array(0.0),
+//   "x": np.array(1.0),
+//   "y": np.array(0.0),
+//   "der('y')": np.array(1.0)
+// }

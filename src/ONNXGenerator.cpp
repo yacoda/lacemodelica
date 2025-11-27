@@ -60,6 +60,29 @@ void ONNXGenerator::generateONNXModel(const ModelInfo& info, const std::string& 
     auto* graph = model.mutable_graph();
     graph->set_name(info.modelName);
 
+    // Check if 'time' is used in any equation (Modelica's built-in simulation time variable)
+    bool usesTime = false;
+    for (const auto& eq : info.equations) {
+        std::string eqText;
+        if (eq.lhsContext) eqText += eq.lhsContext->getText();
+        if (eq.rhsContext) eqText += eq.rhsContext->getText();
+        if (eq.ifEquationContext) eqText += eq.ifEquationContext->getText();
+        if (eq.forEquationContext) eqText += eq.forEquationContext->getText();
+        if (eqText.find("time") != std::string::npos) {
+            usesTime = true;
+            break;
+        }
+    }
+
+    // Add 'time' as input only if the model uses it
+    if (usesTime) {
+        auto* timeInput = graph->add_input();
+        timeInput->set_name("time");
+        auto* timeType = timeInput->mutable_type()->mutable_tensor_type();
+        timeType->set_elem_type(onnx::TensorProto::DOUBLE);
+        timeType->mutable_shape();  // Scalar - empty shape
+    }
+
     // Create ONNX inputs for each variable and parameter (skip derivatives and constants)
     // Constants with fixed variability become initializers instead
     // Track mapping from variable index to input index for start[] outputs
@@ -470,6 +493,13 @@ void ONNXGenerator::generateEquationOutputs(
             continue;
         }
 
+        // Check if this is an if-equation
+        if (eq.isIfEquation()) {
+            size_t numOutputs = generateIfEquation(eq, prefix, equationOutputIndex, info, graph, nodeCounter, derivativeInputs);
+            equationOutputIndex += numOutputs;
+            continue;
+        }
+
         // Debug: Check if this equation contains tan
         std::string rhsText = eq.rhsContext ? eq.rhsContext->getText() : "";
         if (rhsText.find("tan") != std::string::npos) {
@@ -656,6 +686,217 @@ static std::string ensureTensorName(
     identityNode->add_output(desiredName);
 
     return desiredName;
+}
+
+size_t ONNXGenerator::generateIfEquation(
+    const Equation& eq,
+    const std::string& prefix,
+    size_t equationIndex,
+    const ModelInfo& info,
+    onnx::GraphProto* graph,
+    int& nodeCounter,
+    std::map<std::string, std::vector<std::string>>& derivativeInputs) {
+
+    auto* ifEqCtx = dynamic_cast<basemodelica::BaseModelicaParser::IfEquationContext*>(eq.ifEquationContext);
+    if (!ifEqCtx) {
+        throw std::runtime_error("Invalid if-equation context");
+    }
+
+    std::cerr << "DEBUG: Processing if-equation" << std::endl;
+
+    // Get all expressions (conditions) and equation lists from branches
+    auto expressions = ifEqCtx->expression();  // [if_cond, elseif_cond1, elseif_cond2, ...]
+
+    // Each branch has a list of equations
+    // Grammar: 'if' expression 'then' (equation ';')* ('elseif' expression 'then' (equation ';')*)* ('else' (equation ';')*)?
+    // We need to get equations from each branch
+
+    // Collect all equations from all branches
+    // The structure is: if branch equations, then elseif branches, then else branch
+    auto allEquations = ifEqCtx->equation();  // All equations across all branches
+
+    // For now, we assume each branch has exactly one equation that assigns to the same variable
+    // The if-equation becomes: var - If(cond1, val1, If(cond2, val2, ..., else_val)) = 0
+
+    if (allEquations.empty()) {
+        std::cerr << "Warning: Empty if-equation" << std::endl;
+        return 0;
+    }
+
+    // Get LHS variable from first equation (assume all branches assign to same var)
+    auto firstEq = allEquations[0];
+    auto firstSimpleExpr = firstEq->simpleExpression();
+    if (!firstSimpleExpr) {
+        throw std::runtime_error("If-equation branch must contain simple equation");
+    }
+    std::string lhsVarName = firstSimpleExpr->getText();
+    // Strip quotes
+    if (lhsVarName.size() >= 2 && lhsVarName.front() == '\'' && lhsVarName.back() == '\'') {
+        lhsVarName = lhsVarName.substr(1, lhsVarName.size() - 2);
+    }
+
+    std::cerr << "DEBUG: If-equation assigns to variable: " << lhsVarName << std::endl;
+
+    // Build nested If structure for RHS values
+    // We need to pair conditions with their corresponding equations
+    // Structure: if cond1 then eq1; [elseif cond2 then eq2;]* [else eq_else;]? end if;
+
+    size_t numConditions = expressions.size();
+    size_t numEquations = allEquations.size();
+
+    std::cerr << "DEBUG: If-equation has " << numConditions << " conditions and " << numEquations << " equations" << std::endl;
+
+    // Build the conditional RHS using nested If nodes
+    // For: if c1 then v1 elseif c2 then v2 else v3
+    // Build: If(c1, v1, If(c2, v2, v3))
+
+    std::string rhsTensor = buildIfEquationRhs(
+        expressions, allEquations, 0, info, graph, nodeCounter, nullptr, &derivativeInputs, "");
+
+    // Create residual: lhs_var - rhs_if_result = 0
+    std::string eqOutputName = prefix + "[" + std::to_string(equationIndex) + "]";
+
+    auto* subNode = graph->add_node();
+    subNode->set_op_type("Sub");
+    subNode->set_name(prefix + "_if_residual_" + std::to_string(equationIndex));
+    subNode->add_input(lhsVarName);
+    subNode->add_input(rhsTensor);
+    subNode->add_output(eqOutputName);
+
+    // Add output to graph
+    auto* output = graph->add_output();
+    output->set_name(eqOutputName);
+    auto* outputType = output->mutable_type()->mutable_tensor_type();
+    outputType->set_elem_type(onnx::TensorProto::DOUBLE);
+    outputType->mutable_shape();
+
+    // Add source location metadata
+    if (!eq.sourceFile.empty()) {
+        auto* meta_file = output->add_metadata_props();
+        meta_file->set_key("source_file");
+        meta_file->set_value(eq.sourceFile);
+
+        auto* meta_line = output->add_metadata_props();
+        meta_line->set_key("source_line");
+        meta_line->set_value(std::to_string(eq.sourceLine));
+    }
+
+    return 1;  // One equation output generated
+}
+
+// Helper to build nested If structure for if-equation RHS
+std::string ONNXGenerator::buildIfEquationRhs(
+    const std::vector<basemodelica::BaseModelicaParser::ExpressionContext*>& conditions,
+    const std::vector<basemodelica::BaseModelicaParser::EquationContext*>& equations,
+    size_t branchIndex,
+    const ModelInfo& info,
+    onnx::GraphProto* graph,
+    int& nodeCounter,
+    const std::map<std::string, std::string>* variableMap,
+    std::map<std::string, std::vector<std::string>>* derivativeInputs,
+    const std::string& tensorPrefix) {
+
+    // Base case: we're at the else branch (no more conditions)
+    if (branchIndex >= conditions.size()) {
+        // This is the else branch - just convert the RHS of the last equation
+        if (branchIndex < equations.size()) {
+            auto* eqCtx = equations[branchIndex];
+            auto* rhsExpr = eqCtx->expression();
+            if (rhsExpr) {
+                return convertExpression(
+                    rhsExpr, info, graph, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
+            }
+        }
+        // No else branch - use 0.0 as default
+        auto* constNode = graph->add_node();
+        constNode->set_op_type("Constant");
+        std::string constTensor = "if_else_default_" + std::to_string(nodeCounter++);
+        constNode->set_name(constTensor);
+        constNode->add_output(constTensor);
+        auto* attr = constNode->add_attribute();
+        attr->set_name("value");
+        attr->set_type(onnx::AttributeProto::TENSOR);
+        auto* tensor = attr->mutable_t();
+        tensor->set_data_type(onnx::TensorProto::DOUBLE);
+        tensor->add_double_data(0.0);
+        return constTensor;
+    }
+
+    // Convert condition
+    std::string condTensor = convertExpression(
+        conditions[branchIndex], info, graph, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
+
+    // Create then branch subgraph - convert RHS of this branch's equation
+    onnx::GraphProto thenBranch;
+    thenBranch.set_name("then_branch_" + std::to_string(branchIndex));
+
+    std::string thenResult;
+    if (branchIndex < equations.size()) {
+        auto* eqCtx = equations[branchIndex];
+        auto* rhsExpr = eqCtx->expression();
+        if (rhsExpr) {
+            thenResult = convertExpression(
+                rhsExpr, info, &thenBranch, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
+        }
+    }
+    if (thenResult.empty()) {
+        // Create a constant 0.0 if no expression
+        auto* constNode = thenBranch.add_node();
+        constNode->set_op_type("Constant");
+        thenResult = "then_default_" + std::to_string(nodeCounter++);
+        constNode->set_name(thenResult);
+        constNode->add_output(thenResult);
+        auto* attr = constNode->add_attribute();
+        attr->set_name("value");
+        attr->set_type(onnx::AttributeProto::TENSOR);
+        auto* tensor = attr->mutable_t();
+        tensor->set_data_type(onnx::TensorProto::DOUBLE);
+        tensor->add_double_data(0.0);
+    }
+
+    // Add output to then branch
+    auto* thenOutput = thenBranch.add_output();
+    thenOutput->set_name(thenResult);
+    auto* thenType = thenOutput->mutable_type()->mutable_tensor_type();
+    thenType->set_elem_type(onnx::TensorProto::DOUBLE);
+    thenType->mutable_shape()->add_dim()->set_dim_value(1);
+
+    // Create else branch subgraph - recursively build rest of if-elseif-else
+    onnx::GraphProto elseBranch;
+    elseBranch.set_name("else_branch_" + std::to_string(branchIndex));
+
+    std::string elseResult = buildIfEquationRhs(
+        conditions, equations, branchIndex + 1, info, &elseBranch, nodeCounter,
+        variableMap, derivativeInputs, tensorPrefix);
+
+    // Add output to else branch
+    auto* elseOutput = elseBranch.add_output();
+    elseOutput->set_name(elseResult);
+    auto* elseType = elseOutput->mutable_type()->mutable_tensor_type();
+    elseType->set_elem_type(onnx::TensorProto::DOUBLE);
+    elseType->mutable_shape()->add_dim()->set_dim_value(1);
+
+    // Create If node
+    auto* ifNode = graph->add_node();
+    std::string outputTensor = "if_eq_" + std::to_string(nodeCounter++);
+    ifNode->set_op_type("If");
+    ifNode->set_name("If_eq_" + std::to_string(nodeCounter));
+    ifNode->add_input(condTensor);
+    ifNode->add_output(outputTensor);
+
+    // Add then_branch attribute
+    auto* thenAttr = ifNode->add_attribute();
+    thenAttr->set_name("then_branch");
+    thenAttr->set_type(onnx::AttributeProto::GRAPH);
+    thenAttr->mutable_g()->CopyFrom(thenBranch);
+
+    // Add else_branch attribute
+    auto* elseAttr = ifNode->add_attribute();
+    elseAttr->set_name("else_branch");
+    elseAttr->set_type(onnx::AttributeProto::GRAPH);
+    elseAttr->mutable_g()->CopyFrom(elseBranch);
+
+    return outputTensor;
 }
 
 size_t ONNXGenerator::generateForEquationLoop(
@@ -1430,10 +1671,9 @@ std::string ONNXGenerator::convertIfExpression(
         throw std::runtime_error("Invalid if expression structure");
     }
 
-    // For now, handle simple if-then-else (no elseif)
-    if (expressions.size() > 3) {
-        // Has elseif clauses - would need nested If nodes
-        throw std::runtime_error("elseif clauses not yet supported in if expressions");
+    // Need odd number of expressions: (cond, then), (elseif_cond, elseif_then)*, else
+    if (expressions.size() % 2 != 1) {
+        throw std::runtime_error("Invalid if expression structure: expected odd number of expressions");
     }
 
     // Convert condition expression (should produce boolean tensor)
@@ -1459,7 +1699,17 @@ std::string ONNXGenerator::convertIfExpression(
     // IMPORTANT: Share nodeCounter with subgraphs to maintain SSA (no duplicate tensor names)
     onnx::GraphProto elseBranch;
     elseBranch.set_name("else_branch");
-    std::string elseResult = convertExpression(expressions[2], info, &elseBranch, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
+
+    std::string elseResult;
+    if (expressions.size() == 3) {
+        // Simple if-then-else
+        elseResult = convertExpression(expressions[2], info, &elseBranch, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
+    } else {
+        // Has elseif clauses - build nested If nodes in else branch
+        // Structure: [cond, then, elseif_cond1, elseif_then1, ..., else]
+        // For elseif: build If(elseif_cond1, elseif_then1, ...)
+        elseResult = convertNestedIfElse(expressions, 2, info, &elseBranch, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
+    }
 
     // Add output to else branch
     auto* elseOutput = elseBranch.add_output();
@@ -1491,6 +1741,86 @@ std::string ONNXGenerator::convertIfExpression(
     elseAttr->mutable_g()->CopyFrom(elseBranch);
 
     std::cerr << "Created If node with output: " << outputTensor << std::endl;
+
+    return outputTensor;
+}
+
+std::string ONNXGenerator::convertNestedIfElse(
+    const std::vector<basemodelica::BaseModelicaParser::ExpressionNoDecorationContext*>& expressions,
+    size_t startIdx,
+    const ModelInfo& info,
+    onnx::GraphProto* graph,
+    int& nodeCounter,
+    const std::map<std::string, std::string>* variableMap,
+    std::map<std::string, std::vector<std::string>>* derivativeInputs,
+    const std::string& tensorPrefix) {
+
+    // expressions structure: [cond, then, elseif_cond1, elseif_then1, ..., else]
+    // startIdx points to the current condition (elseif condition or else value)
+
+    size_t remaining = expressions.size() - startIdx;
+
+    if (remaining == 1) {
+        // This is the final else value - just convert it
+        return convertExpression(expressions[startIdx], info, graph, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
+    }
+
+    // We have at least condition + then + more
+    // Build: If(condition, then, nested_else)
+
+    // Convert condition
+    std::string condTensor = convertExpression(expressions[startIdx], info, graph, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
+
+    // Create then branch subgraph
+    onnx::GraphProto thenBranch;
+    thenBranch.set_name("then_branch");
+    std::string thenResult = convertExpression(expressions[startIdx + 1], info, &thenBranch, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
+
+    // Add output to then branch
+    auto* thenOutput = thenBranch.add_output();
+    thenOutput->set_name(thenResult);
+    auto* thenType = thenOutput->mutable_type()->mutable_tensor_type();
+    thenType->set_elem_type(onnx::TensorProto::DOUBLE);
+    auto* thenShape = thenType->mutable_shape();
+    thenShape->add_dim()->set_dim_value(1);
+
+    // Create else branch subgraph
+    onnx::GraphProto elseBranch;
+    elseBranch.set_name("else_branch");
+
+    // Recursively build the rest of the if-elseif-else chain
+    std::string elseResult = convertNestedIfElse(expressions, startIdx + 2, info, &elseBranch, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
+
+    // Add output to else branch
+    auto* elseOutput = elseBranch.add_output();
+    elseOutput->set_name(elseResult);
+    auto* elseType = elseOutput->mutable_type()->mutable_tensor_type();
+    elseType->set_elem_type(onnx::TensorProto::DOUBLE);
+    auto* elseShape = elseType->mutable_shape();
+    elseShape->add_dim()->set_dim_value(1);
+
+    // Create If node
+    auto* ifNode = graph->add_node();
+    std::string outputTensor = (tensorPrefix.empty() ? "" : tensorPrefix + "_") + "tensor_" + std::to_string(nodeCounter++);
+
+    ifNode->set_op_type("If");
+    ifNode->set_name("If_nested_" + std::to_string(nodeCounter));
+    ifNode->add_input(condTensor);
+    ifNode->add_output(outputTensor);
+
+    // Add then_branch attribute
+    auto* thenAttr = ifNode->add_attribute();
+    thenAttr->set_name("then_branch");
+    thenAttr->set_type(onnx::AttributeProto::GRAPH);
+    thenAttr->mutable_g()->CopyFrom(thenBranch);
+
+    // Add else_branch attribute
+    auto* elseAttr = ifNode->add_attribute();
+    elseAttr->set_name("else_branch");
+    elseAttr->set_type(onnx::AttributeProto::GRAPH);
+    elseAttr->mutable_g()->CopyFrom(elseBranch);
+
+    std::cerr << "Created nested If node with output: " << outputTensor << std::endl;
 
     return outputTensor;
 }
@@ -1851,6 +2181,20 @@ std::string ONNXGenerator::convertPrimary(
         constant->set_data_type(onnx::TensorProto::DOUBLE);
         // Scalars have empty dims (rank 0)
         constant->add_double_data(std::stod(value));
+
+        return constName;
+    }
+
+    // 1b. Boolean literals (true/false)
+    std::string text = expr->getText();
+    if (text == "true" || text == "false") {
+        // Create constant boolean tensor
+        auto* constant = graph->add_initializer();
+        std::string constName = "const_" + std::to_string(nodeCounter++);
+        constant->set_name(constName);
+        constant->set_data_type(onnx::TensorProto::BOOL);
+        // Scalars have empty dims (rank 0)
+        constant->add_int32_data(text == "true" ? 1 : 0);
 
         return constName;
     }
