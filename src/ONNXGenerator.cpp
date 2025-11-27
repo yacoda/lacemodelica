@@ -809,18 +809,7 @@ std::string ONNXGenerator::buildIfEquationRhs(
             }
         }
         // No else branch - use 0.0 as default
-        auto* constNode = graph->add_node();
-        constNode->set_op_type("Constant");
-        std::string constTensor = "if_else_default_" + std::to_string(nodeCounter++);
-        constNode->set_name(constTensor);
-        constNode->add_output(constTensor);
-        auto* attr = constNode->add_attribute();
-        attr->set_name("value");
-        attr->set_type(onnx::AttributeProto::TENSOR);
-        auto* tensor = attr->mutable_t();
-        tensor->set_data_type(onnx::TensorProto::DOUBLE);
-        tensor->add_double_data(0.0);
-        return constTensor;
+        return createDoubleConstant(graph, 0.0, nodeCounter);
     }
 
     // Convert condition
@@ -841,63 +830,20 @@ std::string ONNXGenerator::buildIfEquationRhs(
         }
     }
     if (thenResult.empty()) {
-        // Create a constant 0.0 if no expression
-        auto* constNode = thenBranch.add_node();
-        constNode->set_op_type("Constant");
-        thenResult = "then_default_" + std::to_string(nodeCounter++);
-        constNode->set_name(thenResult);
-        constNode->add_output(thenResult);
-        auto* attr = constNode->add_attribute();
-        attr->set_name("value");
-        attr->set_type(onnx::AttributeProto::TENSOR);
-        auto* tensor = attr->mutable_t();
-        tensor->set_data_type(onnx::TensorProto::DOUBLE);
-        tensor->add_double_data(0.0);
+        thenResult = createDoubleConstant(&thenBranch, 0.0, nodeCounter);
     }
-
-    // Add output to then branch
-    auto* thenOutput = thenBranch.add_output();
-    thenOutput->set_name(thenResult);
-    auto* thenType = thenOutput->mutable_type()->mutable_tensor_type();
-    thenType->set_elem_type(onnx::TensorProto::DOUBLE);
-    thenType->mutable_shape()->add_dim()->set_dim_value(1);
+    addScalarDoubleOutput(&thenBranch, thenResult);
 
     // Create else branch subgraph - recursively build rest of if-elseif-else
     onnx::GraphProto elseBranch;
     elseBranch.set_name("else_branch_" + std::to_string(branchIndex));
-
     std::string elseResult = buildIfEquationRhs(
         conditions, equations, branchIndex + 1, info, &elseBranch, nodeCounter,
         variableMap, derivativeInputs, tensorPrefix);
+    addScalarDoubleOutput(&elseBranch, elseResult);
 
-    // Add output to else branch
-    auto* elseOutput = elseBranch.add_output();
-    elseOutput->set_name(elseResult);
-    auto* elseType = elseOutput->mutable_type()->mutable_tensor_type();
-    elseType->set_elem_type(onnx::TensorProto::DOUBLE);
-    elseType->mutable_shape()->add_dim()->set_dim_value(1);
-
-    // Create If node
-    auto* ifNode = graph->add_node();
-    std::string outputTensor = "if_eq_" + std::to_string(nodeCounter++);
-    ifNode->set_op_type("If");
-    ifNode->set_name("If_eq_" + std::to_string(nodeCounter));
-    ifNode->add_input(condTensor);
-    ifNode->add_output(outputTensor);
-
-    // Add then_branch attribute
-    auto* thenAttr = ifNode->add_attribute();
-    thenAttr->set_name("then_branch");
-    thenAttr->set_type(onnx::AttributeProto::GRAPH);
-    thenAttr->mutable_g()->CopyFrom(thenBranch);
-
-    // Add else_branch attribute
-    auto* elseAttr = ifNode->add_attribute();
-    elseAttr->set_name("else_branch");
-    elseAttr->set_type(onnx::AttributeProto::GRAPH);
-    elseAttr->mutable_g()->CopyFrom(elseBranch);
-
-    return outputTensor;
+    // Create If node with branches
+    return createIfNode(graph, condTensor, thenBranch, elseBranch, nodeCounter, "", "If_eq");
 }
 
 size_t ONNXGenerator::generateForEquationLoop(
@@ -1635,69 +1581,23 @@ std::string ONNXGenerator::convertIfExpression(
     // Convert condition expression (should produce boolean tensor)
     std::string condTensor = convertExpression(expressions[0], info, graph, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
 
-    // Create then branch as a subgraph
-    // Note: If subgraphs have zero inputs - they access parent scope variables directly
-    // IMPORTANT: Share nodeCounter with subgraphs to maintain SSA (no duplicate tensor names)
+    // Create then branch subgraph (shares nodeCounter for SSA compliance)
     onnx::GraphProto thenBranch;
     thenBranch.set_name("then_branch");
     std::string thenResult = convertExpression(expressions[1], info, &thenBranch, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
+    addScalarDoubleOutput(&thenBranch, thenResult);
 
-    // Add output to then branch
-    auto* thenOutput = thenBranch.add_output();
-    thenOutput->set_name(thenResult);
-    auto* thenType = thenOutput->mutable_type()->mutable_tensor_type();
-    thenType->set_elem_type(onnx::TensorProto::DOUBLE);
-    auto* thenShape = thenType->mutable_shape();
-    thenShape->add_dim()->set_dim_value(1);
-
-    // Create else branch as a subgraph
-    // Note: If subgraphs have zero inputs - they access parent scope variables directly
-    // IMPORTANT: Share nodeCounter with subgraphs to maintain SSA (no duplicate tensor names)
+    // Create else branch subgraph
     onnx::GraphProto elseBranch;
     elseBranch.set_name("else_branch");
+    std::string elseResult = (expressions.size() == 3)
+        ? convertExpression(expressions[2], info, &elseBranch, nodeCounter, variableMap, derivativeInputs, tensorPrefix)
+        : convertNestedIfElse(expressions, 2, info, &elseBranch, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
+    addScalarDoubleOutput(&elseBranch, elseResult);
 
-    std::string elseResult;
-    if (expressions.size() == 3) {
-        // Simple if-then-else
-        elseResult = convertExpression(expressions[2], info, &elseBranch, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
-    } else {
-        // Has elseif clauses - build nested If nodes in else branch
-        // Structure: [cond, then, elseif_cond1, elseif_then1, ..., else]
-        // For elseif: build If(elseif_cond1, elseif_then1, ...)
-        elseResult = convertNestedIfElse(expressions, 2, info, &elseBranch, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
-    }
-
-    // Add output to else branch
-    auto* elseOutput = elseBranch.add_output();
-    elseOutput->set_name(elseResult);
-    auto* elseType = elseOutput->mutable_type()->mutable_tensor_type();
-    elseType->set_elem_type(onnx::TensorProto::DOUBLE);
-    auto* elseShape = elseType->mutable_shape();
-    elseShape->add_dim()->set_dim_value(1);
-
-    // Create If node
-    auto* ifNode = graph->add_node();
-    std::string outputTensor = (tensorPrefix.empty() ? "" : tensorPrefix + "_") + "tensor_" + std::to_string(nodeCounter++);
-
-    ifNode->set_op_type("If");
-    ifNode->set_name("If_" + std::to_string(nodeCounter));
-    ifNode->add_input(condTensor);
-    ifNode->add_output(outputTensor);
-
-    // Add then_branch attribute
-    auto* thenAttr = ifNode->add_attribute();
-    thenAttr->set_name("then_branch");
-    thenAttr->set_type(onnx::AttributeProto::GRAPH);
-    thenAttr->mutable_g()->CopyFrom(thenBranch);
-
-    // Add else_branch attribute
-    auto* elseAttr = ifNode->add_attribute();
-    elseAttr->set_name("else_branch");
-    elseAttr->set_type(onnx::AttributeProto::GRAPH);
-    elseAttr->mutable_g()->CopyFrom(elseBranch);
-
+    // Create If node with branches
+    std::string outputTensor = createIfNode(graph, condTensor, thenBranch, elseBranch, nodeCounter, tensorPrefix);
     std::cerr << "Created If node with output: " << outputTensor << std::endl;
-
     return outputTensor;
 }
 
@@ -1721,63 +1621,24 @@ std::string ONNXGenerator::convertNestedIfElse(
         return convertExpression(expressions[startIdx], info, graph, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
     }
 
-    // We have at least condition + then + more
     // Build: If(condition, then, nested_else)
-
-    // Convert condition
     std::string condTensor = convertExpression(expressions[startIdx], info, graph, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
 
     // Create then branch subgraph
     onnx::GraphProto thenBranch;
     thenBranch.set_name("then_branch");
     std::string thenResult = convertExpression(expressions[startIdx + 1], info, &thenBranch, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
+    addScalarDoubleOutput(&thenBranch, thenResult);
 
-    // Add output to then branch
-    auto* thenOutput = thenBranch.add_output();
-    thenOutput->set_name(thenResult);
-    auto* thenType = thenOutput->mutable_type()->mutable_tensor_type();
-    thenType->set_elem_type(onnx::TensorProto::DOUBLE);
-    auto* thenShape = thenType->mutable_shape();
-    thenShape->add_dim()->set_dim_value(1);
-
-    // Create else branch subgraph
+    // Create else branch subgraph (recursively builds the rest of the chain)
     onnx::GraphProto elseBranch;
     elseBranch.set_name("else_branch");
-
-    // Recursively build the rest of the if-elseif-else chain
     std::string elseResult = convertNestedIfElse(expressions, startIdx + 2, info, &elseBranch, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
+    addScalarDoubleOutput(&elseBranch, elseResult);
 
-    // Add output to else branch
-    auto* elseOutput = elseBranch.add_output();
-    elseOutput->set_name(elseResult);
-    auto* elseType = elseOutput->mutable_type()->mutable_tensor_type();
-    elseType->set_elem_type(onnx::TensorProto::DOUBLE);
-    auto* elseShape = elseType->mutable_shape();
-    elseShape->add_dim()->set_dim_value(1);
-
-    // Create If node
-    auto* ifNode = graph->add_node();
-    std::string outputTensor = (tensorPrefix.empty() ? "" : tensorPrefix + "_") + "tensor_" + std::to_string(nodeCounter++);
-
-    ifNode->set_op_type("If");
-    ifNode->set_name("If_nested_" + std::to_string(nodeCounter));
-    ifNode->add_input(condTensor);
-    ifNode->add_output(outputTensor);
-
-    // Add then_branch attribute
-    auto* thenAttr = ifNode->add_attribute();
-    thenAttr->set_name("then_branch");
-    thenAttr->set_type(onnx::AttributeProto::GRAPH);
-    thenAttr->mutable_g()->CopyFrom(thenBranch);
-
-    // Add else_branch attribute
-    auto* elseAttr = ifNode->add_attribute();
-    elseAttr->set_name("else_branch");
-    elseAttr->set_type(onnx::AttributeProto::GRAPH);
-    elseAttr->mutable_g()->CopyFrom(elseBranch);
-
+    // Create If node with branches
+    std::string outputTensor = createIfNode(graph, condTensor, thenBranch, elseBranch, nodeCounter, tensorPrefix, "If_nested");
     std::cerr << "Created nested If node with output: " << outputTensor << std::endl;
-
     return outputTensor;
 }
 
@@ -1850,58 +1711,32 @@ std::string ONNXGenerator::convertRelation(
 
     // Check if there's a relational operator (comparison)
     if (arithmeticExprs.size() > 1) {
-        // There's a comparison operator
         auto relOp = relation->relationalOperator();
         if (!relOp) {
             throw std::runtime_error("Multiple arithmetic expressions but no relational operator");
         }
 
-        // Convert left and right operands
         std::string leftTensor = convertArithmeticExpression(arithmeticExprs[0], info, graph, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
         std::string rightTensor = convertArithmeticExpression(arithmeticExprs[1], info, graph, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
 
-        // Create comparison node
-        auto* node = graph->add_node();
-        std::string outputTensor = (tensorPrefix.empty() ? "" : tensorPrefix + "_") + "tensor_" + std::to_string(nodeCounter++);
-
         std::string opText = relOp->getText();
-        if (opText == ">") {
-            node->set_op_type("Greater");
-        } else if (opText == "<") {
-            node->set_op_type("Less");
-        } else if (opText == ">=") {
-            node->set_op_type("GreaterOrEqual");
-        } else if (opText == "<=") {
-            node->set_op_type("LessOrEqual");
-        } else if (opText == "==") {
-            node->set_op_type("Equal");
+
+        // Map Modelica relational operators to ONNX operators
+        static const std::map<std::string, std::string> relOpMap = {
+            {">", "Greater"}, {"<", "Less"}, {">=", "GreaterOrEqual"},
+            {"<=", "LessOrEqual"}, {"==", "Equal"}
+        };
+
+        auto it = relOpMap.find(opText);
+        if (it != relOpMap.end()) {
+            return createBinaryOp(graph, it->second, leftTensor, rightTensor, nodeCounter, tensorPrefix);
         } else if (opText == "<>") {
-            // Not equal: first do Equal, then Not the result
-            node->set_op_type("Equal");
-            node->set_name("Equal_" + std::to_string(nodeCounter));
-            node->add_input(leftTensor);
-            node->add_input(rightTensor);
-            std::string equalOutput = (tensorPrefix.empty() ? "" : tensorPrefix + "_") + "tensor_" + std::to_string(nodeCounter++);
-            node->add_output(equalOutput);
-
-            // Now negate the result
-            auto* notNode = graph->add_node();
-            notNode->set_op_type("Not");
-            notNode->set_name("Not_" + std::to_string(nodeCounter));
-            notNode->add_input(equalOutput);
-            notNode->add_output(outputTensor);
-
-            return outputTensor;
+            // Not equal: Equal followed by Not
+            std::string equalResult = createBinaryOp(graph, "Equal", leftTensor, rightTensor, nodeCounter, tensorPrefix);
+            return createUnaryOp(graph, "Not", equalResult, nodeCounter, tensorPrefix);
         } else {
             throw std::runtime_error("Unsupported relational operator: " + opText);
         }
-
-        node->set_name(node->op_type() + "_" + std::to_string(nodeCounter));
-        node->add_input(leftTensor);
-        node->add_input(rightTensor);
-        node->add_output(outputTensor);
-
-        return outputTensor;
     }
 
     // No comparison, just return the arithmetic expression

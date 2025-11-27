@@ -172,4 +172,39 @@ std::string createUnaryOp(onnx::GraphProto* graph, const std::string& opType,
     return outputTensor;
 }
 
+void addScalarDoubleOutput(onnx::GraphProto* graph, const std::string& tensorName) {
+    auto* output = graph->add_output();
+    output->set_name(tensorName);
+    auto* tensorType = output->mutable_type()->mutable_tensor_type();
+    tensorType->set_elem_type(onnx::TensorProto::DOUBLE);
+    tensorType->mutable_shape()->add_dim()->set_dim_value(1);
+}
+
+std::string createIfNode(onnx::GraphProto* graph, const std::string& condTensor,
+                          onnx::GraphProto& thenBranch, onnx::GraphProto& elseBranch,
+                          int& counter, const std::string& prefix,
+                          const std::string& nameHint) {
+    std::string outputTensor = makeTensorName(prefix, counter);
+
+    auto* ifNode = graph->add_node();
+    ifNode->set_op_type("If");
+    ifNode->set_name(nameHint + "_" + std::to_string(counter));
+    ifNode->add_input(condTensor);
+    ifNode->add_output(outputTensor);
+
+    // Add then_branch attribute
+    auto* thenAttr = ifNode->add_attribute();
+    thenAttr->set_name("then_branch");
+    thenAttr->set_type(onnx::AttributeProto::GRAPH);
+    thenAttr->mutable_g()->CopyFrom(thenBranch);
+
+    // Add else_branch attribute
+    auto* elseAttr = ifNode->add_attribute();
+    elseAttr->set_name("else_branch");
+    elseAttr->set_type(onnx::AttributeProto::GRAPH);
+    elseAttr->mutable_g()->CopyFrom(elseBranch);
+
+    return outputTensor;
+}
+
 } // namespace lacemodelica

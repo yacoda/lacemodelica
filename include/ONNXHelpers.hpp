@@ -54,4 +54,13 @@ std::string createUnaryOp(onnx::GraphProto* graph, const std::string& opType,
                            const std::string& input, int& counter,
                            const std::string& prefix = "");
 
+// Add a scalar double output to a subgraph (used for If branches)
+void addScalarDoubleOutput(onnx::GraphProto* graph, const std::string& tensorName);
+
+// Create an If node with then/else branch subgraphs
+std::string createIfNode(onnx::GraphProto* graph, const std::string& condTensor,
+                          onnx::GraphProto& thenBranch, onnx::GraphProto& elseBranch,
+                          int& counter, const std::string& prefix = "",
+                          const std::string& nameHint = "If");
+
 } // namespace lacemodelica
