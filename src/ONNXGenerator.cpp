@@ -4,6 +4,7 @@
 #include "ONNXGenerator.h"
 #include "ExpressionConverter.h"
 #include "EquationGenerator.h"
+#include "GraphBuilder.h"
 #include "ONNXHelpers.hpp"
 #include "Utils.hpp"
 
@@ -81,8 +82,8 @@ static void generateBoundOutput(
     meta_idx->set_key("input_index");
     meta_idx->set_value(std::to_string(inputIdx));
 
-    renameTensorToOutput(ctx.graph, exprTensor, outputName,
-                         boundType + "_identity_" + std::to_string(inputIdx));
+    ctx.convCtx.builder().renameTensor(exprTensor, outputName,
+                                        boundType + "_identity_" + std::to_string(inputIdx));
 }
 
 // -----------------------------------------------------------------------------

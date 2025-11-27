@@ -114,22 +114,25 @@ std::string ExpressionConverter::convertIfExpression(
         throw std::runtime_error("Invalid if expression structure: expected odd number of expressions");
     }
 
+    auto builder = ctx.builder();
     std::string condTensor = convert(expressions[0], ctx);
 
     onnx::GraphProto thenBranch;
     thenBranch.set_name("then_branch");
+    auto thenBuilder = builder.forSubgraph(&thenBranch);
     std::string thenResult = convert(expressions[1], ctx.withGraph(&thenBranch));
-    addScalarDoubleOutput(&thenBranch, thenResult);
+    thenBuilder.addScalarDoubleOutput(thenResult);
 
     onnx::GraphProto elseBranch;
     elseBranch.set_name("else_branch");
+    auto elseBuilder = builder.forSubgraph(&elseBranch);
     auto elseCtx = ctx.withGraph(&elseBranch);
     std::string elseResult = (expressions.size() == 3)
         ? convert(expressions[2], elseCtx)
         : convertNestedIfElse(expressions, 2, elseCtx);
-    addScalarDoubleOutput(&elseBranch, elseResult);
+    elseBuilder.addScalarDoubleOutput(elseResult);
 
-    return createIfNode(ctx.graph, condTensor, thenBranch, elseBranch, ctx.nodeCounter, ctx.tensorPrefix);
+    return builder.addIfNode(condTensor, thenBranch, elseBranch);
 }
 
 std::string ExpressionConverter::convertNestedIfElse(
@@ -143,19 +146,20 @@ std::string ExpressionConverter::convertNestedIfElse(
         return convert(expressions[startIdx], ctx);
     }
 
+    auto builder = ctx.builder();
     std::string condTensor = convert(expressions[startIdx], ctx);
 
     onnx::GraphProto thenBranch;
     thenBranch.set_name("then_branch");
     std::string thenResult = convert(expressions[startIdx + 1], ctx.withGraph(&thenBranch));
-    addScalarDoubleOutput(&thenBranch, thenResult);
+    builder.forSubgraph(&thenBranch).addScalarDoubleOutput(thenResult);
 
     onnx::GraphProto elseBranch;
     elseBranch.set_name("else_branch");
     std::string elseResult = convertNestedIfElse(expressions, startIdx + 2, ctx.withGraph(&elseBranch));
-    addScalarDoubleOutput(&elseBranch, elseResult);
+    builder.forSubgraph(&elseBranch).addScalarDoubleOutput(elseResult);
 
-    return createIfNode(ctx.graph, condTensor, thenBranch, elseBranch, ctx.nodeCounter, ctx.tensorPrefix, "If_nested");
+    return builder.addIfNode(condTensor, thenBranch, elseBranch, "If_nested");
 }
 
 // -----------------------------------------------------------------------------
@@ -183,7 +187,9 @@ std::string ExpressionConverter::convertSimpleExpression(
         throw std::runtime_error("Empty logical term");
     }
 
+    auto builder = ctx.builder();
     std::string resultTensor;
+
     for (size_t i = 0; i < logicalFactors.size(); i++) {
         auto* logicalFactor = logicalFactors[i];
         auto* relation = logicalFactor->relation();
@@ -194,11 +200,11 @@ std::string ExpressionConverter::convertSimpleExpression(
         std::string factorTensor = convertRelation(relation, ctx);
 
         if (logicalFactor->children.size() > 1) {
-            factorTensor = createUnaryOp(ctx.graph, "Not", factorTensor, ctx.nodeCounter, ctx.tensorPrefix);
+            factorTensor = builder.addUnaryOp("Not", factorTensor);
         }
 
         resultTensor = (i == 0) ? factorTensor
-            : createBinaryOp(ctx.graph, "And", resultTensor, factorTensor, ctx.nodeCounter, ctx.tensorPrefix);
+            : builder.addBinaryOp("And", resultTensor, factorTensor);
     }
 
     return resultTensor;
@@ -223,16 +229,17 @@ std::string ExpressionConverter::convertRelation(
             throw std::runtime_error("Multiple arithmetic expressions but no relational operator");
         }
 
+        auto builder = ctx.builder();
         std::string leftTensor = convertArithmeticExpression(arithmeticExprs[0], ctx);
         std::string rightTensor = convertArithmeticExpression(arithmeticExprs[1], ctx);
         std::string opText = relOp->getText();
 
         auto it = kRelationalOpMap.find(opText);
         if (it != kRelationalOpMap.end()) {
-            return createBinaryOp(ctx.graph, it->second, leftTensor, rightTensor, ctx.nodeCounter, ctx.tensorPrefix);
+            return builder.addBinaryOp(it->second, leftTensor, rightTensor);
         } else if (opText == "<>") {
-            std::string equalResult = createBinaryOp(ctx.graph, "Equal", leftTensor, rightTensor, ctx.nodeCounter, ctx.tensorPrefix);
-            return createUnaryOp(ctx.graph, "Not", equalResult, ctx.nodeCounter, ctx.tensorPrefix);
+            std::string equalResult = builder.addBinaryOp("Equal", leftTensor, rightTensor);
+            return builder.addUnaryOp("Not", equalResult);
         } else {
             throw std::runtime_error("Unsupported relational operator: " + opText);
         }
@@ -256,6 +263,7 @@ std::string ExpressionConverter::convertArithmeticExpression(
         throw std::runtime_error("Empty arithmetic expression");
     }
 
+    auto builder = ctx.builder();
     size_t termIndex = 0;
     size_t opIndex = 0;
 
@@ -265,7 +273,7 @@ std::string ExpressionConverter::convertArithmeticExpression(
     if (addOps.size() > terms.size() - 1) {
         std::string opText = addOps[opIndex++]->getText();
         if (opText == "-") {
-            result = createUnaryOp(ctx.graph, "Neg", result, ctx.nodeCounter, ctx.tensorPrefix);
+            result = builder.addUnaryOp("Neg", result);
         } else if (opText != "+") {
             throw std::runtime_error("Unsupported leading operator: " + opText);
         }
@@ -284,7 +292,7 @@ std::string ExpressionConverter::convertArithmeticExpression(
             throw std::runtime_error("Unsupported add operator: " + opText);
         }
 
-        result = createBinaryOp(ctx.graph, onnxOp, result, rightTensor, ctx.nodeCounter, ctx.tensorPrefix);
+        result = builder.addBinaryOp(onnxOp, result, rightTensor);
     }
 
     return result;
@@ -305,6 +313,7 @@ std::string ExpressionConverter::convertTerm(
         throw std::runtime_error("Empty term");
     }
 
+    auto builder = ctx.builder();
     std::string result = convertFactor(factors[0], ctx);
 
     for (size_t i = 0; i < mulOps.size(); i++) {
@@ -324,7 +333,7 @@ std::string ExpressionConverter::convertTerm(
             throw std::runtime_error("Unsupported mul operator: " + opText);
         }
 
-        result = createBinaryOp(ctx.graph, onnxOp, result, rightTensor, ctx.nodeCounter, ctx.tensorPrefix);
+        result = builder.addBinaryOp(onnxOp, result, rightTensor);
     }
 
     return result;
@@ -348,7 +357,7 @@ std::string ExpressionConverter::convertFactor(
 
     if (primaries.size() > 1) {
         std::string exponentTensor = convertPrimary(primaries[1], ctx);
-        result = createBinaryOp(ctx.graph, "Pow", result, exponentTensor, ctx.nodeCounter, ctx.tensorPrefix);
+        result = ctx.builder().addBinaryOp("Pow", result, exponentTensor);
     }
 
     return result;
@@ -361,6 +370,8 @@ std::string ExpressionConverter::convertFactor(
 std::string ExpressionConverter::convertPrimary(
     basemodelica::BaseModelicaParser::PrimaryContext* expr,
     const ConversionContext& ctx) {
+
+    auto builder = ctx.builder();
 
     // 1. Number literal
     if (expr->UNSIGNED_NUMBER()) {
@@ -408,7 +419,7 @@ std::string ExpressionConverter::convertPrimary(
                 throw std::runtime_error("Function " + funcName + " requires arguments");
             }
             std::string argTensor = convert(funcArgs->expression(), ctx);
-            return createUnaryOp(ctx.graph, mathIt->second, argTensor, ctx.nodeCounter, ctx.tensorPrefix);
+            return builder.addUnaryOp(mathIt->second, argTensor);
         }
 
         const Function* func = ctx.info.findFunction(funcName);
@@ -437,7 +448,7 @@ std::string ExpressionConverter::convertPrimary(
         }
 
         auto subscriptList = subscripts[0]->subscript();
-        return applyArraySubscripts(ctx.graph, baseTensor, subscriptList, ctx.variableMap, ctx.nodeCounter, ctx.tensorPrefix);
+        return builder.applySubscripts(baseTensor, subscriptList, ctx.variableMap);
     }
 
     // 5. Parenthesized expression
@@ -474,6 +485,8 @@ std::string ExpressionConverter::convertDerCall(
     if (!argExpr) {
         throw std::runtime_error("der() argument is missing");
     }
+
+    auto builder = ctx.builder();
 
     // Check if the argument is a simple variable reference
     bool isSimpleVariable = false;
@@ -514,7 +527,7 @@ std::string ExpressionConverter::convertDerCall(
             }
 
             auto subscriptList = compRef->arraySubscripts()[0]->subscript();
-            return applyArraySubscripts(ctx.graph, derInputName, subscriptList, ctx.variableMap, ctx.nodeCounter, ctx.tensorPrefix);
+            return builder.applySubscripts(derInputName, subscriptList, ctx.variableMap);
         }
     }
 
@@ -536,10 +549,9 @@ std::string ExpressionConverter::convertDerCall(
 
     // Complex expression derivative: create a Der node
     std::string inputTensor = convert(argExpr, ctx);
+    std::string outputTensor = builder.makeTensorName();
 
     auto* node = ctx.graph->add_node();
-    std::string outputTensor = makeTensorName(ctx.tensorPrefix, ctx.nodeCounter);
-
     node->set_op_type("Der");
     node->set_domain("lacemodelica");
     node->set_name("Der_" + std::to_string(ctx.nodeCounter));
@@ -579,9 +591,10 @@ std::string ExpressionConverter::convertUserFunctionCall(
         argTensors.push_back(convert(arguments[i], ctx));
     }
 
-    auto* node = ctx.graph->add_node();
-    std::string outputTensor = makeTensorName(ctx.tensorPrefix, ctx.nodeCounter);
+    auto builder = ctx.builder();
+    std::string outputTensor = builder.makeTensorName();
 
+    auto* node = ctx.graph->add_node();
     node->set_op_type(funcName);
     node->set_domain("lacemodelica");
     node->set_name(funcName + "_call_" + std::to_string(ctx.nodeCounter));

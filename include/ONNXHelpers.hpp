@@ -7,6 +7,7 @@
 #include <vector>
 #include <map>
 #include "BaseModelicaParser.h"
+#include "GraphBuilder.h"
 
 // Forward declarations
 namespace onnx {
@@ -21,9 +22,20 @@ namespace lacemodelica {
 
 class ModelInfo;  // Forward declaration
 
-// Context object bundling common parameters passed through expression conversion.
-// This reduces the number of parameters from 6-7 down to 1, making function
-// signatures cleaner and the code more maintainable.
+/**
+ * Context object bundling all parameters needed for expression conversion.
+ *
+ * ConversionContext provides a unified interface for code that converts
+ * Modelica expressions to ONNX. It combines:
+ *
+ * - Model information (variable types, dimensions, functions)
+ * - A GraphBuilder for constructing ONNX nodes
+ * - Variable mappings (for loop variables, function parameters)
+ * - Derivative tracking (for der() calls that need inputs)
+ *
+ * Child contexts can be created for subgraphs (If/Loop branches) using
+ * withGraph() and withPrefix() methods, sharing the node counter.
+ */
 struct ConversionContext {
     const ModelInfo& info;
     onnx::GraphProto* graph;
@@ -55,6 +67,11 @@ struct ConversionContext {
     // Create a child context with a different prefix
     ConversionContext withPrefix(const std::string& newPrefix) const {
         return ConversionContext(info, graph, nodeCounter, variableMap, derivativeInputs, newPrefix);
+    }
+
+    // Get a GraphBuilder for this context
+    GraphBuilder builder() const {
+        return GraphBuilder(graph, const_cast<int&>(nodeCounter), tensorPrefix);
     }
 };
 

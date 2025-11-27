@@ -150,6 +150,7 @@ add_executable(lacemodelica
     src/FMUGenerator.cpp
     src/ONNXGenerator.cpp
     src/ONNXHelpers.cpp
+    src/GraphBuilder.cpp
     src/ParseTreeNavigator.cpp
     src/ExpressionConverter.cpp
     src/EquationGenerator.cpp

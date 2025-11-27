@@ -2,6 +2,7 @@
 // Copyright (c) 2025 Joris Gillis, YACODA
 
 #include "ONNXHelpers.hpp"
+#include "GraphBuilder.h"
 
 #define ONNX_ML 1
 #define ONNX_NAMESPACE onnx
@@ -9,7 +10,15 @@
 
 namespace lacemodelica {
 
+// -----------------------------------------------------------------------------
+// Free Functions (delegate to GraphBuilder for implementation)
+// -----------------------------------------------------------------------------
+// These functions provide backward compatibility while GraphBuilder
+// provides the authoritative implementation.
+
 std::string makeTensorName(const std::string& prefix, int& counter) {
+    GraphBuilder builder(nullptr, counter, prefix);
+    // We can't use builder directly since it needs a graph, so inline the logic
     if (prefix.empty()) {
         return "tensor_" + std::to_string(counter++);
     }
@@ -18,256 +27,97 @@ std::string makeTensorName(const std::string& prefix, int& counter) {
 
 std::string createInt64Constant(onnx::GraphProto* graph, int64_t value, int& counter,
                                  const std::string& nameHint) {
-    std::string name = nameHint.empty() ? ("const_i64_" + std::to_string(counter++)) : nameHint;
-    auto* node = graph->add_node();
-    node->set_op_type("Constant");
-    node->set_name(name);
-    node->add_output(name);
-
-    auto* attr = node->add_attribute();
-    attr->set_name("value");
-    attr->set_type(onnx::AttributeProto::TENSOR);
-    auto* tensor = attr->mutable_t();
-    tensor->set_data_type(onnx::TensorProto::INT64);
-    tensor->add_int64_data(value);
-
-    return name;
+    GraphBuilder builder(graph, counter);
+    return builder.addInt64Constant(value, nameHint);
 }
 
 std::string createDoubleConstant(onnx::GraphProto* graph, double value, int& counter) {
-    std::string name = "const_f64_" + std::to_string(counter++);
-    auto* node = graph->add_node();
-    node->set_op_type("Constant");
-    node->set_name(name);
-    node->add_output(name);
-
-    auto* attr = node->add_attribute();
-    attr->set_name("value");
-    attr->set_type(onnx::AttributeProto::TENSOR);
-    auto* tensor = attr->mutable_t();
-    tensor->set_data_type(onnx::TensorProto::DOUBLE);
-    tensor->add_double_data(value);
-
-    return name;
+    GraphBuilder builder(graph, counter);
+    return builder.addDoubleConstant(value);
 }
 
 std::string createBoolConstant(onnx::GraphProto* graph, bool value, int& counter) {
-    std::string name = "const_bool_" + std::to_string(counter++);
-    auto* node = graph->add_node();
-    node->set_op_type("Constant");
-    node->set_name(name);
-    node->add_output(name);
-
-    auto* attr = node->add_attribute();
-    attr->set_name("value");
-    attr->set_type(onnx::AttributeProto::TENSOR);
-    auto* tensor = attr->mutable_t();
-    tensor->set_data_type(onnx::TensorProto::BOOL);
-    tensor->add_int32_data(value ? 1 : 0);
-
-    return name;
+    GraphBuilder builder(graph, counter);
+    return builder.addBoolConstant(value);
 }
 
 std::string createIdentityNode(onnx::GraphProto* graph, const std::string& inputTensor,
                                 const std::string& outputName, const std::string& nodeName) {
-    auto* node = graph->add_node();
-    node->set_op_type("Identity");
-    node->set_name(nodeName);
-    node->add_input(inputTensor);
-    node->add_output(outputName);
-    return outputName;
+    int dummyCounter = 0;
+    GraphBuilder builder(graph, dummyCounter);
+    return builder.addIdentity(inputTensor, outputName, nodeName);
 }
 
 std::string convertTo0BasedIndex(onnx::GraphProto* graph, const std::string& oneBasedTensor,
                                   int& counter, const std::string& prefix) {
-    // Create unique constant name using counter before incrementing
-    int constCounter = counter++;
-    std::string constOne = createInt64Constant(graph, 1, counter,
-        (prefix.empty() ? "" : prefix + "_") + "const_one_" + std::to_string(constCounter));
-
-    std::string zeroBasedTensor = (prefix.empty() ? "" : prefix + "_") + "index_0based_" + std::to_string(counter++);
-
-    auto* subNode = graph->add_node();
-    subNode->set_op_type("Sub");
-    subNode->set_name(zeroBasedTensor + "_Sub");  // Use output tensor name for uniqueness
-    subNode->add_input(oneBasedTensor);
-    subNode->add_input(constOne);
-    subNode->add_output(zeroBasedTensor);
-
-    return zeroBasedTensor;
+    GraphBuilder builder(graph, counter, prefix);
+    return builder.convertToZeroBasedIndex(oneBasedTensor);
 }
 
 std::string createGatherNode(onnx::GraphProto* graph, const std::string& dataTensor,
                               const std::string& indexTensor, int axis, int& counter,
                               const std::string& prefix) {
-    std::string outputTensor = makeTensorName(prefix, counter);
-
-    auto* node = graph->add_node();
-    node->set_op_type("Gather");
-    node->set_name(outputTensor + "_Gather");  // Use tensor name for uniqueness
-    node->add_input(dataTensor);
-    node->add_input(indexTensor);
-    node->add_output(outputTensor);
-
-    auto* axisAttr = node->add_attribute();
-    axisAttr->set_name("axis");
-    axisAttr->set_type(onnx::AttributeProto::INT);
-    axisAttr->set_i(axis);
-
-    return outputTensor;
+    GraphBuilder builder(graph, counter, prefix);
+    return builder.addGather(dataTensor, indexTensor, axis);
 }
 
 std::string createBinaryOp(onnx::GraphProto* graph, const std::string& opType,
                             const std::string& left, const std::string& right,
                             int& counter, const std::string& prefix) {
-    std::string outputTensor = makeTensorName(prefix, counter);
-
-    auto* node = graph->add_node();
-    node->set_op_type(opType);
-    node->set_name(outputTensor + "_" + opType);  // Use tensor name for uniqueness
-    node->add_input(left);
-    node->add_input(right);
-    node->add_output(outputTensor);
-
-    return outputTensor;
+    GraphBuilder builder(graph, counter, prefix);
+    return builder.addBinaryOp(opType, left, right);
 }
 
 std::string createUnaryOp(onnx::GraphProto* graph, const std::string& opType,
                            const std::string& input, int& counter,
                            const std::string& prefix) {
-    std::string outputTensor = makeTensorName(prefix, counter);
-
-    auto* node = graph->add_node();
-    node->set_op_type(opType);
-    node->set_name(outputTensor + "_" + opType);  // Use tensor name for uniqueness
-    node->add_input(input);
-    node->add_output(outputTensor);
-
-    return outputTensor;
+    GraphBuilder builder(graph, counter, prefix);
+    return builder.addUnaryOp(opType, input);
 }
 
 void addScalarDoubleOutput(onnx::GraphProto* graph, const std::string& tensorName) {
-    auto* output = graph->add_output();
-    output->set_name(tensorName);
-    auto* tensorType = output->mutable_type()->mutable_tensor_type();
-    tensorType->set_elem_type(onnx::TensorProto::DOUBLE);
-    tensorType->mutable_shape()->add_dim()->set_dim_value(1);
+    int dummyCounter = 0;
+    GraphBuilder builder(graph, dummyCounter);
+    builder.addScalarDoubleOutput(tensorName);
 }
 
 std::string createIfNode(onnx::GraphProto* graph, const std::string& condTensor,
                           onnx::GraphProto& thenBranch, onnx::GraphProto& elseBranch,
                           int& counter, const std::string& prefix,
                           const std::string& nameHint) {
-    std::string outputTensor = makeTensorName(prefix, counter);
-
-    auto* ifNode = graph->add_node();
-    ifNode->set_op_type("If");
-    ifNode->set_name(nameHint + "_" + std::to_string(counter));
-    ifNode->add_input(condTensor);
-    ifNode->add_output(outputTensor);
-
-    // Add then_branch attribute
-    auto* thenAttr = ifNode->add_attribute();
-    thenAttr->set_name("then_branch");
-    thenAttr->set_type(onnx::AttributeProto::GRAPH);
-    thenAttr->mutable_g()->CopyFrom(thenBranch);
-
-    // Add else_branch attribute
-    auto* elseAttr = ifNode->add_attribute();
-    elseAttr->set_name("else_branch");
-    elseAttr->set_type(onnx::AttributeProto::GRAPH);
-    elseAttr->mutable_g()->CopyFrom(elseBranch);
-
-    return outputTensor;
+    GraphBuilder builder(graph, counter, prefix);
+    return builder.addIfNode(condTensor, thenBranch, elseBranch, nameHint);
 }
 
 std::string createInt64ArrayConstant(onnx::GraphProto* graph, const std::vector<int64_t>& values, int& counter) {
-    std::string name = "const_indices_" + std::to_string(counter++);
-
-    auto* node = graph->add_node();
-    node->set_op_type("Constant");
-    node->set_name(name);
-    node->add_output(name);
-
-    auto* attr = node->add_attribute();
-    attr->set_name("value");
-    attr->set_type(onnx::AttributeProto::TENSOR);
-    auto* tensor = attr->mutable_t();
-    tensor->set_data_type(onnx::TensorProto::INT64);
-    tensor->add_dims(values.size());
-    for (int64_t val : values) {
-        tensor->add_int64_data(val);
-    }
-
-    return name;
+    GraphBuilder builder(graph, counter);
+    return builder.addInt64ArrayConstant(values);
 }
 
 std::string createGatherNDNode(onnx::GraphProto* graph, const std::string& dataTensor,
                                 const std::vector<int64_t>& indices, int& counter,
                                 const std::string& prefix) {
-    // Create index constant tensor
-    std::string indexTensor = createInt64ArrayConstant(graph, indices, counter);
-
-    // Create GatherND node
-    std::string outputTensor = makeTensorName(prefix, counter);
-    auto* node = graph->add_node();
-    node->set_op_type("GatherND");
-    node->set_name(outputTensor + "_GatherND");
-    node->add_input(dataTensor);
-    node->add_input(indexTensor);
-    node->add_output(outputTensor);
-
-    return outputTensor;
+    GraphBuilder builder(graph, counter, prefix);
+    return builder.addGatherND(dataTensor, indices);
 }
 
 void addShapeDimensions(onnx::TensorShapeProto* shape, const std::vector<std::string>& dimensions) {
-    for (const auto& dim : dimensions) {
-        auto* shapeDim = shape->add_dim();
-        try {
-            shapeDim->set_dim_value(std::stoi(dim));
-        } catch (...) {
-            shapeDim->set_dim_param(dim);
-        }
-    }
+    int dummyCounter = 0;
+    GraphBuilder builder(nullptr, dummyCounter);
+    builder.addShapeDimensions(shape, dimensions);
 }
 
 SubscriptAnalysis analyzeSubscripts(
     const std::vector<basemodelica::BaseModelicaParser::SubscriptContext*>& subscriptList,
     const std::map<std::string, std::string>* variableMap) {
+    int dummyCounter = 0;
+    GraphBuilder builder(nullptr, dummyCounter);
+    auto analysis = builder.analyzeSubscripts(subscriptList, variableMap);
 
+    // Convert GraphBuilder::SubscriptAnalysis to SubscriptAnalysis
     SubscriptAnalysis result;
-
-    for (auto sub : subscriptList) {
-        if (sub->getText() == ":") {
-            // Slice notation - not a simple static index
-            result.hasLoopVariable = true;
-            return result;
-        }
-
-        auto subExpr = sub->expression();
-        if (!subExpr) {
-            continue;
-        }
-
-        std::string indexExpr = subExpr->getText();
-
-        // Check if this is a loop variable
-        if (variableMap && variableMap->count(indexExpr) > 0) {
-            result.hasLoopVariable = true;
-            return result;
-        }
-
-        // Try to parse as static integer index
-        try {
-            int modelicaIndex = std::stoi(indexExpr);
-            result.staticIndices.push_back(modelicaIndex - 1);  // Convert to 0-based
-        } catch (...) {
-            // Non-integer, non-loop-variable - might be an expression
-            result.hasLoopVariable = true;
-            return result;
-        }
-    }
-
+    result.hasLoopVariable = analysis.hasLoopVariable;
+    result.staticIndices = analysis.staticIndices;
     return result;
 }
 
@@ -278,43 +128,8 @@ std::string applyArraySubscripts(
     const std::map<std::string, std::string>* variableMap,
     int& nodeCounter,
     const std::string& tensorPrefix) {
-
-    auto analysis = analyzeSubscripts(subscriptList, variableMap);
-
-    if (!analysis.hasLoopVariable) {
-        // All static indices - use GatherND
-        return createGatherNDNode(graph, baseTensor, analysis.staticIndices, nodeCounter, tensorPrefix);
-    }
-
-    // Dynamic indexing with loop variables - process sequentially with Gather
-    std::string currentTensor = baseTensor;
-
-    for (size_t dimIdx = 0; dimIdx < subscriptList.size(); dimIdx++) {
-        auto sub = subscriptList[dimIdx];
-
-        if (sub->getText() == ":") {
-            throw std::runtime_error("Array slice ':' not yet supported in ONNX conversion");
-        }
-
-        auto subExpr = sub->expression();
-        if (!subExpr) {
-            throw std::runtime_error("Invalid array subscript");
-        }
-
-        std::string indexExpr = subExpr->getText();
-
-        if (variableMap && variableMap->count(indexExpr) > 0) {
-            // Dynamic indexing with loop variable
-            std::string loopVar1Based = variableMap->at(indexExpr);
-            std::string index0Based = convertTo0BasedIndex(graph, loopVar1Based, nodeCounter, tensorPrefix);
-            currentTensor = createGatherNode(graph, currentTensor, index0Based, 0, nodeCounter, tensorPrefix);
-        } else {
-            // Static index in dynamic context - not yet supported
-            throw std::runtime_error("Mixed static and dynamic indexing not yet fully supported");
-        }
-    }
-
-    return currentTensor;
+    GraphBuilder builder(graph, nodeCounter, tensorPrefix);
+    return builder.applySubscripts(baseTensor, subscriptList, variableMap);
 }
 
 bool renameTensorToOutput(
@@ -322,26 +137,9 @@ bool renameTensorToOutput(
     const std::string& tensorName,
     const std::string& outputName,
     const std::string& identityNamePrefix) {
-
-    // Search backwards through nodes to find the producer of tensorName
-    for (int j = graph->node_size() - 1; j >= 0; j--) {
-        auto* node = graph->mutable_node(j);
-        for (int k = 0; k < node->output_size(); k++) {
-            if (node->output(k) == tensorName) {
-                node->set_output(k, outputName);
-                return true;
-            }
-        }
-    }
-
-    // No producer found - tensor is a direct input reference
-    // Create an Identity node to connect it to the output
-    auto* identity = graph->add_node();
-    identity->set_op_type("Identity");
-    identity->set_name(identityNamePrefix);
-    identity->add_input(tensorName);
-    identity->add_output(outputName);
-    return false;
+    int dummyCounter = 0;
+    GraphBuilder builder(graph, dummyCounter);
+    return builder.renameTensor(tensorName, outputName, identityNamePrefix);
 }
 
 void addLoopPassthrough(
@@ -353,34 +151,10 @@ void addLoopPassthrough(
     int elemType,
     const std::vector<std::string>& dimensions,
     const std::string& outputSuffix) {
-
-    // Add to loop node inputs
-    loopNode->add_input(inputName);
-
-    // Add to loop body inputs
-    auto* bodyInput = bodyGraph->add_input();
-    bodyInput->set_name(bodyInputName);
-    auto* inputType = bodyInput->mutable_type()->mutable_tensor_type();
-    inputType->set_elem_type(elemType);
-    addShapeDimensions(inputType->mutable_shape(), dimensions);
-
-    // Add to loop body outputs (passthrough)
-    std::string bodyOutName = loopNodeName + "_" + bodyInputName + "_out";
-    auto* bodyOutput = bodyGraph->add_output();
-    bodyOutput->set_name(bodyOutName);
-    auto* outputType = bodyOutput->mutable_type()->mutable_tensor_type();
-    outputType->set_elem_type(elemType);
-    addShapeDimensions(outputType->mutable_shape(), dimensions);
-
-    // Create Identity node for passthrough
-    auto* identity = bodyGraph->add_node();
-    identity->set_op_type("Identity");
-    identity->set_name(loopNodeName + "_" + bodyInputName + "_passthrough");
-    identity->add_input(bodyInputName);
-    identity->add_output(bodyOutName);
-
-    // Add to loop node outputs (use body input name for consistency)
-    loopNode->add_output(bodyInputName + outputSuffix);
+    int dummyCounter = 0;
+    GraphBuilder builder(bodyGraph, dummyCounter);
+    builder.addLoopPassthrough(loopNode, bodyGraph, loopNodeName, inputName,
+                               bodyInputName, elemType, dimensions, outputSuffix);
 }
 
 } // namespace lacemodelica

@@ -3,6 +3,7 @@
 
 #include "EquationGenerator.h"
 #include "ExpressionConverter.h"
+#include "GraphBuilder.h"
 #include "ParseTreeNavigator.h"
 #include "Utils.hpp"
 
@@ -379,6 +380,8 @@ std::string EquationGenerator::buildIfEquationRhs(
     size_t branchIndex,
     const ConversionContext& ctx) {
 
+    auto builder = ctx.builder();
+
     if (branchIndex >= conditions.size()) {
         if (branchIndex < equations.size()) {
             auto* eqCtx = equations[branchIndex];
@@ -387,13 +390,14 @@ std::string EquationGenerator::buildIfEquationRhs(
                 return ExpressionConverter::convert(rhsExpr, ctx);
             }
         }
-        return createDoubleConstant(ctx.graph, 0.0, ctx.nodeCounter);
+        return builder.addDoubleConstant(0.0);
     }
 
     std::string condTensor = ExpressionConverter::convert(conditions[branchIndex], ctx);
 
     onnx::GraphProto thenBranch;
     thenBranch.set_name("then_branch_" + std::to_string(branchIndex));
+    auto thenBuilder = builder.forSubgraph(&thenBranch);
 
     std::string thenResult;
     if (branchIndex < equations.size()) {
@@ -404,16 +408,16 @@ std::string EquationGenerator::buildIfEquationRhs(
         }
     }
     if (thenResult.empty()) {
-        thenResult = createDoubleConstant(&thenBranch, 0.0, ctx.nodeCounter);
+        thenResult = thenBuilder.addDoubleConstant(0.0);
     }
-    addScalarDoubleOutput(&thenBranch, thenResult);
+    thenBuilder.addScalarDoubleOutput(thenResult);
 
     onnx::GraphProto elseBranch;
     elseBranch.set_name("else_branch_" + std::to_string(branchIndex));
     std::string elseResult = buildIfEquationRhs(conditions, equations, branchIndex + 1, ctx.withGraph(&elseBranch));
-    addScalarDoubleOutput(&elseBranch, elseResult);
+    builder.forSubgraph(&elseBranch).addScalarDoubleOutput(elseResult);
 
-    return createIfNode(ctx.graph, condTensor, thenBranch, elseBranch, ctx.nodeCounter, "", "If_eq");
+    return builder.addIfNode(condTensor, thenBranch, elseBranch, "If_eq");
 }
 
 size_t EquationGenerator::generateForLoop(
@@ -436,13 +440,14 @@ size_t EquationGenerator::generateForLoop(
     ForLoopRange range = parseForLoopRange(forEqCtx);
     auto loopEquations = forEqCtx->equation();
 
+    GraphBuilder builder(graph, nodeCounter);
     std::string loopNodeName = "for_loop_" + std::to_string(nodeCounter++);
     if (outLoopNodeName) {
         *outLoopNodeName = loopNodeName;
     }
 
-    std::string tripCountTensor = createInt64Constant(graph, range.tripCount(), nodeCounter, "trip_count_" + loopNodeName);
-    std::string condTensor = createBoolConstant(graph, true, nodeCounter);
+    std::string tripCountTensor = builder.addInt64Constant(range.tripCount(), "trip_count_" + loopNodeName);
+    std::string condTensor = builder.addBoolConstant(true);
 
     auto* loopNode = graph->add_node();
     loopNode->set_op_type("Loop");
@@ -461,15 +466,16 @@ size_t EquationGenerator::generateForLoop(
     if (isNested && parentLoopVarMap) {
         std::string outputSuffix = "_final_" + std::to_string(equationIndex);
         for (const auto& [varName, tensorName] : *parentLoopVarMap) {
-            addLoopPassthrough(loopNode, bodyGraph, loopNodeName,
-                               tensorName, "parent_" + varName,
-                               onnx::TensorProto::INT64, {},
-                               outputSuffix);
+            builder.addLoopPassthrough(loopNode, bodyGraph, loopNodeName,
+                                       tensorName, "parent_" + varName,
+                                       onnx::TensorProto::INT64, {},
+                                       outputSuffix);
         }
     }
 
-    std::string constOneTensor = createInt64Constant(bodyGraph, 1, nodeCounter, loopNodeName + "_const_one");
-    std::string loopVarTensor = createBinaryOp(bodyGraph, "Add", "iter", constOneTensor, nodeCounter, loopNodeName + "_" + range.loopVar);
+    auto bodyBuilder = builder.forSubgraph(bodyGraph, loopNodeName);
+    std::string constOneTensor = bodyBuilder.addInt64Constant(1, loopNodeName + "_const_one");
+    std::string loopVarTensor = bodyBuilder.withPrefix(loopNodeName + "_" + range.loopVar).addBinaryOp("Add", "iter", constOneTensor);
 
     std::set<std::string> requiredDerivatives = scanForDerivatives(loopEquations);
 
