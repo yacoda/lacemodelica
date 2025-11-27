@@ -141,6 +141,42 @@ static void generateAlgorithmForLoop(
 
     std::string loopNodeName = "loop_" + std::to_string(loopCounter++);
 
+    // Identify loop-carried dependencies FIRST (before creating Loop node)
+    // Variables that are both read AND written in the loop body
+    std::set<std::string> writtenVars;
+
+    // First pass: identify written variables
+    for (auto* innerStmt : loopStatements) {
+        if (innerStmt->componentReference() && innerStmt->expression()) {
+            std::string varName = stripQuotes(innerStmt->componentReference()->IDENT(0)->getText());
+            writtenVars.insert(varName);
+        }
+    }
+
+    // For output variables that are written but don't exist yet, initialize with zeros
+    // This MUST happen BEFORE creating the Loop node so the zeros constant is defined first
+    for (const auto& varName : writtenVars) {
+        if (variableToTensor.find(varName) == variableToTensor.end()) {
+            // Check if it's an output variable
+            for (const auto& output : func.outputs) {
+                if (output.name == varName && !output.dimensions.empty()) {
+                    // Create zeros tensor for this output
+                    std::vector<int64_t> shape;
+                    for (const auto& dim : output.dimensions) {
+                        try {
+                            shape.push_back(std::stoi(dim));
+                        } catch (...) {
+                            throw std::runtime_error("Symbolic dimensions not supported for loop output initialization: " + dim);
+                        }
+                    }
+                    std::string zerosTensor = builder.addDoubleZerosConstant(shape);
+                    variableToTensor[varName] = zerosTensor;
+                    break;
+                }
+            }
+        }
+    }
+
     // Trip count and initial condition
     std::string tripCountTensor = builder.addInt64Constant(range.tripCount(), "n_" + loopNodeName);
     std::string condTensor = builder.addBoolConstant(true);
@@ -171,19 +207,6 @@ static void generateAlgorithmForLoop(
     std::map<std::string, std::string> loopVarMap;
     loopVarMap[range.loopVar] = loopVarTensor;
 
-    // Identify loop-carried dependencies
-    // Variables that are both read AND written in the loop body
-    std::set<std::string> writtenVars;
-    std::set<std::string> readVars;
-
-    // First pass: identify written variables
-    for (auto* innerStmt : loopStatements) {
-        if (innerStmt->componentReference() && innerStmt->expression()) {
-            std::string varName = stripQuotes(innerStmt->componentReference()->IDENT(0)->getText());
-            writtenVars.insert(varName);
-        }
-    }
-
     // Variables that exist before the loop and are written are loop-carried
     std::vector<std::string> carriedVars;
     for (const auto& varName : writtenVars) {
@@ -208,7 +231,26 @@ static void generateAlgorithmForLoop(
         bodyInput->set_name(bodyInputName);
         auto* inputType = bodyInput->mutable_type()->mutable_tensor_type();
         inputType->set_elem_type(onnx::TensorProto::DOUBLE);
-        inputType->mutable_shape();  // Scalar
+
+        // Check if it's an array (from outputs or inputs)
+        bool foundShape = false;
+        for (const auto& output : func.outputs) {
+            if (output.name == varName && !output.dimensions.empty()) {
+                auto* shape = inputType->mutable_shape();
+                for (const auto& dim : output.dimensions) {
+                    try {
+                        shape->add_dim()->set_dim_value(std::stoi(dim));
+                    } catch (...) {
+                        shape->add_dim()->set_dim_param(dim);
+                    }
+                }
+                foundShape = true;
+                break;
+            }
+        }
+        if (!foundShape) {
+            inputType->mutable_shape();  // Scalar
+        }
 
         bodyInputTensors[varName] = bodyInputName;
 
@@ -328,8 +370,77 @@ static void generateAlgorithmForLoop(
             node->CopyFrom(rhsGraph.node(i));
         }
 
+        // Handle indexed assignments with ScatterND
+        std::string finalTensor = rhsTensor;
+        if (hasDynamicIndex && bodyVariableMap.find(baseVarName) != bodyVariableMap.end()) {
+            // Use ScatterND to update the array at the dynamic index
+            // The index is (loopVarTensor - 1) which is the 0-based iteration variable "i"
+            std::string currentArrayTensor = bodyVariableMap[baseVarName];
+
+            // Create index tensor: reshape iter (which is 0-based) to [1, 1] for ScatterND
+            std::string indicesShapeConst = "indices_shape_" + std::to_string(nodeCounter);
+            auto* shapeConstNode = bodyGraph->add_node();
+            shapeConstNode->set_op_type("Constant");
+            shapeConstNode->set_name(indicesShapeConst);
+            shapeConstNode->add_output(indicesShapeConst);
+            auto* shapeAttr = shapeConstNode->add_attribute();
+            shapeAttr->set_name("value");
+            shapeAttr->set_type(onnx::AttributeProto::TENSOR);
+            auto* shapeTensor = shapeAttr->mutable_t();
+            shapeTensor->set_data_type(onnx::TensorProto::INT64);
+            shapeTensor->add_dims(2);
+            shapeTensor->add_int64_data(1);
+            shapeTensor->add_int64_data(1);
+            nodeCounter++;
+
+            // Reshape the iteration variable (0-based "i" input) to [1, 1]
+            std::string reshapedIndexTensor = "reshaped_index_" + std::to_string(nodeCounter);
+            auto* reshapeNode = bodyGraph->add_node();
+            reshapeNode->set_op_type("Reshape");
+            reshapeNode->set_name("reshape_index_" + std::to_string(nodeCounter));
+            reshapeNode->add_input("i");  // The 0-based iteration count
+            reshapeNode->add_input(indicesShapeConst);
+            reshapeNode->add_output(reshapedIndexTensor);
+            nodeCounter++;
+
+            // Unsqueeze RHS to add batch dimension [1]
+            std::string unsqueezeAxesConst = "unsqueeze_axes_" + std::to_string(nodeCounter);
+            auto* axesConstNode = bodyGraph->add_node();
+            axesConstNode->set_op_type("Constant");
+            axesConstNode->set_name(unsqueezeAxesConst);
+            axesConstNode->add_output(unsqueezeAxesConst);
+            auto* axesAttr = axesConstNode->add_attribute();
+            axesAttr->set_name("value");
+            axesAttr->set_type(onnx::AttributeProto::TENSOR);
+            auto* axesTensor = axesAttr->mutable_t();
+            axesTensor->set_data_type(onnx::TensorProto::INT64);
+            axesTensor->add_dims(1);
+            axesTensor->add_int64_data(0);
+            nodeCounter++;
+
+            std::string unsqueezedUpdateTensor = "unsqueezed_update_" + std::to_string(nodeCounter);
+            auto* unsqueezeNode = bodyGraph->add_node();
+            unsqueezeNode->set_op_type("Unsqueeze");
+            unsqueezeNode->set_name("unsqueeze_update_" + std::to_string(nodeCounter));
+            unsqueezeNode->add_input(rhsTensor);
+            unsqueezeNode->add_input(unsqueezeAxesConst);
+            unsqueezeNode->add_output(unsqueezedUpdateTensor);
+            nodeCounter++;
+
+            // ScatterND: update array at dynamic index
+            finalTensor = "scattered_" + baseVarName + "_" + std::to_string(nodeCounter);
+            auto* scatterNode = bodyGraph->add_node();
+            scatterNode->set_op_type("ScatterND");
+            scatterNode->set_name("scatter_" + baseVarName + "_" + std::to_string(nodeCounter));
+            scatterNode->add_input(currentArrayTensor);
+            scatterNode->add_input(reshapedIndexTensor);
+            scatterNode->add_input(unsqueezedUpdateTensor);
+            scatterNode->add_output(finalTensor);
+            nodeCounter++;
+        }
+
         // Update the variable tensor mapping
-        bodyVariableMap[baseVarName] = rhsTensor;
+        bodyVariableMap[baseVarName] = finalTensor;
     }
 
     // Add carried variable outputs
@@ -342,7 +453,26 @@ static void generateAlgorithmForLoop(
         bodyOutput->set_name(bodyOutputName);
         auto* outputType = bodyOutput->mutable_type()->mutable_tensor_type();
         outputType->set_elem_type(onnx::TensorProto::DOUBLE);
-        outputType->mutable_shape();
+
+        // Check if it's an array (from outputs)
+        bool foundOutputShape = false;
+        for (const auto& output : func.outputs) {
+            if (output.name == varName && !output.dimensions.empty()) {
+                auto* shape = outputType->mutable_shape();
+                for (const auto& dim : output.dimensions) {
+                    try {
+                        shape->add_dim()->set_dim_value(std::stoi(dim));
+                    } catch (...) {
+                        shape->add_dim()->set_dim_param(dim);
+                    }
+                }
+                foundOutputShape = true;
+                break;
+            }
+        }
+        if (!foundOutputShape) {
+            outputType->mutable_shape();  // Scalar
+        }
 
         // Identity to rename final tensor to output
         auto* identityNode = bodyGraph->add_node();
