@@ -11,6 +11,7 @@
 // Forward declarations
 namespace onnx {
     class GraphProto;
+    class NodeProto;
     class TypeProto_Tensor;
     class ValueInfoProto;
     class TensorShapeProto;
@@ -138,5 +139,37 @@ std::string applyArraySubscripts(
     const std::map<std::string, std::string>* variableMap,
     int& nodeCounter,
     const std::string& tensorPrefix);
+
+// Rename a tensor to a desired output name by either:
+// 1. Finding and renaming the producer node's output, or
+// 2. Creating an Identity node if no producer found (tensor is a direct input)
+// Returns true if producer was found and renamed, false if Identity was created
+bool renameTensorToOutput(
+    onnx::GraphProto* graph,
+    const std::string& tensorName,
+    const std::string& outputName,
+    const std::string& identityNamePrefix);
+
+// Add a loop-carried passthrough variable to an ONNX Loop body.
+// This creates the input/output/identity pattern required for loop variables
+// that need to be accessible inside the loop body but aren't modified.
+// Parameters:
+//   loopNode: The Loop node to add input/output to
+//   bodyGraph: The loop body subgraph
+//   loopNodeName: Name prefix for generated nodes
+//   inputName: Name of the input tensor (added to loop inputs)
+//   bodyInputName: Name for the variable inside loop body
+//   elemType: ONNX element type (e.g., TensorProto::DOUBLE)
+//   dimensions: Tensor dimensions (empty for scalar)
+//   outputSuffix: Suffix for loop output name
+void addLoopPassthrough(
+    onnx::NodeProto* loopNode,
+    onnx::GraphProto* bodyGraph,
+    const std::string& loopNodeName,
+    const std::string& inputName,
+    const std::string& bodyInputName,
+    int elemType,
+    const std::vector<std::string>& dimensions,
+    const std::string& outputSuffix);
 
 } // namespace lacemodelica

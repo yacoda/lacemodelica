@@ -343,4 +343,70 @@ std::string applyArraySubscripts(
     return currentTensor;
 }
 
+bool renameTensorToOutput(
+    onnx::GraphProto* graph,
+    const std::string& tensorName,
+    const std::string& outputName,
+    const std::string& identityNamePrefix) {
+
+    // Search backwards through nodes to find the producer of tensorName
+    for (int j = graph->node_size() - 1; j >= 0; j--) {
+        auto* node = graph->mutable_node(j);
+        for (int k = 0; k < node->output_size(); k++) {
+            if (node->output(k) == tensorName) {
+                node->set_output(k, outputName);
+                return true;
+            }
+        }
+    }
+
+    // No producer found - tensor is a direct input reference
+    // Create an Identity node to connect it to the output
+    auto* identity = graph->add_node();
+    identity->set_op_type("Identity");
+    identity->set_name(identityNamePrefix);
+    identity->add_input(tensorName);
+    identity->add_output(outputName);
+    return false;
+}
+
+void addLoopPassthrough(
+    onnx::NodeProto* loopNode,
+    onnx::GraphProto* bodyGraph,
+    const std::string& loopNodeName,
+    const std::string& inputName,
+    const std::string& bodyInputName,
+    int elemType,
+    const std::vector<std::string>& dimensions,
+    const std::string& outputSuffix) {
+
+    // Add to loop node inputs
+    loopNode->add_input(inputName);
+
+    // Add to loop body inputs
+    auto* bodyInput = bodyGraph->add_input();
+    bodyInput->set_name(bodyInputName);
+    auto* inputType = bodyInput->mutable_type()->mutable_tensor_type();
+    inputType->set_elem_type(elemType);
+    addShapeDimensions(inputType->mutable_shape(), dimensions);
+
+    // Add to loop body outputs (passthrough)
+    std::string bodyOutName = loopNodeName + "_" + bodyInputName + "_out";
+    auto* bodyOutput = bodyGraph->add_output();
+    bodyOutput->set_name(bodyOutName);
+    auto* outputType = bodyOutput->mutable_type()->mutable_tensor_type();
+    outputType->set_elem_type(elemType);
+    addShapeDimensions(outputType->mutable_shape(), dimensions);
+
+    // Create Identity node for passthrough
+    auto* identity = bodyGraph->add_node();
+    identity->set_op_type("Identity");
+    identity->set_name(loopNodeName + "_" + bodyInputName + "_passthrough");
+    identity->add_input(bodyInputName);
+    identity->add_output(bodyOutName);
+
+    // Add to loop node outputs (use body input name for consistency)
+    loopNode->add_output(bodyInputName + outputSuffix);
+}
+
 } // namespace lacemodelica
