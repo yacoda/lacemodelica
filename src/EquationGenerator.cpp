@@ -20,23 +20,26 @@ namespace lacemodelica {
 // Helper Function Implementations
 // -----------------------------------------------------------------------------
 
-ForLoopRange parseForLoopRange(basemodelica::BaseModelicaParser::ForEquationContext* forEqCtx) {
+ForLoopRange parseForLoopRangeFromIndex(basemodelica::BaseModelicaParser::ForIndexContext* forIndex) {
     ForLoopRange range;
-    auto forIndex = forEqCtx->forIndex();
     range.loopVar = forIndex->IDENT()->getText();
     std::string rangeText = forIndex->expression()->getText();
 
     size_t colonPos = rangeText.find(':');
     if (colonPos == std::string::npos) {
-        throw std::runtime_error("For-equation range must be in format start:end");
+        throw std::runtime_error("For-loop range must be in format start:end");
     }
     try {
         range.startVal = std::stoi(rangeText.substr(0, colonPos));
         range.endVal = std::stoi(rangeText.substr(colonPos + 1));
     } catch (...) {
-        throw std::runtime_error("For-equation range must contain constant integers");
+        throw std::runtime_error("For-loop range must contain constant integers");
     }
     return range;
+}
+
+ForLoopRange parseForLoopRange(basemodelica::BaseModelicaParser::ForEquationContext* forEqCtx) {
+    return parseForLoopRangeFromIndex(forEqCtx->forIndex());
 }
 
 std::string setupLoopBodyIO(onnx::GraphProto* bodyGraph, const std::string& loopNodeName) {

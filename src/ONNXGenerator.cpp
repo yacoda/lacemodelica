@@ -90,33 +90,11 @@ static void generateBoundOutput(
 // Algorithm For-Loop Helpers
 // -----------------------------------------------------------------------------
 
-// Parsed information about a Modelica for-loop range (for statements)
-struct AlgorithmForLoopRange {
-    std::string loopVar;
-    int startVal;
-    int endVal;
-    int tripCount() const { return endVal - startVal + 1; }
-};
-
 // Parse for-loop range from ForStatementContext
-static AlgorithmForLoopRange parseAlgorithmForLoopRange(
+// Uses shared parseForLoopRangeFromIndex from EquationGenerator.h
+static ForLoopRange parseAlgorithmForLoopRange(
     basemodelica::BaseModelicaParser::ForStatementContext* forStmtCtx) {
-    AlgorithmForLoopRange range;
-    auto forIndex = forStmtCtx->forIndex();
-    range.loopVar = forIndex->IDENT()->getText();
-    std::string rangeText = forIndex->expression()->getText();
-
-    size_t colonPos = rangeText.find(':');
-    if (colonPos == std::string::npos) {
-        throw std::runtime_error("For-statement range must be in format start:end");
-    }
-    try {
-        range.startVal = std::stoi(rangeText.substr(0, colonPos));
-        range.endVal = std::stoi(rangeText.substr(colonPos + 1));
-    } catch (...) {
-        throw std::runtime_error("For-statement range must contain constant integers");
-    }
-    return range;
+    return parseForLoopRangeFromIndex(forStmtCtx->forIndex());
 }
 
 // Recursively identify written variables in statements, including nested for-loops
@@ -392,7 +370,7 @@ static void processNestedForLoop(
     basemodelica::BaseModelicaParser::ForStatementContext* forCtx,
     LoopBodyContext& ctx) {
 
-    AlgorithmForLoopRange range = parseAlgorithmForLoopRange(forCtx);
+    ForLoopRange range = parseAlgorithmForLoopRange(forCtx);
     auto innerStatements = forCtx->statement();
     std::string innerLoopName = "loop_" + std::to_string(ctx.loopCounter++);
 
@@ -690,7 +668,7 @@ static void generateAlgorithmForLoop(
     const std::string& sourceFile,
     size_t sourceLine) {
 
-    AlgorithmForLoopRange range = parseAlgorithmForLoopRange(forStmtCtx);
+    ForLoopRange range = parseAlgorithmForLoopRange(forStmtCtx);
     auto loopStatements = forStmtCtx->statement();
 
     // Create a temporary graph to build the loop structure

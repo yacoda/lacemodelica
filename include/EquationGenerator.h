@@ -98,7 +98,10 @@ struct ForLoopRange {
     int tripCount() const { return endVal - startVal + 1; }
 };
 
-// Parse for-loop range from grammar context
+// Parse for-loop range from ForIndexContext (shared by equations and statements)
+ForLoopRange parseForLoopRangeFromIndex(basemodelica::BaseModelicaParser::ForIndexContext* forIndex);
+
+// Parse for-loop range from ForEquationContext (convenience wrapper)
 ForLoopRange parseForLoopRange(basemodelica::BaseModelicaParser::ForEquationContext* forEqCtx);
 
 // Set up standard ONNX Loop body inputs (iter, cond) and condition passthrough
