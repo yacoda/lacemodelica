@@ -281,98 +281,61 @@ void ModelInfoExtractor::extractEquations(basemodelica::BaseModelicaParser::Base
     }
 }
 
+void ModelInfoExtractor::scanForDerivativeCalls(const std::string& equationText) {
+    size_t pos = 0;
+    while ((pos = equationText.find("der(", pos)) != std::string::npos) {
+        size_t start = pos + 4;
+        size_t end = equationText.find(")", start);
+        if (end != std::string::npos) {
+            std::string varName = equationText.substr(start, end - start);
+            derivativeCalls.insert(varName);
+        }
+        pos = end;
+    }
+}
+
 void ModelInfoExtractor::processEquation(basemodelica::BaseModelicaParser::EquationContext* equation, std::vector<Equation>& target) {
+    // Common setup for all equation types
+    Equation eq;
+    eq.sourceFile = sourceFile;
+    eq.sourceLine = equation->getStart()->getLine();
+    if (equation->comment()) {
+        eq.comment = extractDescription(equation->comment());
+    }
+
     // Handle if-equations
     if (equation->ifEquation()) {
-        Equation eq;
         eq.ifEquationContext = equation->ifEquation();
-        eq.sourceFile = sourceFile;
-        eq.sourceLine = equation->getStart()->getLine();
-        if (equation->comment()) {
-            eq.comment = extractDescription(equation->comment());
-        }
         target.push_back(eq);
-
-        // Scan for der() calls in the if-equation body
-        std::string eqText = equation->getText();
-        size_t pos = 0;
-        while ((pos = eqText.find("der(", pos)) != std::string::npos) {
-            size_t start = pos + 4;
-            size_t end = eqText.find(")", start);
-            if (end != std::string::npos) {
-                std::string varName = eqText.substr(start, end - start);
-                derivativeCalls.insert(varName);
-            }
-            pos = end;
-        }
+        scanForDerivativeCalls(equation->getText());
         return;
     }
+
+    // Handle for-equations
     if (equation->forEquation()) {
-        // Store the for-equation context for later ONNX generation
-        Equation eq;
         eq.forEquationContext = equation->forEquation();
-        eq.sourceFile = sourceFile;
-        eq.sourceLine = equation->getStart()->getLine();
-        if (equation->comment()) {
-            eq.comment = extractDescription(equation->comment());
-        }
         target.push_back(eq);
-
-        // Scan for der() calls in the loop body
-        std::string eqText = equation->getText();
-        size_t pos = 0;
-        while ((pos = eqText.find("der(", pos)) != std::string::npos) {
-            size_t start = pos + 4;
-            size_t end = eqText.find(")", start);
-            if (end != std::string::npos) {
-                std::string varName = eqText.substr(start, end - start);
-                derivativeCalls.insert(varName);
-            }
-            pos = end;
-        }
+        scanForDerivativeCalls(equation->getText());
         return;
     }
+
     if (equation->whenEquation()) {
         throw std::runtime_error("When-equations are not supported (" + sourceFile + ":" +
                                  std::to_string(equation->getStart()->getLine()) + ")");
     }
 
-    // Check if it's a simple equation (lhs = rhs)
+    // Handle simple equations (lhs = rhs)
     auto simpleExpr = equation->simpleExpression();
     auto fullExpr = equation->expression();
 
     if (simpleExpr && fullExpr) {
-        // This is an equation with = sign
-        Equation eq;
-        eq.lhsContext = simpleExpr;  // Store AST node
-        eq.rhsContext = fullExpr;    // Store AST node
-        eq.sourceFile = sourceFile;
-        eq.sourceLine = equation->getStart()->getLine();
-
-        // Extract string comment
-        if (equation->comment()) {
-            eq.comment = extractDescription(equation->comment());
-        }
-
+        eq.lhsContext = simpleExpr;
+        eq.rhsContext = fullExpr;
         target.push_back(eq);
-
-        // Scan equation text for der() calls to identify derivatives
-        std::string eqText = equation->getText();
-        size_t pos = 0;
-        while ((pos = eqText.find("der(", pos)) != std::string::npos) {
-            // Extract the variable name inside der()
-            size_t start = pos + 4;
-            size_t end = eqText.find(")", start);
-            if (end != std::string::npos) {
-                std::string varName = eqText.substr(start, end - start);
-                derivativeCalls.insert(varName);
-            }
-            pos = end;
-        }
+        scanForDerivativeCalls(equation->getText());
         return;
     }
 
-    // If we get here, equation type is unknown
     throw std::runtime_error("Unsupported equation type (" + sourceFile + ":" +
                              std::to_string(equation->getStart()->getLine()) + ")");
 }

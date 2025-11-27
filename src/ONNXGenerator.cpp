@@ -136,6 +136,196 @@ static std::set<std::string> scanForDerivatives(
     return derivatives;
 }
 
+// Context for generating variable bound outputs (start, min, max)
+struct BoundOutputContext {
+    onnx::GraphProto* graph;
+    const ConversionContext& convCtx;
+    const std::map<size_t, int>& varIndexToInputIndex;
+};
+
+// Add a scan output to a loop body and optionally to the main graph.
+// Returns the loop output name.
+static std::string addLoopScanOutput(
+    onnx::NodeProto* loopNode,
+    onnx::GraphProto* bodyGraph,
+    onnx::GraphProto* mainGraph,
+    const std::string& loopNodeName,
+    const std::string& residualTensor,
+    size_t scanIndex,
+    const std::string& prefix,
+    size_t equationIndex,
+    bool isNested,
+    int tripCount = -1) {
+
+    // Add scan output to loop body
+    auto* scanOutput = bodyGraph->add_output();
+    std::string scanOutName = loopNodeName + "_scan_" + std::to_string(scanIndex);
+    scanOutput->set_name(scanOutName);
+    auto* scanType = scanOutput->mutable_type()->mutable_tensor_type();
+    scanType->set_elem_type(onnx::TensorProto::DOUBLE);
+    scanType->mutable_shape();  // Scalar
+
+    // Identity to connect residual to scan output
+    auto* scanIdentity = bodyGraph->add_node();
+    scanIdentity->set_op_type("Identity");
+    scanIdentity->set_name(loopNodeName + "_scan_identity_" + std::to_string(scanIndex));
+    scanIdentity->add_input(residualTensor);
+    scanIdentity->add_output(scanOutName);
+
+    // Add scan output to loop node
+    std::string loopOutputName = prefix + "[" + std::to_string(equationIndex + scanIndex) + "]";
+    if (isNested) {
+        loopOutputName += "_" + loopNodeName;
+    }
+    loopNode->add_output(loopOutputName);
+
+    // Add to graph outputs (only if this is a top-level loop)
+    if (!isNested && mainGraph) {
+        auto* graphOutput = mainGraph->add_output();
+        graphOutput->set_name(loopOutputName);
+        auto* graphOutputType = graphOutput->mutable_type()->mutable_tensor_type();
+        graphOutputType->set_elem_type(onnx::TensorProto::DOUBLE);
+        auto* graphOutputShape = graphOutputType->mutable_shape();
+        if (tripCount > 0) {
+            graphOutputShape->add_dim()->set_dim_value(tripCount);
+        } else {
+            graphOutputShape->add_dim();  // Unknown size
+        }
+    }
+
+    return loopOutputName;
+}
+
+// Add all required loop passthroughs for a top-level for-loop.
+// This includes all non-derivative, non-fixed variables and pre-discovered derivatives.
+static void addTopLevelLoopPassthroughs(
+    onnx::NodeProto* loopNode,
+    onnx::GraphProto* bodyGraph,
+    const std::string& loopNodeName,
+    const std::string& outputSuffix,
+    const ModelInfo& info,
+    const std::set<std::string>& requiredDerivatives,
+    std::map<std::string, std::vector<std::string>>& derivativeInputs) {
+
+    // Add all non-derivative, non-fixed variables as loop passthroughs
+    // Note: ONNXRuntime requires symmetric I/O (body outputs must match loop inputs)
+    for (const auto& var : info.variables) {
+        if (!var.isDerivative && var.variability != "fixed") {
+            addLoopPassthrough(loopNode, bodyGraph, loopNodeName,
+                               var.name, var.name,
+                               onnx::TensorProto::DOUBLE, var.dimensions,
+                               outputSuffix);
+        }
+    }
+
+    // Add pre-discovered derivatives as passthroughs
+    for (const std::string& derName : requiredDerivatives) {
+        // Find the base variable to get dimensions
+        size_t start = derName.find("'") + 1;
+        size_t end = derName.rfind("'");
+        std::string baseVarName = derName.substr(start, end - start);
+        const Variable* baseVar = info.findVariable(baseVarName);
+        std::vector<std::string> dims = baseVar ? baseVar->dimensions : std::vector<std::string>{};
+
+        addLoopPassthrough(loopNode, bodyGraph, loopNodeName,
+                           derName, derName,
+                           onnx::TensorProto::DOUBLE, dims,
+                           outputSuffix);
+
+        // Also add to derivativeInputs map for later reference
+        if (baseVar) {
+            derivativeInputs[derName] = baseVar->dimensions;
+        }
+    }
+}
+
+// Create an equation residual output (LHS - RHS for numeric, LHS == RHS for boolean).
+// Adds the computation node and output to the graph.
+static void createEquationResidual(
+    onnx::GraphProto* graph,
+    const std::string& lhsTensor,
+    const std::string& rhsTensor,
+    const std::string& outputName,
+    const std::string& nodeName,
+    bool isBoolean,
+    const std::string& comment,
+    const std::string& sourceFile,
+    size_t sourceLine) {
+
+    auto* node = graph->add_node();
+    node->set_op_type(isBoolean ? "Equal" : "Sub");
+    node->set_name(nodeName);
+    node->add_input(lhsTensor);
+    node->add_input(rhsTensor);
+    node->add_output(outputName);
+
+    auto* output = graph->add_output();
+    output->set_name(outputName);
+    auto* outputType = output->mutable_type()->mutable_tensor_type();
+    outputType->set_elem_type(isBoolean ? onnx::TensorProto::BOOL : onnx::TensorProto::DOUBLE);
+    outputType->mutable_shape();
+
+    if (!comment.empty()) {
+        output->set_doc_string(comment);
+    }
+    addSourceLocationMetadata(output, sourceFile, sourceLine);
+}
+
+// Generate an ONNX output for a variable bound (start, min, or max value).
+// Creates the output with appropriate metadata linking it to the variable.
+static void generateBoundOutput(
+    const BoundOutputContext& ctx,
+    size_t varIndex,
+    const Variable& var,
+    antlr4::ParserRuleContext* exprContext,
+    const std::string& boundType,
+    const std::string& description) {
+
+    auto it = ctx.varIndexToInputIndex.find(varIndex);
+    if (it == ctx.varIndexToInputIndex.end()) {
+        std::cerr << "Warning: Could not find input index for variable " << var.name << std::endl;
+        return;
+    }
+    int inputIdx = it->second;
+
+    std::string exprTensor;
+    try {
+        exprTensor = ONNXGenerator::convertExpression(exprContext, ctx.convCtx);
+    } catch (const std::exception& e) {
+        std::cerr << "Warning: Failed to convert " << boundType << " expression for " << var.name;
+        if (!var.sourceFile.empty()) {
+            std::cerr << " (" << var.sourceFile << ":" << var.sourceLine << ")";
+        }
+        std::cerr << ": " << e.what() << std::endl;
+        return;
+    }
+
+    std::string outputName = boundType + "[" + std::to_string(inputIdx) + "]";
+    auto* output = ctx.graph->add_output();
+    output->set_name(outputName);
+    auto* output_type = output->mutable_type()->mutable_tensor_type();
+    output_type->set_elem_type(onnx::TensorProto::DOUBLE);
+    output_type->mutable_shape()->add_dim()->set_dim_value(1);
+
+    output->set_doc_string(description + " for " + var.name);
+    addSourceLocationMetadata(output, var.sourceFile, var.sourceLine);
+
+    auto* meta_var = output->add_metadata_props();
+    meta_var->set_key("variable_name");
+    meta_var->set_value(var.name);
+
+    auto* meta_vr = output->add_metadata_props();
+    meta_vr->set_key("value_reference");
+    meta_vr->set_value(std::to_string(var.valueReference));
+
+    auto* meta_idx = output->add_metadata_props();
+    meta_idx->set_key("input_index");
+    meta_idx->set_value(std::to_string(inputIdx));
+
+    renameTensorToOutput(ctx.graph, exprTensor, outputName,
+                         boundType + "_identity_" + std::to_string(inputIdx));
+}
+
 // -----------------------------------------------------------------------------
 
 std::string ONNXGenerator::generate(const ModelInfo& info, const std::string& outputDir) {
@@ -295,91 +485,24 @@ void ONNXGenerator::generateONNXModel(const ModelInfo& info, const std::string& 
     // Generate outputs for initial equations
     generateEquationOutputs(info.initialEquations, "init_eq", info, graph, nodeCounter, derivativeInputs);
 
-    // Helper lambda to generate variable-bound outputs (start, min, max)
-    // This creates an ONNX output from an expression with associated metadata
-    auto generateBoundOutput = [&](size_t i, const Variable& var, antlr4::ParserRuleContext* context,
-                                   const std::string& boundType, const std::string& description) {
-        // Find the input index for this variable
-        auto it = varIndexToInputIndex.find(i);
-        if (it == varIndexToInputIndex.end()) {
-            std::cerr << "Warning: Could not find input index for variable " << var.name << std::endl;
-            return;
-        }
-        int inputIdx = it->second;
-
-        // Convert bound expression to ONNX
-        std::string exprTensor;
-        try {
-            exprTensor = convertExpression(context, ctx);
-        } catch (const std::exception& e) {
-            std::cerr << "Warning: Failed to convert " << boundType << " expression for " << var.name;
-            if (!var.sourceFile.empty()) {
-                std::cerr << " (" << var.sourceFile << ":" << var.sourceLine << ")";
-            }
-            std::cerr << ": " << e.what() << std::endl;
-            return;
-        }
-
-        // Create output for this bound using the input index
-        std::string outputName = boundType + "[" + std::to_string(inputIdx) + "]";
-        auto* output = graph->add_output();
-        output->set_name(outputName);
-        auto* output_type = output->mutable_type()->mutable_tensor_type();
-        output_type->set_elem_type(onnx::TensorProto::DOUBLE);
-        auto* output_shape = output_type->mutable_shape();
-        output_shape->add_dim()->set_dim_value(1);
-
-        // Set doc_string to variable name for reference
-        output->set_doc_string(description + " for " + var.name);
-
-        addSourceLocationMetadata(output, var.sourceFile, var.sourceLine);
-
-        // Add metadata linking to the variable
-        auto* meta_var = output->add_metadata_props();
-        meta_var->set_key("variable_name");
-        meta_var->set_value(var.name);
-
-        auto* meta_vr = output->add_metadata_props();
-        meta_vr->set_key("value_reference");
-        meta_vr->set_value(std::to_string(var.valueReference));
-
-        auto* meta_idx = output->add_metadata_props();
-        meta_idx->set_key("input_index");
-        meta_idx->set_value(std::to_string(inputIdx));
-
-        // Rename the expression tensor to the output name
-        renameTensorToOutput(graph, exprTensor, outputName,
-                             boundType + "_identity_" + std::to_string(inputIdx));
-    };
-
-    // Helper to check if a string is a non-const expression (not a plain number)
-    auto isNonConstExpr = [](const std::string& value) {
-        if (value.empty()) return false;
-        try {
-            std::stod(value);
-            return false;  // It's a constant number
-        } catch (...) {
-            return true;   // Non-const expression
-        }
-    };
-
     // Generate outputs for calculated initial values, min, and max bounds
+    BoundOutputContext boundCtx{graph, ctx, varIndexToInputIndex};
     for (size_t i = 0; i < info.variables.size(); i++) {
         const auto& var = info.variables[i];
 
         // Start values for calculated initial conditions
         if (var.initial == "calculated" && var.bindingContext != nullptr) {
-            generateBoundOutput(i, var, var.bindingContext, "start", "Initial value");
+            generateBoundOutput(boundCtx, i, var, var.bindingContext, "start", "Initial value");
         }
 
         // Non-const min bounds
-        if (var.minContext != nullptr && isNonConstExpr(var.minValue)) {
-            generateBoundOutput(i, var, var.minContext, "min", "Minimum value");
+        if (var.minContext != nullptr && !isConstValue(var.minValue)) {
+            generateBoundOutput(boundCtx, i, var, var.minContext, "min", "Minimum value");
         }
 
         // Non-const max bounds
-        if (var.maxContext != nullptr && isNonConstExpr(var.maxValue)) {
-            generateBoundOutput(i, var, var.maxContext, "max", "Maximum value");
+        if (var.maxContext != nullptr && !isConstValue(var.maxValue)) {
+            generateBoundOutput(boundCtx, i, var, var.maxContext, "max", "Maximum value");
         }
     }
 
@@ -507,23 +630,9 @@ void ONNXGenerator::generateEquationOutputs(
             // Create residual equations for each output
             for (size_t j = 0; j < outputVarNames.size(); j++) {
                 std::string eqOutputName = prefix + "[" + std::to_string(i + j) + "]";
-                auto* node = graph->add_node();
-                node->set_op_type("Sub");
-                node->set_name("eq_residual_" + std::to_string(i + j));
-                node->add_input(outputVarNames[j]);
-                node->add_input(outputTensors[j]);
-                node->add_output(eqOutputName);
-
-                // Add to graph outputs
-                auto* output = graph->add_output();
-                output->set_name(eqOutputName);
-                auto* outputType = output->mutable_type();
-                auto* outputTensor = outputType->mutable_tensor_type();
-                outputTensor->set_elem_type(onnx::TensorProto::DOUBLE);
-                auto* outputShape = outputTensor->mutable_shape();
-                outputShape->clear_dim();
-
-                addSourceLocationMetadata(output, eq.sourceFile, eq.sourceLine);
+                createEquationResidual(graph, outputVarNames[j], outputTensors[j], eqOutputName,
+                                       "eq_residual_" + std::to_string(i + j),
+                                       false, "", eq.sourceFile, eq.sourceLine);
             }
 
             // Skip to next iteration (we've handled multiple equations at once)
@@ -566,7 +675,6 @@ void ONNXGenerator::generateEquationOutputs(
         }
 
         // Create equation residual: LHS - RHS (or LHS == RHS for booleans)
-        // For numerical evaluation, we want the residual (should be zero when equation is satisfied)
         std::string eqOutputName = prefix + "[" + std::to_string(equationOutputIndex) + "]";
 
         // Check if LHS is a boolean variable
@@ -574,35 +682,10 @@ void ONNXGenerator::generateEquationOutputs(
         const Variable* lhsVar = info.findVariable(lhsText);
         bool isBooleanEquation = (lhsVar && lhsVar->type == "Boolean");
 
-        auto* eq_node = graph->add_node();
-        if (isBooleanEquation) {
-            eq_node->set_op_type("Equal");  // For boolean equations, check equality
-        } else {
-            eq_node->set_op_type("Sub");  // For numeric equations, subtract to get residual
-        }
-        eq_node->set_name(prefix + "_residual_" + std::to_string(i));
-        eq_node->add_input(lhsTensor);
-        eq_node->add_input(rhsTensor);
-        eq_node->add_output(eqOutputName);
-
-        // Create output for this equation
-        auto* eq_output = graph->add_output();
-        eq_output->set_name(eqOutputName);
-        auto* eq_type = eq_output->mutable_type()->mutable_tensor_type();
-        if (isBooleanEquation) {
-            eq_type->set_elem_type(onnx::TensorProto::BOOL);  // Boolean equation result
-        } else {
-            eq_type->set_elem_type(onnx::TensorProto::DOUBLE);  // Numeric residual
-        }
-        // Create shape object (can be empty for scalar/unknown shape)
-        eq_type->mutable_shape();
-
-        // Set the string comment as doc_string on the output
-        if (!eq.comment.empty()) {
-            eq_output->set_doc_string(eq.comment);
-        }
-
-        addSourceLocationMetadata(eq_output, eq.sourceFile, eq.sourceLine);
+        createEquationResidual(graph, lhsTensor, rhsTensor, eqOutputName,
+                               prefix + "_residual_" + std::to_string(i),
+                               isBooleanEquation, eq.comment,
+                               eq.sourceFile, eq.sourceLine);
 
         equationOutputIndex++;
     }
@@ -818,37 +901,8 @@ size_t ONNXGenerator::generateForEquationLoop(
     // For nested loops, skip this - variables are already in scope from parent loop
     if (!isNested) {
         std::string outputSuffix = "_final_" + std::to_string(equationIndex);
-
-        // Add all non-derivative, non-fixed variables as loop passthroughs
-        // Note: ONNXRuntime requires symmetric I/O (body outputs must match loop inputs)
-        for (const auto& var : info.variables) {
-            if (!var.isDerivative && var.variability != "fixed") {
-                addLoopPassthrough(loopNode, bodyGraph, loopNodeName,
-                                   var.name, var.name,
-                                   onnx::TensorProto::DOUBLE, var.dimensions,
-                                   outputSuffix);
-            }
-        }
-
-        // Add pre-discovered derivatives as passthroughs
-        for (const std::string& derName : requiredDerivatives) {
-            // Find the base variable to get dimensions
-            size_t start = derName.find("'") + 1;
-            size_t end = derName.rfind("'");
-            std::string baseVarName = derName.substr(start, end - start);
-            const Variable* baseVar = info.findVariable(baseVarName);
-            std::vector<std::string> dims = baseVar ? baseVar->dimensions : std::vector<std::string>{};
-
-            addLoopPassthrough(loopNode, bodyGraph, loopNodeName,
-                               derName, derName,
-                               onnx::TensorProto::DOUBLE, dims,
-                               outputSuffix);
-
-            // Also add to derivativeInputs map for later reference
-            if (baseVar) {
-                derivativeInputs[derName] = baseVar->dimensions;
-            }
-        }
+        addTopLevelLoopPassthroughs(loopNode, bodyGraph, loopNodeName, outputSuffix,
+                                    info, requiredDerivatives, derivativeInputs);
     }
 
     // Process each equation in the loop body
@@ -1027,44 +1081,14 @@ size_t ONNXGenerator::generateForEquationLoop(
         std::string residualTensor = loopNodeName + "_residual_" + std::to_string(scanOutputCount);
         auto* subNode = bodyGraph->add_node();
         subNode->set_op_type("Sub");
-        subNode->set_name(loopNodeName + "_residual_" + std::to_string(scanOutputCount));
+        subNode->set_name(residualTensor);
         subNode->add_input(lhsTensor);
         subNode->add_input(rhsTensor);
         subNode->add_output(residualTensor);
 
-        // Add as scan output
-        auto* scanOutput = bodyGraph->add_output();
-        std::string scanOutName = loopNodeName + "_scan_" + std::to_string(scanOutputCount);
-        scanOutput->set_name(scanOutName);
-        auto* scanType = scanOutput->mutable_type()->mutable_tensor_type();
-        scanType->set_elem_type(onnx::TensorProto::DOUBLE);
-        // Scan outputs are scalars (one residual per iteration)
-        scanType->mutable_shape();
-
-        // Identity to connect residual to scan output
-        auto* scanIdentity = bodyGraph->add_node();
-        scanIdentity->set_op_type("Identity");
-        scanIdentity->set_name(loopNodeName + "_scan_identity_" + std::to_string(scanOutputCount));
-        scanIdentity->add_input(residualTensor);
-        scanIdentity->add_output(scanOutName);
-
-        // Add scan output to loop node
-        // For nested loops, append loop node name to make output names unique
-        std::string loopOutputName = prefix + "[" + std::to_string(equationIndex + scanOutputCount) + "]";
-        if (isNested) {
-            loopOutputName += "_" + loopNodeName;
-        }
-        loopNode->add_output(loopOutputName);
-
-        // Add to graph outputs (only if this is a top-level loop, not nested)
-        if (!isNested) {
-            auto* graphOutput = graph->add_output();
-            graphOutput->set_name(loopOutputName);
-            auto* graphOutputType = graphOutput->mutable_type()->mutable_tensor_type();
-            graphOutputType->set_elem_type(onnx::TensorProto::DOUBLE);
-            auto* graphOutputShape = graphOutputType->mutable_shape();
-            graphOutputShape->add_dim()->set_dim_value(range.tripCount());  // Array of residuals
-        }
+        // Add scan output to loop body and main graph
+        addLoopScanOutput(loopNode, bodyGraph, graph, loopNodeName, residualTensor,
+                          scanOutputCount, prefix, equationIndex, isNested, range.tripCount());
 
         scanOutputCount++;
     }

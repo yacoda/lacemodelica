@@ -22,6 +22,11 @@ public:
     // Returns the directory path where files were generated
     static std::string generate(const ModelInfo& info, const std::string& outputDir);
 
+    // Convert BaseModelica expression AST to ONNX nodes
+    // Returns the name of the output tensor
+    // Public to allow use by helper functions
+    static std::string convertExpression(antlr4::ParserRuleContext* expr, const ConversionContext& ctx);
+
 private:
     static void generateONNXModel(const ModelInfo& info, const std::string& filepath);
     static void generateManifest(const std::string& filepath);
@@ -76,10 +81,6 @@ private:
         const ModelInfo& info,
         onnx::ModelProto* model
     );
-
-    // Convert BaseModelica expression AST to ONNX nodes
-    // Returns the name of the output tensor
-    static std::string convertExpression(antlr4::ParserRuleContext* expr, const ConversionContext& ctx);
 
     static std::string convertSimpleExpression(
         basemodelica::BaseModelicaParser::SimpleExpressionContext* expr,

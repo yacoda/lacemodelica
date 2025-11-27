@@ -29,6 +29,9 @@ private:
 
     void processEquation(basemodelica::BaseModelicaParser::EquationContext* equation, std::vector<Equation>& target);
 
+    // Scan equation text for der() calls and add to derivativeCalls set
+    void scanForDerivativeCalls(const std::string& equationText);
+
     // Helper to find named attribute in modification's class modification argument list
     antlr4::tree::ParseTree* findModificationAttribute(basemodelica::BaseModelicaParser::ModificationContext* ctx, const std::string& attrName);
 

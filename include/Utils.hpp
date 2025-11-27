@@ -16,6 +16,23 @@ inline std::string stripQuotes(const std::string& str) {
     return str;
 }
 
+// Check if a string represents a constant value (number or boolean literal).
+// Returns true for numeric literals and "true"/"false", false for expressions.
+inline bool isConstValue(const std::string& value) {
+    if (value.empty()) return false;
+
+    // Boolean literals
+    if (value == "true" || value == "false") return true;
+
+    // Try to parse as number
+    try {
+        std::stod(value);
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
+
 // Add source file and line metadata to any ONNX object with add_metadata_props()
 // Works with ValueInfoProto, NodeProto, etc.
 template<typename T>
