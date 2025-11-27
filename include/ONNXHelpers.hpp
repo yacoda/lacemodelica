@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 #include <map>
+#include "BaseModelicaParser.h"
 
 // Forward declarations
 namespace onnx {
@@ -115,5 +116,27 @@ std::string createGatherNDNode(onnx::GraphProto* graph, const std::string& dataT
 // Add dimensions to a tensor shape, parsing numeric dimensions as values
 // and treating non-numeric ones as symbolic parameters
 void addShapeDimensions(onnx::TensorShapeProto* shape, const std::vector<std::string>& dimensions);
+
+// Result of checking subscripts for loop variables
+struct SubscriptAnalysis {
+    bool hasLoopVariable = false;
+    std::vector<int64_t> staticIndices;  // Only valid when !hasLoopVariable
+};
+
+// Analyze array subscripts to determine if they contain loop variables
+// Returns analysis with hasLoopVariable flag and staticIndices if all are static
+SubscriptAnalysis analyzeSubscripts(
+    const std::vector<basemodelica::BaseModelicaParser::SubscriptContext*>& subscriptList,
+    const std::map<std::string, std::string>* variableMap);
+
+// Apply array subscripts to a tensor, handling both static and dynamic indexing
+// Returns the resulting tensor name after all subscripts are applied
+std::string applyArraySubscripts(
+    onnx::GraphProto* graph,
+    const std::string& baseTensor,
+    const std::vector<basemodelica::BaseModelicaParser::SubscriptContext*>& subscriptList,
+    const std::map<std::string, std::string>* variableMap,
+    int& nodeCounter,
+    const std::string& tensorPrefix);
 
 } // namespace lacemodelica

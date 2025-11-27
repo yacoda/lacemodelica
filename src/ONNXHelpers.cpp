@@ -257,4 +257,90 @@ void addShapeDimensions(onnx::TensorShapeProto* shape, const std::vector<std::st
     }
 }
 
+SubscriptAnalysis analyzeSubscripts(
+    const std::vector<basemodelica::BaseModelicaParser::SubscriptContext*>& subscriptList,
+    const std::map<std::string, std::string>* variableMap) {
+
+    SubscriptAnalysis result;
+
+    for (auto sub : subscriptList) {
+        if (sub->getText() == ":") {
+            // Slice notation - not a simple static index
+            result.hasLoopVariable = true;
+            return result;
+        }
+
+        auto subExpr = sub->expression();
+        if (!subExpr) {
+            continue;
+        }
+
+        std::string indexExpr = subExpr->getText();
+
+        // Check if this is a loop variable
+        if (variableMap && variableMap->count(indexExpr) > 0) {
+            result.hasLoopVariable = true;
+            return result;
+        }
+
+        // Try to parse as static integer index
+        try {
+            int modelicaIndex = std::stoi(indexExpr);
+            result.staticIndices.push_back(modelicaIndex - 1);  // Convert to 0-based
+        } catch (...) {
+            // Non-integer, non-loop-variable - might be an expression
+            result.hasLoopVariable = true;
+            return result;
+        }
+    }
+
+    return result;
+}
+
+std::string applyArraySubscripts(
+    onnx::GraphProto* graph,
+    const std::string& baseTensor,
+    const std::vector<basemodelica::BaseModelicaParser::SubscriptContext*>& subscriptList,
+    const std::map<std::string, std::string>* variableMap,
+    int& nodeCounter,
+    const std::string& tensorPrefix) {
+
+    auto analysis = analyzeSubscripts(subscriptList, variableMap);
+
+    if (!analysis.hasLoopVariable) {
+        // All static indices - use GatherND
+        return createGatherNDNode(graph, baseTensor, analysis.staticIndices, nodeCounter, tensorPrefix);
+    }
+
+    // Dynamic indexing with loop variables - process sequentially with Gather
+    std::string currentTensor = baseTensor;
+
+    for (size_t dimIdx = 0; dimIdx < subscriptList.size(); dimIdx++) {
+        auto sub = subscriptList[dimIdx];
+
+        if (sub->getText() == ":") {
+            throw std::runtime_error("Array slice ':' not yet supported in ONNX conversion");
+        }
+
+        auto subExpr = sub->expression();
+        if (!subExpr) {
+            throw std::runtime_error("Invalid array subscript");
+        }
+
+        std::string indexExpr = subExpr->getText();
+
+        if (variableMap && variableMap->count(indexExpr) > 0) {
+            // Dynamic indexing with loop variable
+            std::string loopVar1Based = variableMap->at(indexExpr);
+            std::string index0Based = convertTo0BasedIndex(graph, loopVar1Based, nodeCounter, tensorPrefix);
+            currentTensor = createGatherNode(graph, currentTensor, index0Based, 0, nodeCounter, tensorPrefix);
+        } else {
+            // Static index in dynamic context - not yet supported
+            throw std::runtime_error("Mixed static and dynamic indexing not yet fully supported");
+        }
+    }
+
+    return currentTensor;
+}
+
 } // namespace lacemodelica

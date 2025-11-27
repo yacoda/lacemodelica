@@ -17,6 +17,36 @@
 
 namespace lacemodelica {
 
+// -----------------------------------------------------------------------------
+// Operator Mapping Tables
+// These tables map Modelica operators/functions to their ONNX equivalents
+// -----------------------------------------------------------------------------
+
+// Modelica relational operators -> ONNX comparison operators
+const std::map<std::string, std::string> kRelationalOpMap = {
+    {">", "Greater"},
+    {"<", "Less"},
+    {">=", "GreaterOrEqual"},
+    {"<=", "LessOrEqual"},
+    {"==", "Equal"}
+    // Note: "<>" (not equal) is handled specially as Equal + Not
+};
+
+// Modelica math functions -> ONNX unary operators
+const std::map<std::string, std::string> kMathFunctionMap = {
+    // Trigonometric
+    {"sin", "Sin"}, {"cos", "Cos"}, {"tan", "Tan"},
+    {"asin", "Asin"}, {"acos", "Acos"}, {"atan", "Atan"},
+    // Hyperbolic
+    {"sinh", "Sinh"}, {"cosh", "Cosh"}, {"tanh", "Tanh"},
+    // Exponential and logarithmic
+    {"exp", "Exp"}, {"log", "Log"}, {"sqrt", "Sqrt"},
+    // Rounding and sign
+    {"abs", "Abs"}, {"ceil", "Ceil"}, {"floor", "Floor"}, {"sign", "Sign"}
+};
+
+// -----------------------------------------------------------------------------
+
 std::string ONNXGenerator::generate(const ModelInfo& info, const std::string& outputDir) {
     // Layered standard directory structure
     std::string lsName = "org.lacemodelica.ls-onnx-serialization";
@@ -1600,14 +1630,8 @@ std::string ONNXGenerator::convertRelation(
 
         std::string opText = relOp->getText();
 
-        // Map Modelica relational operators to ONNX operators
-        static const std::map<std::string, std::string> relOpMap = {
-            {">", "Greater"}, {"<", "Less"}, {">=", "GreaterOrEqual"},
-            {"<=", "LessOrEqual"}, {"==", "Equal"}
-        };
-
-        auto it = relOpMap.find(opText);
-        if (it != relOpMap.end()) {
+        auto it = kRelationalOpMap.find(opText);
+        if (it != kRelationalOpMap.end()) {
             return createBinaryOp(graph, it->second, leftTensor, rightTensor, nodeCounter, tensorPrefix);
         } else if (opText == "<>") {
             // Not equal: Equal followed by Not
@@ -1761,6 +1785,155 @@ std::string ONNXGenerator::convertFactor(
     return result;
 }
 
+// Helper function to convert der() function calls
+// Handles simple variable derivatives, array element derivatives, and complex expression derivatives
+std::string ONNXGenerator::convertDerFunctionCall(
+    basemodelica::BaseModelicaParser::PrimaryContext* expr,
+    const ModelInfo& info,
+    onnx::GraphProto* graph,
+    int& nodeCounter,
+    const std::map<std::string, std::string>* variableMap,
+    std::map<std::string, std::vector<std::string>>* derivativeInputs,
+    const std::string& tensorPrefix) {
+
+    auto funcCallArgs = expr->functionCallArgs();
+    if (!funcCallArgs) {
+        throw std::runtime_error("der() requires an argument");
+    }
+
+    auto funcArgs = funcCallArgs->functionArguments();
+    if (!funcArgs) {
+        throw std::runtime_error("der() requires an argument");
+    }
+
+    auto argExpr = funcArgs->expression();
+    if (!argExpr) {
+        throw std::runtime_error("der() argument is missing");
+    }
+
+    // Check if the argument is a simple variable reference
+    bool isSimpleVariable = false;
+    std::string varName;
+
+    if (argExpr->children.size() == 1) {
+        antlr4::tree::ParseTree* node = argExpr->children[0];
+        while (node && node->children.size() == 1) {
+            node = node->children[0];
+        }
+        if (node && node->children.empty()) {
+            isSimpleVariable = true;
+            varName = stripQuotes(argExpr->getText());
+        }
+    }
+
+    // Check if the argument is an array element access like x[1]
+    basemodelica::BaseModelicaParser::ComponentReferenceContext* compRef = nullptr;
+    if (!isSimpleVariable) {
+        auto primary = ParseTreeNavigator::findPrimary(argExpr);
+        compRef = primary ? primary->componentReference() : nullptr;
+    }
+
+    // Handle array element derivative: der(x[i]) -> der('x')[i]
+    if (compRef && !compRef->arraySubscripts().empty()) {
+        std::string baseVarName = stripQuotes(compRef->IDENT(0)->getText());
+
+        if (derivativeInputs) {
+            std::string derInputName = "der('" + baseVarName + "')";
+
+            if (derivativeInputs->find(derInputName) == derivativeInputs->end()) {
+                std::vector<std::string> dimensions;
+                const Variable* var = info.findVariable(baseVarName);
+                if (var) {
+                    dimensions = var->dimensions;
+                }
+                (*derivativeInputs)[derInputName] = dimensions;
+            }
+
+            auto subscriptList = compRef->arraySubscripts()[0]->subscript();
+            return applyArraySubscripts(graph, derInputName, subscriptList, variableMap, nodeCounter, tensorPrefix);
+        }
+    }
+
+    // Handle simple variable derivative: der(x) -> input "der('x')"
+    if (isSimpleVariable && derivativeInputs) {
+        std::string derInputName = "der('" + varName + "')";
+
+        if (derivativeInputs->find(derInputName) == derivativeInputs->end()) {
+            std::vector<std::string> dimensions;
+            const Variable* var = info.findVariable(varName);
+            if (var) {
+                dimensions = var->dimensions;
+            }
+            (*derivativeInputs)[derInputName] = dimensions;
+        }
+
+        return derInputName;
+    }
+
+    // Complex expression derivative: create a Der node
+    std::string inputTensor = convertExpression(argExpr, info, graph, nodeCounter, variableMap, derivativeInputs);
+
+    auto* node = graph->add_node();
+    std::string outputTensor = makeTensorName(tensorPrefix, nodeCounter);
+
+    node->set_op_type("Der");
+    node->set_domain("lacemodelica");
+    node->set_name("Der_" + std::to_string(nodeCounter));
+    node->add_input(inputTensor);
+    node->add_output(outputTensor);
+
+    return outputTensor;
+}
+
+// Helper function to convert user-defined function calls
+std::string ONNXGenerator::convertUserFunctionCall(
+    const std::string& funcName,
+    basemodelica::BaseModelicaParser::PrimaryContext* expr,
+    const Function* func,
+    const ModelInfo& info,
+    onnx::GraphProto* graph,
+    int& nodeCounter,
+    const std::map<std::string, std::string>* variableMap,
+    std::map<std::string, std::vector<std::string>>* derivativeInputs,
+    const std::string& tensorPrefix) {
+
+    auto funcCallArgs = expr->functionCallArgs();
+    auto funcArgs = funcCallArgs->functionArguments();
+
+    if (!funcArgs) {
+        throw std::runtime_error("Function " + funcName + " requires arguments");
+    }
+
+    auto arguments = collectFunctionArguments(funcArgs);
+
+    if (arguments.size() != func->inputs.size()) {
+        throw std::runtime_error("Function " + funcName + " expects " +
+            std::to_string(func->inputs.size()) + " arguments, got " +
+            std::to_string(arguments.size()));
+    }
+
+    std::vector<std::string> argTensors;
+    for (size_t i = 0; i < arguments.size(); i++) {
+        std::string argTensor = convertExpression(
+            arguments[i], info, graph, nodeCounter, variableMap, derivativeInputs);
+        argTensors.push_back(argTensor);
+    }
+
+    auto* node = graph->add_node();
+    std::string outputTensor = makeTensorName(tensorPrefix, nodeCounter);
+
+    node->set_op_type(funcName);
+    node->set_domain("lacemodelica");
+    node->set_name(funcName + "_call_" + std::to_string(nodeCounter));
+
+    for (const auto& argTensor : argTensors) {
+        node->add_input(argTensor);
+    }
+    node->add_output(outputTensor);
+
+    return outputTensor;
+}
+
 std::string ONNXGenerator::convertPrimary(
     basemodelica::BaseModelicaParser::PrimaryContext* expr,
     const ModelInfo& info,
@@ -1802,285 +1975,38 @@ std::string ONNXGenerator::convertPrimary(
     }
 
     // 2. Function call (e.g., der(), sin(), cos()) - check BEFORE plain variable
-    // Must check functionCallArgs before treating componentReference as plain variable
     if (expr->functionCallArgs()) {
-        // Get function name from componentReference if available,
-        // otherwise extract from text (for der/initial/pure keywords)
+        // Extract function name
         std::string funcName;
         if (expr->componentReference()) {
             funcName = stripQuotes(expr->componentReference()->getText());
-            std::cerr << "DEBUG: Function call with componentReference: " << funcName << std::endl;
         } else {
-            // For der(), initial(), pure() which are keywords
             std::string text = expr->getText();
             size_t parenPos = text.find("(");
             if (parenPos == std::string::npos) {
                 throw std::runtime_error("Malformed function call: " + text);
             }
             funcName = text.substr(0, parenPos);
-            std::cerr << "DEBUG: Function call without componentReference: " << funcName << std::endl;
         }
 
-        // Handle der() specially
+        // Dispatch to appropriate handler
         if (funcName == "der") {
-            // Get the argument expression to der()
-            auto funcCallArgs = expr->functionCallArgs();
-            if (!funcCallArgs) {
-                throw std::runtime_error("der() requires an argument");
-            }
-
-            auto funcArgs = funcCallArgs->functionArguments();
-            if (!funcArgs) {
-                throw std::runtime_error("der() requires an argument");
-            }
-
-            // Get the first (and only) argument
-            auto argExpr = funcArgs->expression();
-            if (!argExpr) {
-                throw std::runtime_error("der() argument is missing");
-            }
-
-            // Check if the argument is a simple variable reference
-            // Use ANTLR tree API: check if this is a simple single-path tree (just an identifier)
-            bool isSimpleVariable = false;
-            std::string varName;
-
-            // Check if expression has only one child path down to a single token
-            if (argExpr->children.size() == 1) {
-                antlr4::tree::ParseTree* node = argExpr->children[0];
-                // Keep following single-child nodes until we reach a terminal or multiple children
-                while (node && node->children.size() == 1) {
-                    node = node->children[0];
-                }
-                // If we end at a terminal (leaf node), it's a simple variable
-                if (node && node->children.empty()) {
-                    isSimpleVariable = true;
-                    varName = stripQuotes(argExpr->getText());
-                }
-            }
-
-            // Check if the argument is an array element access like x[1]
-            // If so, treat der(x[1]) as der('x')[1]
-            basemodelica::BaseModelicaParser::ComponentReferenceContext* compRef = nullptr;
-            if (!isSimpleVariable) {
-                auto primary = ParseTreeNavigator::findPrimary(argExpr);
-                compRef = primary ? primary->componentReference() : nullptr;
-            }
-
-            // If we found a componentReference with arraySubscripts, handle it specially
-            if (compRef && !compRef->arraySubscripts().empty()) {
-                // Extract base variable name
-                std::string baseVarName = stripQuotes(compRef->IDENT(0)->getText());
-
-                if (derivativeInputs) {
-                    // Create a derivative input for the base array
-                    std::string derInputName = "der('" + baseVarName + "')";
-
-                    // Add to derivative inputs if not already present
-                    if (derivativeInputs->find(derInputName) == derivativeInputs->end()) {
-                        // Get dimensions from the variable info
-                        std::vector<std::string> dimensions;
-                        const Variable* var = info.findVariable(baseVarName);
-                        if (var) {
-                            dimensions = var->dimensions;
-                            std::cerr << "DEBUG: der(" << baseVarName << ") has " << dimensions.size() << " dimensions: ";
-                            for (const auto& d : dimensions) {
-                                std::cerr << d << " ";
-                            }
-                            std::cerr << std::endl;
-                        } else {
-                            std::cerr << "DEBUG: Could not find variable " << baseVarName << " for der()" << std::endl;
-                        }
-                        (*derivativeInputs)[derInputName] = dimensions;
-                    }
-
-                    // Now apply the same subscript operations to der('baseVarName')
-                    std::string baseTensor = derInputName;
-
-                    // Handle array indexing with subscripts (same logic as in componentReference handling)
-                    auto arraySubscript = compRef->arraySubscripts()[0];
-                    auto subscriptList = arraySubscript->subscript();
-
-                    // Check if any subscripts are loop variables
-                    bool hasLoopVariable = false;
-                    for (auto sub : subscriptList) {
-                        if (sub->getText() != ":") {
-                            auto subExpr = sub->expression();
-                            if (subExpr) {
-                                std::string indexExpr = subExpr->getText();
-                                if (variableMap && variableMap->count(indexExpr) > 0) {
-                                    hasLoopVariable = true;
-                                    break;
-                                }
-                            }
-                        }
-                    }
-
-                    // If we have loop variables, process subscripts sequentially with Gather
-                    if (hasLoopVariable) {
-                        std::string currentTensor = baseTensor;
-
-                        for (size_t dimIdx = 0; dimIdx < subscriptList.size(); dimIdx++) {
-                            auto sub = subscriptList[dimIdx];
-
-                            if (sub->getText() == ":") {
-                                throw std::runtime_error("Array slice ':' not yet supported in der() subscript");
-                            }
-
-                            auto subExpr = sub->expression();
-                            if (!subExpr) {
-                                throw std::runtime_error("Invalid array subscript in der()");
-                            }
-
-                            std::string indexExpr = subExpr->getText();
-
-                            // Check if this is a loop variable (variable tensor, not constant)
-                            if (variableMap && variableMap->count(indexExpr) > 0) {
-                                // Dynamic indexing: convert 1-based Modelica index to 0-based ONNX index
-                                std::string loopVar1Based = variableMap->at(indexExpr);
-                                std::string index0Based = convertTo0BasedIndex(graph, loopVar1Based, nodeCounter, tensorPrefix);
-                                currentTensor = createGatherNode(graph, currentTensor, index0Based, 0, nodeCounter, tensorPrefix);
-                            } else {
-                                // Static indexing with constant - not supported in mixed mode yet
-                                throw std::runtime_error("Mixed static and dynamic indexing not yet fully supported");
-                            }
-                        }
-
-                        return currentTensor;
-                    }
-
-                    // If no loop variables, fall through to static indexing
-                    std::vector<int64_t> indices;
-                    for (auto sub : subscriptList) {
-                        auto subExpr = sub->expression();
-                        std::string indexExpr = subExpr->getText();
-                        try {
-                            int modelicaIndex = std::stoi(indexExpr);
-                            int onnxIndex = modelicaIndex - 1;  // Convert to 0-based
-                            indices.push_back(onnxIndex);
-                        } catch (const std::exception& e) {
-                            throw std::runtime_error("Array subscript in der() must be constant integer or loop variable, got: " + indexExpr);
-                        }
-                    }
-
-                    // Create GatherND node with static indices to extract element from der('x')
-                    return createGatherNDNode(graph, baseTensor, indices, nodeCounter, tensorPrefix);
-                }
-            }
-
-            if (isSimpleVariable && derivativeInputs) {
-                // Create a derivative input name (use quotes for consistency with test format)
-                std::string derInputName = "der('" + varName + "')";
-
-                // Add to derivative inputs if not already present
-                if (derivativeInputs->find(derInputName) == derivativeInputs->end()) {
-                    // Get dimensions from the variable info
-                    std::vector<std::string> dimensions;
-                    const Variable* var = info.findVariable(varName);
-                    if (var) {
-                        dimensions = var->dimensions;
-                        std::cerr << "DEBUG: der(" << varName << ") has " << dimensions.size() << " dimensions: ";
-                        for (const auto& d : dimensions) {
-                            std::cerr << d << " ";
-                        }
-                        std::cerr << std::endl;
-                    } else {
-                        std::cerr << "DEBUG: Could not find variable " << varName << " for der()" << std::endl;
-                    }
-                    (*derivativeInputs)[derInputName] = dimensions;
-                }
-
-                // Return the input name directly
-                return derInputName;
-            } else {
-                // Not a simple variable - convert the expression and create a Der node
-                std::string inputTensor = convertExpression(argExpr, info, graph, nodeCounter, variableMap, derivativeInputs);
-
-                // Create a Der operator node
-                auto* node = graph->add_node();
-                std::string outputTensor = (tensorPrefix.empty() ? "" : tensorPrefix + "_") + "tensor_" + std::to_string(nodeCounter++);
-
-                node->set_op_type("Der");
-                node->set_domain("lacemodelica");  // Custom operator in our domain
-                node->set_name("Der_" + std::to_string(nodeCounter));
-                node->add_input(inputTensor);  // Input is the tensor from the expression
-                node->add_output(outputTensor);
-
-                return outputTensor;
-            }
+            return convertDerFunctionCall(expr, info, graph, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
         }
 
-        // Map of supported math functions to ONNX operators
-        static const std::map<std::string, std::string> mathFuncMap = {
-            {"sin", "Sin"}, {"cos", "Cos"}, {"tan", "Tan"},
-            {"asin", "Asin"}, {"acos", "Acos"}, {"atan", "Atan"},
-            {"sinh", "Sinh"}, {"cosh", "Cosh"}, {"tanh", "Tanh"},
-            {"exp", "Exp"}, {"log", "Log"}, {"sqrt", "Sqrt"},
-            {"abs", "Abs"}, {"ceil", "Ceil"}, {"floor", "Floor"},
-            {"sign", "Sign"}
-        };
-
-        auto it = mathFuncMap.find(funcName);
-        if (it != mathFuncMap.end()) {
-            auto funcCallArgs = expr->functionCallArgs();
-            auto funcArgs = funcCallArgs->functionArguments();
+        auto mathIt = kMathFunctionMap.find(funcName);
+        if (mathIt != kMathFunctionMap.end()) {
+            auto funcArgs = expr->functionCallArgs()->functionArguments();
             if (!funcArgs || !funcArgs->expression()) {
                 throw std::runtime_error("Function " + funcName + " requires arguments");
             }
             std::string argTensor = convertExpression(funcArgs->expression(), info, graph, nodeCounter, variableMap, derivativeInputs);
-            return createUnaryOp(graph, it->second, argTensor, nodeCounter, tensorPrefix);
+            return createUnaryOp(graph, mathIt->second, argTensor, nodeCounter, tensorPrefix);
         }
 
-        // Check if this is a user-defined function with algorithm
         const Function* func = info.findFunction(funcName);
         if (func && !func->algorithmStatements.empty()) {
-            std::cerr << "DEBUG: Found user-defined function: " << funcName << std::endl;
-
-            // Get function arguments from call site
-            auto funcCallArgs = expr->functionCallArgs();
-            auto funcArgs = funcCallArgs->functionArguments();
-
-            if (!funcArgs) {
-                throw std::runtime_error("Function " + funcName + " requires arguments");
-            }
-
-            // Collect all function arguments
-            auto arguments = collectFunctionArguments(funcArgs);
-
-            // Check argument count
-            if (arguments.size() != func->inputs.size()) {
-                throw std::runtime_error("Function " + funcName + " expects " +
-                    std::to_string(func->inputs.size()) + " arguments, got " +
-                    std::to_string(arguments.size()));
-            }
-
-            // Convert each argument expression to get tensor names
-            std::vector<std::string> argTensors;
-            for (size_t i = 0; i < arguments.size(); i++) {
-                std::string argTensor = convertExpression(arguments[i], info, graph, nodeCounter, variableMap, derivativeInputs);
-                argTensors.push_back(argTensor);
-                std::cerr << "  Arg " << i << ": " << func->inputs[i].name << " = " << argTensor << std::endl;
-            }
-
-            // Create a function call node that references the FunctionProto
-            auto* node = graph->add_node();
-            std::string outputTensor = (tensorPrefix.empty() ? "" : tensorPrefix + "_") + "tensor_" + std::to_string(nodeCounter++);
-
-            node->set_op_type(funcName);  // op_type is the function name
-            node->set_domain("lacemodelica");  // Custom domain where function is defined
-            node->set_name(funcName + "_call_" + std::to_string(nodeCounter));
-
-            // Add inputs (argument tensors)
-            for (const auto& argTensor : argTensors) {
-                node->add_input(argTensor);
-            }
-
-            // Add outputs (for now, assume single output)
-            node->add_output(outputTensor);
-
-            std::cerr << "  Created function call node: " << funcName << " -> " << outputTensor << std::endl;
-
-            return outputTensor;
+            return convertUserFunctionCall(funcName, expr, func, info, graph, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
         }
 
         throw std::runtime_error("Unsupported function call: " + funcName);
@@ -2104,82 +2030,12 @@ std::string ONNXGenerator::convertPrimary(
         // Check for array subscripts
         auto subscripts = compRef->arraySubscripts();
         if (subscripts.empty()) {
-            // No subscripts, just return the variable
             return baseTensor;
         }
 
-        // Handle array indexing with subscripts
-        auto arraySubscript = subscripts[0];  // First (and likely only) arraySubscripts
-        auto subscriptList = arraySubscript->subscript();
-
-        // Check if any subscripts are loop variables
-        bool hasLoopVariable = false;
-        for (auto sub : subscriptList) {
-            if (sub->getText() != ":") {
-                auto subExpr = sub->expression();
-                if (subExpr) {
-                    std::string indexExpr = subExpr->getText();
-                    if (variableMap && variableMap->count(indexExpr) > 0) {
-                        hasLoopVariable = true;
-                        break;
-                    }
-                }
-            }
-        }
-
-        // If we have loop variables, process subscripts sequentially with Gather
-        if (hasLoopVariable) {
-            std::string currentTensor = baseTensor;
-
-            for (size_t dimIdx = 0; dimIdx < subscriptList.size(); dimIdx++) {
-                auto sub = subscriptList[dimIdx];
-
-                // Check if it's a colon (full slice) or expression
-                if (sub->getText() == ":") {
-                    throw std::runtime_error("Array slice ':' not yet supported in ONNX conversion");
-                }
-
-                // It's an expression - evaluate it
-                auto subExpr = sub->expression();
-                if (!subExpr) {
-                    throw std::runtime_error("Invalid array subscript");
-                }
-
-                // Convert the subscript expression (should yield a constant or loop variable)
-                std::string indexExpr = subExpr->getText();
-
-                // Check if this is a loop variable (variable tensor, not constant)
-                if (variableMap && variableMap->count(indexExpr) > 0) {
-                    // Dynamic indexing: convert 1-based Modelica index to 0-based ONNX index
-                    std::string loopVar1Based = variableMap->at(indexExpr);
-                    std::string index0Based = convertTo0BasedIndex(graph, loopVar1Based, nodeCounter, tensorPrefix);
-                    currentTensor = createGatherNode(graph, currentTensor, index0Based, 0, nodeCounter, tensorPrefix);
-                } else {
-                    // Static indexing with constant - not supported in mixed mode yet
-                    throw std::runtime_error("Mixed static and dynamic indexing not yet fully supported");
-                }
-            }
-
-            return currentTensor;
-        }
-
-        // If no loop variables, fall through to static indexing with GatherND
-        std::vector<int64_t> indices;
-        for (auto sub : subscriptList) {
-            auto subExpr = sub->expression();
-            std::string indexExpr = subExpr->getText();
-            // Try to parse as integer constant (Modelica uses 1-based indexing)
-            try {
-                int modelicaIndex = std::stoi(indexExpr);
-                int onnxIndex = modelicaIndex - 1;  // Convert to 0-based
-                indices.push_back(onnxIndex);
-            } catch (const std::exception& e) {
-                throw std::runtime_error("Array subscript must be constant integer or loop variable, got: " + indexExpr);
-            }
-        }
-
-        // Create GatherND node with static indices to extract element
-        return createGatherNDNode(graph, baseTensor, indices, nodeCounter, tensorPrefix);
+        // Apply array subscripts using the shared helper
+        auto subscriptList = subscripts[0]->subscript();
+        return applyArraySubscripts(graph, baseTensor, subscriptList, variableMap, nodeCounter, tensorPrefix);
     }
 
     // 4. Parenthesized expression

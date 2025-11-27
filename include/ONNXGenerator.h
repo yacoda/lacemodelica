@@ -176,6 +176,30 @@ private:
         const std::string& tensorPrefix = ""
     );
 
+    // Helper to convert der() function calls
+    static std::string convertDerFunctionCall(
+        basemodelica::BaseModelicaParser::PrimaryContext* expr,
+        const ModelInfo& info,
+        onnx::GraphProto* graph,
+        int& nodeCounter,
+        const std::map<std::string, std::string>* variableMap,
+        std::map<std::string, std::vector<std::string>>* derivativeInputs,
+        const std::string& tensorPrefix
+    );
+
+    // Helper to convert user-defined function calls
+    static std::string convertUserFunctionCall(
+        const std::string& funcName,
+        basemodelica::BaseModelicaParser::PrimaryContext* expr,
+        const Function* func,
+        const ModelInfo& info,
+        onnx::GraphProto* graph,
+        int& nodeCounter,
+        const std::map<std::string, std::string>* variableMap,
+        std::map<std::string, std::vector<std::string>>* derivativeInputs,
+        const std::string& tensorPrefix
+    );
+
     // Convert multi-output function call
     static std::vector<std::string> convertMultiOutputFunctionCall(
         antlr4::ParserRuleContext* expr,
