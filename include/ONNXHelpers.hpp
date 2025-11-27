@@ -5,15 +5,56 @@
 
 #include <string>
 #include <vector>
+#include <map>
 
-// Forward declare ONNX types
+// Forward declarations
 namespace onnx {
     class GraphProto;
     class TypeProto_Tensor;
     class ValueInfoProto;
+    class TensorShapeProto;
 }
 
 namespace lacemodelica {
+
+class ModelInfo;  // Forward declaration
+
+// Context object bundling common parameters passed through expression conversion.
+// This reduces the number of parameters from 6-7 down to 1, making function
+// signatures cleaner and the code more maintainable.
+struct ConversionContext {
+    const ModelInfo& info;
+    onnx::GraphProto* graph;
+    int& nodeCounter;
+    const std::map<std::string, std::string>* variableMap;
+    std::map<std::string, std::vector<std::string>>* derivativeInputs;
+    std::string tensorPrefix;
+
+    ConversionContext(
+        const ModelInfo& info,
+        onnx::GraphProto* graph,
+        int& nodeCounter,
+        const std::map<std::string, std::string>* variableMap = nullptr,
+        std::map<std::string, std::vector<std::string>>* derivativeInputs = nullptr,
+        const std::string& tensorPrefix = "")
+        : info(info)
+        , graph(graph)
+        , nodeCounter(nodeCounter)
+        , variableMap(variableMap)
+        , derivativeInputs(derivativeInputs)
+        , tensorPrefix(tensorPrefix)
+    {}
+
+    // Create a child context with a different graph (for subgraphs)
+    ConversionContext withGraph(onnx::GraphProto* newGraph) const {
+        return ConversionContext(info, newGraph, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
+    }
+
+    // Create a child context with a different prefix
+    ConversionContext withPrefix(const std::string& newPrefix) const {
+        return ConversionContext(info, graph, nodeCounter, variableMap, derivativeInputs, newPrefix);
+    }
+};
 
 // Generate a unique tensor name with optional prefix
 std::string makeTensorName(const std::string& prefix, int& counter);
@@ -70,5 +111,9 @@ std::string createInt64ArrayConstant(onnx::GraphProto* graph, const std::vector<
 std::string createGatherNDNode(onnx::GraphProto* graph, const std::string& dataTensor,
                                 const std::vector<int64_t>& indices, int& counter,
                                 const std::string& prefix = "");
+
+// Add dimensions to a tensor shape, parsing numeric dimensions as values
+// and treating non-numeric ones as symbolic parameters
+void addShapeDimensions(onnx::TensorShapeProto* shape, const std::vector<std::string>& dimensions);
 
 } // namespace lacemodelica

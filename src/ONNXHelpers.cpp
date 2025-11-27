@@ -246,4 +246,15 @@ std::string createGatherNDNode(onnx::GraphProto* graph, const std::string& dataT
     return outputTensor;
 }
 
+void addShapeDimensions(onnx::TensorShapeProto* shape, const std::vector<std::string>& dimensions) {
+    for (const auto& dim : dimensions) {
+        auto* shapeDim = shape->add_dim();
+        try {
+            shapeDim->set_dim_value(std::stoi(dim));
+        } catch (...) {
+            shapeDim->set_dim_param(dim);
+        }
+    }
+}
+
 } // namespace lacemodelica

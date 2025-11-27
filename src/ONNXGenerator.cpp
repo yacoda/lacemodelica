@@ -4,6 +4,7 @@
 #include "ONNXGenerator.h"
 #include "ONNXHelpers.hpp"
 #include "ParseTreeNavigator.h"
+#include "Utils.hpp"
 #define ONNX_ML 1
 #define ONNX_NAMESPACE onnx
 #include <onnx/onnx_pb.h>
@@ -142,28 +143,10 @@ void ONNXGenerator::generateONNXModel(const ModelInfo& info, const std::string& 
         }
         auto* input_shape = input_type->mutable_shape();
 
-        // Handle array dimensions
-        for (const auto& dim : var.dimensions) {
-            auto* shape_dim = input_shape->add_dim();
-            // Try to parse as integer, otherwise leave symbolic
-            try {
-                shape_dim->set_dim_value(std::stoi(dim));
-            } catch (...) {
-                shape_dim->set_dim_param(dim);
-            }
-        }
-        // Scalars: empty dimensions results in empty shape []
+        // Handle array dimensions (scalars have empty shape [])
+        addShapeDimensions(input_shape, var.dimensions);
 
-        // Add source location metadata
-        if (!var.sourceFile.empty()) {
-            auto* meta_file = input->add_metadata_props();
-            meta_file->set_key("source_file");
-            meta_file->set_value(var.sourceFile);
-
-            auto* meta_line = input->add_metadata_props();
-            meta_line->set_key("source_line");
-            meta_line->set_value(std::to_string(var.sourceLine));
-        }
+        addSourceLocationMetadata(input, var.sourceFile, var.sourceLine);
     }
 
     // Create ONNX FunctionProto for each function with algorithm
@@ -229,16 +212,7 @@ void ONNXGenerator::generateONNXModel(const ModelInfo& info, const std::string& 
             // Set doc_string to variable name for reference
             output->set_doc_string("Initial value for " + var.name);
 
-            // Add source location metadata
-            if (!var.sourceFile.empty()) {
-                auto* meta_file = output->add_metadata_props();
-                meta_file->set_key("source_file");
-                meta_file->set_value(var.sourceFile);
-
-                auto* meta_line = output->add_metadata_props();
-                meta_line->set_key("source_line");
-                meta_line->set_value(std::to_string(var.sourceLine));
-            }
+            addSourceLocationMetadata(output, var.sourceFile, var.sourceLine);
 
             // Add metadata linking to the variable
             auto* meta_var = output->add_metadata_props();
@@ -316,16 +290,7 @@ void ONNXGenerator::generateONNXModel(const ModelInfo& info, const std::string& 
         // Set doc_string to variable name for reference
         output->set_doc_string(description + " for " + var.name);
 
-        // Add source location metadata
-        if (!var.sourceFile.empty()) {
-            auto* meta_file = output->add_metadata_props();
-            meta_file->set_key("source_file");
-            meta_file->set_value(var.sourceFile);
-
-            auto* meta_line = output->add_metadata_props();
-            meta_line->set_key("source_line");
-            meta_line->set_value(std::to_string(var.sourceLine));
-        }
+        addSourceLocationMetadata(output, var.sourceFile, var.sourceLine);
 
         // Add metadata linking to the variable
         auto* meta_var = output->add_metadata_props();
@@ -517,12 +482,7 @@ void ONNXGenerator::generateEquationOutputs(
             isMultiOutput = true;
             for (auto outExpr : outExprList->expression()) {
                 if (outExpr) {
-                    std::string varName = outExpr->getText();
-                    // Strip quotes
-                    if (varName.size() >= 2 && varName.front() == '\'' && varName.back() == '\'') {
-                        varName = varName.substr(1, varName.size() - 2);
-                    }
-                    outputVarNames.push_back(varName);
+                    outputVarNames.push_back(stripQuotes(outExpr->getText()));
                 }
             }
             std::cerr << "DEBUG: Found multi-output equation with " << outputVarNames.size() << " outputs" << std::endl;
@@ -557,16 +517,7 @@ void ONNXGenerator::generateEquationOutputs(
                 auto* outputShape = outputTensor->mutable_shape();
                 outputShape->clear_dim();
 
-                // Add metadata to output (not node attributes!)
-                if (!eq.sourceFile.empty()) {
-                    auto* meta_file = output->add_metadata_props();
-                    meta_file->set_key("source_file");
-                    meta_file->set_value(eq.sourceFile);
-
-                    auto* meta_line = output->add_metadata_props();
-                    meta_line->set_key("source_line");
-                    meta_line->set_value(std::to_string(eq.sourceLine));
-                }
+                addSourceLocationMetadata(output, eq.sourceFile, eq.sourceLine);
             }
 
             // Skip to next iteration (we've handled multiple equations at once)
@@ -613,11 +564,7 @@ void ONNXGenerator::generateEquationOutputs(
         std::string eqOutputName = prefix + "[" + std::to_string(equationOutputIndex) + "]";
 
         // Check if LHS is a boolean variable
-        std::string lhsText = eq.lhsContext->getText();
-        // Strip quotes if present
-        if (lhsText.front() == '\'' && lhsText.back() == '\'') {
-            lhsText = lhsText.substr(1, lhsText.length() - 2);
-        }
+        std::string lhsText = stripQuotes(eq.lhsContext->getText());
         const Variable* lhsVar = info.findVariable(lhsText);
         bool isBooleanEquation = (lhsVar && lhsVar->type == "Boolean");
 
@@ -653,16 +600,7 @@ void ONNXGenerator::generateEquationOutputs(
             eq_output->set_doc_string(eq.comment);
         }
 
-        // Add source location metadata
-        if (!eq.sourceFile.empty()) {
-            auto* meta_file = eq_output->add_metadata_props();
-            meta_file->set_key("source_file");
-            meta_file->set_value(eq.sourceFile);
-
-            auto* meta_line = eq_output->add_metadata_props();
-            meta_line->set_key("source_line");
-            meta_line->set_value(std::to_string(eq.sourceLine));
-        }
+        addSourceLocationMetadata(eq_output, eq.sourceFile, eq.sourceLine);
 
         equationOutputIndex++;
     }
@@ -730,11 +668,7 @@ size_t ONNXGenerator::generateIfEquation(
     if (!firstSimpleExpr) {
         throw std::runtime_error("If-equation branch must contain simple equation");
     }
-    std::string lhsVarName = firstSimpleExpr->getText();
-    // Strip quotes
-    if (lhsVarName.size() >= 2 && lhsVarName.front() == '\'' && lhsVarName.back() == '\'') {
-        lhsVarName = lhsVarName.substr(1, lhsVarName.size() - 2);
-    }
+    std::string lhsVarName = stripQuotes(firstSimpleExpr->getText());
 
     std::cerr << "DEBUG: If-equation assigns to variable: " << lhsVarName << std::endl;
 
@@ -771,16 +705,7 @@ size_t ONNXGenerator::generateIfEquation(
     outputType->set_elem_type(onnx::TensorProto::DOUBLE);
     outputType->mutable_shape();
 
-    // Add source location metadata
-    if (!eq.sourceFile.empty()) {
-        auto* meta_file = output->add_metadata_props();
-        meta_file->set_key("source_file");
-        meta_file->set_value(eq.sourceFile);
-
-        auto* meta_line = output->add_metadata_props();
-        meta_line->set_key("source_line");
-        meta_line->set_value(std::to_string(eq.sourceLine));
-    }
+    addSourceLocationMetadata(output, eq.sourceFile, eq.sourceLine);
 
     return 1;  // One equation output generated
 }
@@ -1001,11 +926,8 @@ size_t ONNXGenerator::generateForEquationLoop(
                 std::string derArg = eqText.substr(start, end - start);
                 // Parse out the base variable (handle both der('x') and der('x'[i]))
                 size_t bracketPos = derArg.find('[');
-                std::string baseVar = (bracketPos != std::string::npos) ? derArg.substr(0, bracketPos) : derArg;
-                // Strip quotes
-                if (baseVar.size() >= 2 && baseVar.front() == '\'' && baseVar.back() == '\'') {
-                    baseVar = baseVar.substr(1, baseVar.size() - 2);
-                }
+                std::string baseVar = stripQuotes(
+                    (bracketPos != std::string::npos) ? derArg.substr(0, bracketPos) : derArg);
                 std::string derName = "der('" + baseVar + "')";
                 requiredDerivatives.insert(derName);
             }
@@ -1029,15 +951,7 @@ size_t ONNXGenerator::generateForEquationLoop(
             bodyInput->set_name(var.name);
             auto* inputType = bodyInput->mutable_type()->mutable_tensor_type();
             inputType->set_elem_type(onnx::TensorProto::DOUBLE);
-            auto* inputShape = inputType->mutable_shape();
-            for (const auto& dim : var.dimensions) {
-                auto* shapeDim = inputShape->add_dim();
-                try {
-                    shapeDim->set_dim_value(std::stoi(dim));
-                } catch (...) {
-                    shapeDim->set_dim_param(dim);
-                }
-            }
+            addShapeDimensions(inputType->mutable_shape(), var.dimensions);
 
             // Add as body output (passthrough for ONNXRuntime compatibility)
             auto* bodyOutput = bodyGraph->add_output();
@@ -1045,15 +959,7 @@ size_t ONNXGenerator::generateForEquationLoop(
             bodyOutput->set_name(varOutName);
             auto* outputType = bodyOutput->mutable_type()->mutable_tensor_type();
             outputType->set_elem_type(onnx::TensorProto::DOUBLE);
-            auto* outputShape = outputType->mutable_shape();
-            for (const auto& dim : var.dimensions) {
-                auto* shapeDim = outputShape->add_dim();
-                try {
-                    shapeDim->set_dim_value(std::stoi(dim));
-                } catch (...) {
-                    shapeDim->set_dim_param(dim);
-                }
-            }
+            addShapeDimensions(outputType->mutable_shape(), var.dimensions);
 
             // Identity node for passthrough
             auto* identity = bodyGraph->add_node();
@@ -1083,16 +989,8 @@ size_t ONNXGenerator::generateForEquationLoop(
         bodyInput->set_name(derName);
         auto* inputType = bodyInput->mutable_type()->mutable_tensor_type();
         inputType->set_elem_type(onnx::TensorProto::DOUBLE);
-        auto* inputShape = inputType->mutable_shape();
         if (baseVar) {
-            for (const auto& dim : baseVar->dimensions) {
-                auto* shapeDim = inputShape->add_dim();
-                try {
-                    shapeDim->set_dim_value(std::stoi(dim));
-                } catch (...) {
-                    shapeDim->set_dim_param(dim);
-                }
-            }
+            addShapeDimensions(inputType->mutable_shape(), baseVar->dimensions);
         }
 
         // Add to body outputs (passthrough for ONNXRuntime compatibility)
@@ -1101,16 +999,8 @@ size_t ONNXGenerator::generateForEquationLoop(
         bodyOutput->set_name(derOutName);
         auto* outputType = bodyOutput->mutable_type()->mutable_tensor_type();
         outputType->set_elem_type(onnx::TensorProto::DOUBLE);
-        auto* outputShape = outputType->mutable_shape();
         if (baseVar) {
-            for (const auto& dim : baseVar->dimensions) {
-                auto* shapeDim = outputShape->add_dim();
-                try {
-                    shapeDim->set_dim_value(std::stoi(dim));
-                } catch (...) {
-                    shapeDim->set_dim_param(dim);
-                }
-            }
+            addShapeDimensions(outputType->mutable_shape(), baseVar->dimensions);
         }
 
         // Identity node for passthrough
@@ -1394,11 +1284,7 @@ void ONNXGenerator::createFunctionProto(
         const auto& stmt = func.algorithmStatements[stmtIndex];
 
         // Extract LHS variable name from componentReference
-        std::string lhsVarName = stmt.lhsContext->getText();
-        // Strip quotes if present
-        if (lhsVarName.size() >= 2 && lhsVarName.front() == '\'' && lhsVarName.back() == '\'') {
-            lhsVarName = lhsVarName.substr(1, lhsVarName.size() - 2);
-        }
+        std::string lhsVarName = stripQuotes(stmt.lhsContext->getText());
 
         std::cerr << "  Processing statement " << stmtIndex << ": " << lhsVarName << " := "
                   << stmt.rhsContext->getText().substr(0, 50) << "..." << std::endl;
@@ -1418,14 +1304,7 @@ void ONNXGenerator::createFunctionProto(
                 auto* node = functionProto->add_node();
                 node->CopyFrom(tempGraph.node(i));
 
-                // Add source location metadata
-                auto* meta_file = node->add_metadata_props();
-                meta_file->set_key("source_file");
-                meta_file->set_value(stmt.sourceFile);
-
-                auto* meta_line = node->add_metadata_props();
-                meta_line->set_key("source_line");
-                meta_line->set_value(std::to_string(stmt.sourceLine));
+                addSourceLocationMetadata(node, stmt.sourceFile, stmt.sourceLine);
 
                 auto* meta_index = node->add_metadata_props();
                 meta_index->set_key("statement_index");
@@ -1929,11 +1808,7 @@ std::string ONNXGenerator::convertPrimary(
         // otherwise extract from text (for der/initial/pure keywords)
         std::string funcName;
         if (expr->componentReference()) {
-            funcName = expr->componentReference()->getText();
-            // Strip quotes if present
-            if (funcName.size() >= 2 && funcName.front() == '\'' && funcName.back() == '\'') {
-                funcName = funcName.substr(1, funcName.size() - 2);
-            }
+            funcName = stripQuotes(expr->componentReference()->getText());
             std::cerr << "DEBUG: Function call with componentReference: " << funcName << std::endl;
         } else {
             // For der(), initial(), pure() which are keywords
@@ -1980,11 +1855,7 @@ std::string ONNXGenerator::convertPrimary(
                 // If we end at a terminal (leaf node), it's a simple variable
                 if (node && node->children.empty()) {
                     isSimpleVariable = true;
-                    varName = argExpr->getText();
-                    // Strip quotes if present
-                    if (varName.size() >= 2 && varName.front() == '\'' && varName.back() == '\'') {
-                        varName = varName.substr(1, varName.size() - 2);
-                    }
+                    varName = stripQuotes(argExpr->getText());
                 }
             }
 
@@ -1999,10 +1870,7 @@ std::string ONNXGenerator::convertPrimary(
             // If we found a componentReference with arraySubscripts, handle it specially
             if (compRef && !compRef->arraySubscripts().empty()) {
                 // Extract base variable name
-                std::string baseVarName = compRef->IDENT(0)->getText();
-                if (baseVarName.size() >= 2 && baseVarName.front() == '\'' && baseVarName.back() == '\'') {
-                    baseVarName = baseVarName.substr(1, baseVarName.size() - 2);
-                }
+                std::string baseVarName = stripQuotes(compRef->IDENT(0)->getText());
 
                 if (derivativeInputs) {
                     // Create a derivative input for the base array
@@ -2223,11 +2091,7 @@ std::string ONNXGenerator::convertPrimary(
         auto compRef = expr->componentReference();
 
         // Get base variable name (first IDENT)
-        std::string varName = compRef->IDENT(0)->getText();
-        // Strip quotes if present
-        if (varName.size() >= 2 && varName.front() == '\'' && varName.back() == '\'') {
-            varName = varName.substr(1, varName.size() - 2);
-        }
+        std::string varName = stripQuotes(compRef->IDENT(0)->getText());
 
         // Get the base tensor (from inputs or variableMap)
         std::string baseTensor;
@@ -2349,10 +2213,7 @@ std::vector<std::string> ONNXGenerator::convertMultiOutputFunctionCall(
 
     // Extract function name
     auto compRef = primaryCtx->componentReference();
-    std::string funcName = compRef->IDENT(0)->getText();
-    if (funcName.size() >= 2 && funcName.front() == '\'' && funcName.back() == '\'') {
-        funcName = funcName.substr(1, funcName.size() - 2);
-    }
+    std::string funcName = stripQuotes(compRef->IDENT(0)->getText());
 
     // Find the function definition
     const Function* func = info.findFunction(funcName);

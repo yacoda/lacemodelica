@@ -2,17 +2,10 @@
 // Copyright (c) 2025 Joris Gillis, YACODA
 
 #include "ModelInfoExtractor.h"
+#include "Utils.hpp"
 #include <iostream>
 
 namespace lacemodelica {
-
-// Helper function to strip quotes from BaseModelica quoted identifiers
-static std::string stripQuotes(const std::string& str) {
-    if (str.size() >= 2 && str.front() == '\'' && str.back() == '\'') {
-        return str.substr(1, str.size() - 2);
-    }
-    return str;
-}
 
 ModelInfo ModelInfoExtractor::extract(basemodelica::BaseModelicaParser::BaseModelicaContext* tree, const std::string& sourceFile) {
     info = ModelInfo();
