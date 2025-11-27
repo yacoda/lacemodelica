@@ -877,12 +877,13 @@ std::string ExpressionConverter::convertArrayComprehension(
     loopNode->add_output(loopOutputTensor);
 
     // Squeeze the result from [n, 1] to [n]
+    // Create axes constant before Squeeze node for correct topological order
+    std::string axesTensor = builder.addInt64ArrayConstant({1});
     std::string squeezedResult = builder.makeTensorName("array_result");
     auto* squeezeNode = ctx.graph->add_node();
     squeezeNode->set_op_type("Squeeze");
     squeezeNode->set_name(squeezedResult + "_Squeeze");
     squeezeNode->add_input(loopOutputTensor);
-    std::string axesTensor = builder.addInt64ArrayConstant({1});
     squeezeNode->add_input(axesTensor);
     squeezeNode->add_output(squeezedResult);
 
