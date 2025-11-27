@@ -93,6 +93,23 @@ private:
         basemodelica::BaseModelicaParser::PrimaryContext* expr,
         const Function* func,
         const ConversionContext& ctx);
+
+    // Array constructor handlers
+    static std::string convertArrayConstructor(
+        basemodelica::BaseModelicaParser::ArrayArgumentsContext* arrayArgs,
+        const ConversionContext& ctx);
+
+    static std::string convertArrayComprehension(
+        basemodelica::BaseModelicaParser::ExpressionContext* bodyExpr,
+        basemodelica::BaseModelicaParser::ForIndexContext* forIndex,
+        const ConversionContext& ctx);
+
+    // Reduction operation handlers (sum, product with for)
+    static std::string convertReductionExpression(
+        const std::string& reductionOp,
+        basemodelica::BaseModelicaParser::ExpressionContext* bodyExpr,
+        basemodelica::BaseModelicaParser::ForIndexContext* forIndex,
+        const ConversionContext& ctx);
 };
 
 // Collect function arguments from recursive grammar structure

@@ -2,6 +2,7 @@
 // Copyright (c) 2025 Joris Gillis, YACODA
 
 #include "ExpressionConverter.h"
+#include "EquationGenerator.h"
 #include "ParseTreeNavigator.h"
 #include "Utils.hpp"
 
@@ -413,6 +414,16 @@ std::string ExpressionConverter::convertPrimary(
             return convertDerCall(expr, ctx);
         }
 
+        // Check for reduction functions with for-loop syntax: sum(expr for i in 1:n)
+        if (funcName == "sum" || funcName == "product") {
+            auto funcArgs = expr->functionCallArgs()->functionArguments();
+            if (funcArgs && funcArgs->forIndex()) {
+                return convertReductionExpression(funcName, funcArgs->expression(),
+                                                   funcArgs->forIndex(), ctx);
+            }
+            // Fall through to handle sum/product on arrays without for-loop
+        }
+
         auto mathIt = kMathFunctionMap.find(funcName);
         if (mathIt != kMathFunctionMap.end()) {
             auto funcArgs = expr->functionCallArgs()->functionArguments();
@@ -532,7 +543,19 @@ std::string ExpressionConverter::convertPrimary(
         return currentTensor;
     }
 
-    // 5. Parenthesized expression
+    // 5. Array constructor {arrayArguments}
+    // Only handle array comprehensions (with for index) - constant arrays should
+    // continue to throw for backwards compatibility with bound output generation
+    if (expr->arrayArguments()) {
+        auto* arrayArgs = expr->arrayArguments();
+        if (arrayArgs->forIndex()) {
+            return convertArrayConstructor(arrayArgs, ctx);
+        }
+        // Fall through to throw for constant array literals - they're handled
+        // as constants elsewhere and shouldn't generate bound outputs
+    }
+
+    // 6. Parenthesized expression
     if (expr->outputExpressionList()) {
         auto outputList = expr->outputExpressionList();
         auto expressions = outputList->expression();
@@ -751,6 +774,222 @@ std::vector<std::string> ExpressionConverter::convertMultiOutput(
     }
 
     return outputTensors;
+}
+
+// -----------------------------------------------------------------------------
+// Array Constructor
+// -----------------------------------------------------------------------------
+
+std::string ExpressionConverter::convertArrayConstructor(
+    basemodelica::BaseModelicaParser::ArrayArgumentsContext* arrayArgs,
+    const ConversionContext& ctx) {
+
+    // This function only handles array comprehensions: {expr for i in 1:n}
+    // Regular array literals are handled elsewhere as constants
+    if (!arrayArgs->forIndex()) {
+        throw std::runtime_error("Array literal without comprehension not supported in expressions");
+    }
+
+    auto expressions = arrayArgs->expression();
+    if (expressions.empty()) {
+        throw std::runtime_error("Array comprehension requires a body expression");
+    }
+    return convertArrayComprehension(expressions[0], arrayArgs->forIndex(), ctx);
+}
+
+// -----------------------------------------------------------------------------
+// Array Comprehension
+// -----------------------------------------------------------------------------
+
+std::string ExpressionConverter::convertArrayComprehension(
+    basemodelica::BaseModelicaParser::ExpressionContext* bodyExpr,
+    basemodelica::BaseModelicaParser::ForIndexContext* forIndex,
+    const ConversionContext& ctx) {
+
+    auto builder = ctx.builder();
+
+    // Parse the for-loop range using shared helper
+    ForLoopRange range = parseForLoopRangeFromIndex(forIndex);
+
+    // Create ONNX Loop node
+    std::string loopNodeName = builder.makeTensorName("comprehension");
+    std::string tripCountTensor = builder.addInt64Constant(range.tripCount(), "n_" + loopNodeName);
+    std::string condTensor = builder.addBoolConstant(true);
+
+    auto* loopNode = ctx.graph->add_node();
+    loopNode->set_op_type("Loop");
+    loopNode->set_name(loopNodeName);
+    loopNode->add_input(tripCountTensor);
+    loopNode->add_input(condTensor);
+
+    // Create loop body graph
+    auto* bodyAttr = loopNode->add_attribute();
+    bodyAttr->set_name("body");
+    bodyAttr->set_type(onnx::AttributeProto::GRAPH);
+    auto* bodyGraph = bodyAttr->mutable_g();
+    bodyGraph->set_name("comprehension_body");
+
+    // Set up loop body standard inputs (iter, cond)
+    setupLoopBodyIO(bodyGraph, loopNodeName);
+
+    // Create body builder
+    auto bodyBuilder = builder.forSubgraph(bodyGraph, loopNodeName);
+
+    // Convert 0-based iter to 1-based Modelica index
+    std::string constOneTensor = bodyBuilder.addInt64Constant(1, "one");
+    std::string loopVarTensor = bodyBuilder.addBinaryOp("Add", "i", constOneTensor);
+
+    // Create variable map with loop variable
+    std::map<std::string, std::string> bodyVarMap;
+    if (ctx.variableMap) {
+        bodyVarMap = *ctx.variableMap;
+    }
+    bodyVarMap[range.loopVar] = loopVarTensor;
+
+    // Create context for body expression
+    ConversionContext bodyCtx = ctx.withGraph(bodyGraph);
+    bodyCtx.variableMap = &bodyVarMap;
+    bodyCtx.tensorPrefix = loopNodeName + "_";
+
+    // Convert body expression
+    std::string bodyResultTensor = convert(bodyExpr, bodyCtx);
+
+    // Unsqueeze to make it [1] shape for scan output
+    std::string unsqueezedResult = bodyBuilder.addUnsqueeze(bodyResultTensor, {0});
+
+    // Add scan output (accumulated across iterations)
+    std::string scanOutputName = loopNodeName + "_scan_out";
+    auto* scanOutput = bodyGraph->add_output();
+    scanOutput->set_name(scanOutputName);
+    auto* scanOutType = scanOutput->mutable_type()->mutable_tensor_type();
+    scanOutType->set_elem_type(onnx::TensorProto::DOUBLE);
+    scanOutType->mutable_shape()->add_dim()->set_dim_value(1);
+
+    // Identity to connect body result to scan output
+    auto* identityNode = bodyGraph->add_node();
+    identityNode->set_op_type("Identity");
+    identityNode->set_name(loopNodeName + "_scan_identity");
+    identityNode->add_input(unsqueezedResult);
+    identityNode->add_output(scanOutputName);
+
+    // Add loop output (scan outputs become array)
+    std::string loopOutputTensor = loopNodeName + "_result";
+    loopNode->add_output(loopOutputTensor);
+
+    // Squeeze the result from [n, 1] to [n]
+    std::string squeezedResult = builder.makeTensorName("array_result");
+    auto* squeezeNode = ctx.graph->add_node();
+    squeezeNode->set_op_type("Squeeze");
+    squeezeNode->set_name(squeezedResult + "_Squeeze");
+    squeezeNode->add_input(loopOutputTensor);
+    std::string axesTensor = builder.addInt64ArrayConstant({1});
+    squeezeNode->add_input(axesTensor);
+    squeezeNode->add_output(squeezedResult);
+
+    return squeezedResult;
+}
+
+// -----------------------------------------------------------------------------
+// Reduction Expression
+// -----------------------------------------------------------------------------
+
+std::string ExpressionConverter::convertReductionExpression(
+    const std::string& reductionOp,
+    basemodelica::BaseModelicaParser::ExpressionContext* bodyExpr,
+    basemodelica::BaseModelicaParser::ForIndexContext* forIndex,
+    const ConversionContext& ctx) {
+
+    auto builder = ctx.builder();
+
+    // Parse the for-loop range using shared helper
+    ForLoopRange range = parseForLoopRangeFromIndex(forIndex);
+
+    // Create ONNX Loop node
+    std::string loopNodeName = builder.makeTensorName("reduce_" + reductionOp);
+    std::string tripCountTensor = builder.addInt64Constant(range.tripCount(), "n_" + loopNodeName);
+    std::string condTensor = builder.addBoolConstant(true);
+
+    // Initial accumulator value (0 for sum, 1 for product)
+    std::string initAccumTensor;
+    if (reductionOp == "sum") {
+        initAccumTensor = builder.addDoubleConstant(0.0);
+    } else if (reductionOp == "product") {
+        initAccumTensor = builder.addDoubleConstant(1.0);
+    } else {
+        throw std::runtime_error("Unknown reduction operation: " + reductionOp);
+    }
+
+    auto* loopNode = ctx.graph->add_node();
+    loopNode->set_op_type("Loop");
+    loopNode->set_name(loopNodeName);
+    loopNode->add_input(tripCountTensor);
+    loopNode->add_input(condTensor);
+    loopNode->add_input(initAccumTensor);  // Loop-carried accumulator
+
+    // Create loop body graph
+    auto* bodyAttr = loopNode->add_attribute();
+    bodyAttr->set_name("body");
+    bodyAttr->set_type(onnx::AttributeProto::GRAPH);
+    auto* bodyGraph = bodyAttr->mutable_g();
+    bodyGraph->set_name("reduction_body");
+
+    // Set up loop body standard inputs (iter, cond)
+    setupLoopBodyIO(bodyGraph, loopNodeName);
+
+    // Add accumulator input to body
+    std::string accumInputName = loopNodeName + "_accum_in";
+    auto* accumInput = bodyGraph->add_input();
+    accumInput->set_name(accumInputName);
+    auto* accumInputType = accumInput->mutable_type()->mutable_tensor_type();
+    accumInputType->set_elem_type(onnx::TensorProto::DOUBLE);
+    accumInputType->mutable_shape();  // Scalar
+
+    // Create body builder
+    auto bodyBuilder = builder.forSubgraph(bodyGraph, loopNodeName);
+
+    // Convert 0-based iter to 1-based Modelica index
+    std::string constOneTensor = bodyBuilder.addInt64Constant(1, "one");
+    std::string loopVarTensor = bodyBuilder.addBinaryOp("Add", "i", constOneTensor);
+
+    // Create variable map with loop variable
+    std::map<std::string, std::string> bodyVarMap;
+    if (ctx.variableMap) {
+        bodyVarMap = *ctx.variableMap;
+    }
+    bodyVarMap[range.loopVar] = loopVarTensor;
+
+    // Create context for body expression
+    ConversionContext bodyCtx = ctx.withGraph(bodyGraph);
+    bodyCtx.variableMap = &bodyVarMap;
+    bodyCtx.tensorPrefix = loopNodeName + "_";
+
+    // Convert body expression
+    std::string bodyResultTensor = convert(bodyExpr, bodyCtx);
+
+    // Apply reduction operation: accum_out = accum_in op body_result
+    std::string onnxOp = (reductionOp == "sum") ? "Add" : "Mul";
+    std::string accumOutputTensor = bodyBuilder.addBinaryOp(onnxOp, accumInputName, bodyResultTensor);
+
+    // Add accumulator output to body
+    std::string accumOutputName = loopNodeName + "_accum_out";
+    auto* accumOutput = bodyGraph->add_output();
+    accumOutput->set_name(accumOutputName);
+    auto* accumOutputType = accumOutput->mutable_type()->mutable_tensor_type();
+    accumOutputType->set_elem_type(onnx::TensorProto::DOUBLE);
+    accumOutputType->mutable_shape();  // Scalar
+
+    // Identity to connect to output
+    auto* identityNode = bodyGraph->add_node();
+    identityNode->set_op_type("Identity");
+    identityNode->set_name(loopNodeName + "_accum_identity");
+    identityNode->add_input(accumOutputTensor);
+    identityNode->add_output(accumOutputName);
+
+    // Add loop output (final accumulator value)
+    std::string loopOutputTensor = loopNodeName + "_result";
+    loopNode->add_output(loopOutputTensor);
+
+    return loopOutputTensor;
 }
 
 } // namespace lacemodelica

@@ -1,0 +1,123 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2025 Joris Gillis, YACODA
+
+//! base 0.1.0
+package 'Reduction'
+  model 'Reduction' "Test model with reduction operations (sum, product)"
+    parameter Real 'a'[3] "Input array";
+    parameter Real 'b'[3] "Second input array";
+
+    Real 'x'(start = 0.0);
+    Real 'sumResult' "Sum reduction";
+    Real 'productResult' "Product reduction";
+    Real 'dotProduct' "Dot product using sum reduction";
+
+  equation
+    der('x') = 0.1;
+    // Sum reduction: sum(expr for i in 1:n)
+    'sumResult' = sum('a'[i] for i in 1:3);
+    // Product reduction: product(expr for i in 1:n)
+    'productResult' = product('a'[i] for i in 1:3);
+    // Dot product: sum(a[i] * b[i] for i in 1:n)
+    'dotProduct' = sum('a'[i] * 'b'[i] for i in 1:3);
+
+  end 'Reduction';
+end 'Reduction';
+
+// @onnx-test-reference
+// Python reference implementation for ONNX runtime testing
+// def reference_implementation(inputs):
+//     import numpy as np
+//     outputs = {}
+//
+//     # Extract inputs
+//     x = inputs['x']
+//     der_x = inputs["der(x)"]
+//     a = inputs['a']
+//     b = inputs['b']
+//     sumResult = inputs['sumResult']
+//     productResult = inputs['productResult']
+//     dotProduct = inputs['dotProduct']
+//
+//     # Equation 0: der(x) = 0.1
+//     outputs['eq[0]'] = der_x - 0.1
+//
+//     # Equation 1: sumResult = sum(a[i] for i in 1:3)
+//     expected_sum = sum(a[i] for i in range(3))
+//     outputs['eq[1]'] = sumResult - expected_sum
+//
+//     # Equation 2: productResult = product(a[i] for i in 1:3)
+//     expected_product = 1.0
+//     for i in range(3):
+//         expected_product *= a[i]
+//     outputs['eq[2]'] = productResult - expected_product
+//
+//     # Equation 3: dotProduct = sum(a[i] * b[i] for i in 1:3)
+//     expected_dot = sum(a[i] * b[i] for i in range(3))
+//     outputs['eq[3]'] = dotProduct - expected_dot
+//
+//     # Initial value
+//     outputs['start[0]'] = np.array(0.0)
+//
+//     return outputs
+//
+// @onnx-test-case
+// # Test case 1: a = [1.0, 2.0, 3.0], b = [2.0, 3.0, 4.0]
+// import numpy as np
+// x = 0.0
+// der_x = 0.1
+// a = np.array([1.0, 2.0, 3.0])
+// b = np.array([2.0, 3.0, 4.0])
+// sumResult = 6.0  # 1 + 2 + 3
+// productResult = 6.0  # 1 * 2 * 3
+// dotProduct = 20.0  # 1*2 + 2*3 + 3*4 = 2 + 6 + 12
+// {
+//   "x": np.array(x),
+//   "der(x)": np.array(der_x),
+//   "a": a,
+//   "b": b,
+//   "sumResult": np.array(sumResult),
+//   "productResult": np.array(productResult),
+//   "dotProduct": np.array(dotProduct)
+// }
+//
+// @onnx-test-case
+// # Test case 2: a = [0.5, 1.0, 1.5], b = [1.0, 1.0, 1.0]
+// import numpy as np
+// x = 1.0
+// der_x = 0.1
+// a = np.array([0.5, 1.0, 1.5])
+// b = np.array([1.0, 1.0, 1.0])
+// sumResult = 3.0  # 0.5 + 1.0 + 1.5
+// productResult = 0.75  # 0.5 * 1.0 * 1.5
+// dotProduct = 3.0  # 0.5*1 + 1*1 + 1.5*1
+// {
+//   "x": np.array(x),
+//   "der(x)": np.array(der_x),
+//   "a": a,
+//   "b": b,
+//   "sumResult": np.array(sumResult),
+//   "productResult": np.array(productResult),
+//   "dotProduct": np.array(dotProduct)
+// }
+//
+// @onnx-test-case
+// # Test case 3: a = [2.0, 2.0, 2.0], b = [3.0, 3.0, 3.0]
+// import numpy as np
+// x = 2.0
+// der_x = 0.1
+// a = np.array([2.0, 2.0, 2.0])
+// b = np.array([3.0, 3.0, 3.0])
+// sumResult = 6.0  # 2 + 2 + 2
+// productResult = 8.0  # 2 * 2 * 2
+// dotProduct = 18.0  # 2*3 + 2*3 + 2*3 = 6 + 6 + 6
+// {
+//   "x": np.array(x),
+//   "der(x)": np.array(der_x),
+//   "a": a,
+//   "b": b,
+//   "sumResult": np.array(sumResult),
+//   "productResult": np.array(productResult),
+//   "dotProduct": np.array(dotProduct)
+// }
+//
