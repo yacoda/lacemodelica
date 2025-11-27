@@ -268,9 +268,17 @@ void EquationGenerator::generateOutputs(
                                        " outputs, expected " + std::to_string(outputVarNames.size()));
             }
 
+            // Convert each LHS expression to a tensor name
+            auto outExprList = ParseTreeNavigator::findOutputExpressionList(eq.lhsContext);
+            auto lhsExprs = outExprList->expression();
+
             for (size_t j = 0; j < outputVarNames.size(); j++) {
                 std::string eqOutputName = prefix + "[" + std::to_string(i + j) + "]";
-                createEquationResidual(graph, outputVarNames[j], outputTensors[j], eqOutputName,
+
+                // Convert the LHS expression to get the proper tensor name (e.g., der('x') -> der(x))
+                std::string lhsTensor = ExpressionConverter::convert(lhsExprs[j], ctx);
+
+                createEquationResidual(graph, lhsTensor, outputTensors[j], eqOutputName,
                                        "eq_residual_" + std::to_string(i + j),
                                        false, "", eq.sourceFile, eq.sourceLine);
             }

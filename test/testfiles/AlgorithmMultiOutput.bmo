@@ -1,0 +1,153 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2025 Joris Gillis, YACODA
+
+//! base 0.1.0
+package 'AlgorithmMultiOutput'
+  // Multi-output function: returns two values
+  pure function 'splitfun'
+    input Real 'x';
+    output Real 'a';
+    output Real 'b';
+  algorithm
+    'a' := sin('x');
+    'b' := cos('x');
+  end 'splitfun';
+
+  // Multi-output function: returns three values
+  pure function 'trifun'
+    input Real 'x';
+    input Real 'y';
+    output Real 'sum';
+    output Real 'diff';
+    output Real 'prod';
+  algorithm
+    'sum' := 'x' + 'y';
+    'diff' := 'x' - 'y';
+    'prod' := 'x' * 'y';
+  end 'trifun';
+
+  // Caller function that uses multi-output assignment
+  pure function 'callerfun'
+    input Real 'in';
+    output Real 'out1';
+    output Real 'out2';
+    output Real 'out3';
+  algorithm
+    // Multi-output assignment: (a, b) := splitfun(x)
+    ('out1', 'out2') := 'splitfun'('in');
+    // Use second multi-output function
+    ('out1', 'out2', 'out3') := 'trifun'('out1', 'out2');
+  end 'callerfun';
+
+  model 'AlgorithmMultiOutput'
+    Real 'x'(start = 0.0);
+    Real 'y'(start = 0.0);
+    Real 'z'(start = 0.0);
+  equation
+    (der('x'), der('y'), der('z')) = 'callerfun'('x');
+  end 'AlgorithmMultiOutput';
+end 'AlgorithmMultiOutput';
+
+// @onnx-test-reference
+// Python reference implementation for ONNX runtime testing
+// def reference_implementation(inputs):
+//     import numpy as np
+//     outputs = {}
+//
+//     # Extract inputs
+//     x_val = inputs['x']
+//     der_x = inputs["der(x)"]
+//     der_y = inputs["der(y)"]
+//     der_z = inputs["der(z)"]
+//
+//     # Function splitfun: a = sin(x), b = cos(x)
+//     def splitfun(x):
+//         return np.sin(x), np.cos(x)
+//
+//     # Function trifun: sum = x+y, diff = x-y, prod = x*y
+//     def trifun(x, y):
+//         return x + y, x - y, x * y
+//
+//     # Function callerfun:
+//     # (out1, out2) := splitfun(in)  -> out1=sin(in), out2=cos(in)
+//     # (out1, out2, out3) := trifun(out1, out2)
+//     #   -> out1 = sin(in)+cos(in), out2 = sin(in)-cos(in), out3 = sin(in)*cos(in)
+//     def callerfun(inp):
+//         out1, out2 = splitfun(inp)
+//         out1, out2, out3 = trifun(out1, out2)
+//         return out1, out2, out3
+//
+//     # Compute expected derivatives
+//     expected_der_x, expected_der_y, expected_der_z = callerfun(x_val)
+//
+//     # Each component is a separate equation
+//     outputs['eq[0]'] = der_x - expected_der_x
+//     outputs['eq[1]'] = der_y - expected_der_y
+//     outputs['eq[2]'] = der_z - expected_der_z
+//
+//     # Initial values
+//     outputs['start[0]'] = np.array(0.0)
+//     outputs['start[1]'] = np.array(0.0)
+//     outputs['start[2]'] = np.array(0.0)
+//
+//     return outputs
+//
+// @onnx-test-case
+// # Test case 1: x = 0
+// import numpy as np
+// x = 0.0
+// y = 0.0  # unused but needed as model input
+// z = 0.0  # unused but needed as model input
+// # callerfun(0): splitfun(0) = (sin(0), cos(0)) = (0, 1)
+// #               trifun(0, 1) = (1, -1, 0)
+// der_x = 1.0   # sin(0) + cos(0) = 0 + 1 = 1
+// der_y = -1.0  # sin(0) - cos(0) = 0 - 1 = -1
+// der_z = 0.0   # sin(0) * cos(0) = 0 * 1 = 0
+// {
+//   "x": np.array(x),
+//   "y": np.array(y),
+//   "z": np.array(z),
+//   "der(x)": np.array(der_x),
+//   "der(y)": np.array(der_y),
+//   "der(z)": np.array(der_z)
+// }
+//
+// @onnx-test-case
+// # Test case 2: x = pi/4
+// import numpy as np
+// x = np.pi / 4
+// y = 0.0
+// z = 0.0
+// # sin(pi/4) = cos(pi/4) = sqrt(2)/2 ≈ 0.7071
+// s = np.sin(x)
+// c = np.cos(x)
+// der_x = s + c   # ≈ 1.4142
+// der_y = s - c   # ≈ 0
+// der_z = s * c   # ≈ 0.5
+// {
+//   "x": np.array(x),
+//   "y": np.array(y),
+//   "z": np.array(z),
+//   "der(x)": np.array(der_x),
+//   "der(y)": np.array(der_y),
+//   "der(z)": np.array(der_z)
+// }
+//
+// @onnx-test-case
+// # Test case 3: x = pi/2
+// import numpy as np
+// x = np.pi / 2
+// y = 0.0
+// z = 0.0
+// # sin(pi/2) = 1, cos(pi/2) = 0
+// der_x = 1.0   # 1 + 0
+// der_y = 1.0   # 1 - 0
+// der_z = 0.0   # 1 * 0
+// {
+//   "x": np.array(x),
+//   "y": np.array(y),
+//   "z": np.array(z),
+//   "der(x)": np.array(der_x),
+//   "der(y)": np.array(der_y),
+//   "der(z)": np.array(der_z)
+// }

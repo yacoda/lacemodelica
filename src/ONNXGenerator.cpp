@@ -121,6 +121,11 @@ void ONNXGenerator::createFunctionProto(
     auto* func_opset = functionProto->add_opset_import();
     func_opset->set_version(18);
 
+    // Also import the lacemodelica domain for functions that may call other custom functions
+    auto* lace_opset = functionProto->add_opset_import();
+    lace_opset->set_domain("lacemodelica");
+    lace_opset->set_version(1);
+
     for (const auto& input : func.inputs) {
         functionProto->add_input(input.name);
     }
@@ -134,6 +139,109 @@ void ONNXGenerator::createFunctionProto(
 
     for (size_t stmtIndex = 0; stmtIndex < func.algorithmStatements.size(); stmtIndex++) {
         const auto& stmt = func.algorithmStatements[stmtIndex];
+
+        // Check if this is a multi-output assignment: (a, b) := func(x)
+        auto* lhsOutputList = dynamic_cast<basemodelica::BaseModelicaParser::OutputExpressionListContext*>(stmt.lhsContext);
+        if (lhsOutputList) {
+            // Multi-output assignment
+            auto* stmtCtx = dynamic_cast<basemodelica::BaseModelicaParser::StatementContext*>(stmt.rhsContext);
+            if (!stmtCtx) {
+                throw std::runtime_error("Invalid multi-output statement structure");
+            }
+
+            // Extract function name and arguments
+            auto* funcCompRef = stmtCtx->componentReference();
+            auto* funcCallArgs = stmtCtx->functionCallArgs();
+            if (!funcCompRef || !funcCallArgs) {
+                throw std::runtime_error("Multi-output statement missing function call");
+            }
+
+            std::string funcName = stripQuotes(funcCompRef->IDENT(0)->getText());
+
+            // Extract LHS variable names
+            std::vector<std::string> outputVarNames;
+            for (auto* expr : lhsOutputList->expression()) {
+                outputVarNames.push_back(stripQuotes(expr->getText()));
+            }
+
+            try {
+                onnx::GraphProto tempGraph;
+                std::map<std::string, std::vector<std::string>> localDerivativeInputs;
+                ConversionContext funcCtx(info, &tempGraph, nodeCounter, &variableToTensor, &localDerivativeInputs);
+
+                // Convert function arguments
+                auto* funcArgs = funcCallArgs->functionArguments();
+                std::vector<std::string> argTensors;
+                if (funcArgs) {
+                    if (auto firstExpr = funcArgs->expression()) {
+                        argTensors.push_back(ExpressionConverter::convert(firstExpr, funcCtx));
+                    }
+                    auto nonFirst = funcArgs->functionArgumentsNonFirst();
+                    while (nonFirst) {
+                        if (auto funcArg = nonFirst->functionArgument()) {
+                            if (auto argExpr = funcArg->expression()) {
+                                argTensors.push_back(ExpressionConverter::convert(argExpr, funcCtx));
+                            }
+                        }
+                        nonFirst = nonFirst->functionArgumentsNonFirst();
+                    }
+                }
+
+                // Create function call node with multiple outputs
+                auto* callNode = tempGraph.add_node();
+                callNode->set_op_type(funcName);
+                callNode->set_domain("lacemodelica");
+                callNode->set_name(funcName + "_call_" + std::to_string(nodeCounter++));
+
+                for (const auto& argTensor : argTensors) {
+                    callNode->add_input(argTensor);
+                }
+
+                std::vector<std::string> outputTensors;
+                for (size_t i = 0; i < outputVarNames.size(); i++) {
+                    std::string outputTensor = "tensor_" + std::to_string(nodeCounter++);
+                    callNode->add_output(outputTensor);
+                    outputTensors.push_back(outputTensor);
+                }
+
+                // Copy initializers and nodes to functionProto
+                for (int i = 0; i < tempGraph.initializer_size(); i++) {
+                    const auto& init = tempGraph.initializer(i);
+                    auto* constNode = functionProto->add_node();
+                    constNode->set_op_type("Constant");
+                    constNode->set_name(init.name());
+                    constNode->add_output(init.name());
+
+                    auto* attr = constNode->add_attribute();
+                    attr->set_name("value");
+                    attr->set_type(onnx::AttributeProto::TENSOR);
+                    attr->mutable_t()->CopyFrom(init);
+
+                    addSourceLocationMetadata(constNode, stmt.sourceFile, stmt.sourceLine);
+                }
+
+                for (int i = 0; i < tempGraph.node_size(); i++) {
+                    auto* node = functionProto->add_node();
+                    node->CopyFrom(tempGraph.node(i));
+                    addSourceLocationMetadata(node, stmt.sourceFile, stmt.sourceLine);
+                }
+
+                // Map each output to its variable
+                for (size_t i = 0; i < outputVarNames.size(); i++) {
+                    variableToTensor[outputVarNames[i]] = outputTensors[i];
+                }
+
+            } catch (const std::exception& e) {
+                std::cerr << "Warning: Failed to convert multi-output statement";
+                if (!stmt.sourceFile.empty()) {
+                    std::cerr << " (" << stmt.sourceFile << ":" << stmt.sourceLine << ")";
+                }
+                std::cerr << ": " << e.what() << std::endl;
+                throw;
+            }
+
+            continue;  // Skip the rest of the loop for multi-output
+        }
 
         // Parse LHS to check for indexed assignment (e.g., result[1] := ...)
         auto* lhsCompRef = dynamic_cast<basemodelica::BaseModelicaParser::ComponentReferenceContext*>(stmt.lhsContext);

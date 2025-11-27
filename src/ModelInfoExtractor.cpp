@@ -572,10 +572,17 @@ void ModelInfoExtractor::extractFunctions(basemodelica::BaseModelicaParser::Base
             // According to grammar line 184:
             // statement: decoration? (componentReference (':=' expression | functionCallArgs) | ...)
 
-            // Check if this is an assignment statement (componentReference ':=' expression)
+            // Check if this is a simple assignment statement (componentReference ':=' expression)
             if (statement->componentReference() && statement->expression()) {
                 stmt.lhsContext = statement->componentReference();
                 stmt.rhsContext = statement->expression();
+                func.algorithmStatements.push_back(stmt);
+            }
+            // Check if this is a multi-output assignment: (a, b) := func(x)
+            // Grammar: '(' outputExpressionList ')' ':=' componentReference functionCallArgs
+            else if (statement->outputExpressionList() && statement->componentReference() && statement->functionCallArgs()) {
+                stmt.lhsContext = statement->outputExpressionList();
+                stmt.rhsContext = statement;  // Store the whole statement to access function call info
                 func.algorithmStatements.push_back(stmt);
             }
             // Note: We're skipping other statement types (function calls, if, for, while, etc.)
