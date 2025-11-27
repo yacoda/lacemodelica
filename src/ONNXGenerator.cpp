@@ -194,9 +194,10 @@ void ONNXGenerator::generateONNXModel(const ModelInfo& info, const std::string& 
 
     // Create ONNX outputs for equations
     int nodeCounter = 0;
-
-    // Track derivative inputs that need to be added (map from input name to shape info)
     std::map<std::string, std::vector<std::string>> derivativeInputs;
+
+    // Create conversion context for expression conversion
+    ConversionContext ctx(info, graph, nodeCounter, nullptr, &derivativeInputs);
 
     // Generate outputs for regular equations
     generateEquationOutputs(info.equations, "eq", info, graph, nodeCounter, derivativeInputs);
@@ -220,7 +221,7 @@ void ONNXGenerator::generateONNXModel(const ModelInfo& info, const std::string& 
             // Convert binding expression to ONNX
             std::string exprTensor;
             try {
-                exprTensor = convertExpression(var.bindingContext, info, graph, nodeCounter, nullptr, &derivativeInputs);
+                exprTensor = convertExpression(var.bindingContext, ctx);
             } catch (const std::exception& e) {
                 std::cerr << "Warning: Failed to convert binding expression for " << var.name;
                 if (!var.sourceFile.empty()) {
@@ -298,7 +299,7 @@ void ONNXGenerator::generateONNXModel(const ModelInfo& info, const std::string& 
         // Convert bound expression to ONNX
         std::string exprTensor;
         try {
-            exprTensor = convertExpression(context, info, graph, nodeCounter, nullptr, &derivativeInputs);
+            exprTensor = convertExpression(context, ctx);
         } catch (const std::exception& e) {
             std::cerr << "Warning: Failed to convert " << boundType << " expression for " << var.name;
             if (!var.sourceFile.empty()) {
@@ -476,9 +477,9 @@ void ONNXGenerator::generateEquationOutputs(
     int& nodeCounter,
     std::map<std::string, std::vector<std::string>>& derivativeInputs) {
 
-    std::cerr << "DEBUG: generateEquationOutputs called with " << equations.size() << " " << prefix << " equations" << std::endl;
+    ConversionContext ctx(info, graph, nodeCounter, nullptr, &derivativeInputs);
 
-    size_t equationOutputIndex = 0;  // Track equation output index separately from loop index
+    size_t equationOutputIndex = 0;
     for (size_t i = 0; i < equations.size(); i++) {
         const auto& eq = equations[i];
 
@@ -520,8 +521,7 @@ void ONNXGenerator::generateEquationOutputs(
 
         if (isMultiOutput) {
             // Handle multi-output function call
-            // RHS should be a function call that returns multiple outputs
-            std::vector<std::string> outputTensors = convertMultiOutputFunctionCall(eq.rhsContext, info, graph, nodeCounter, &derivativeInputs, outputVarNames.size());
+            std::vector<std::string> outputTensors = convertMultiOutputFunctionCall(eq.rhsContext, ctx, outputVarNames.size());
 
             if (outputTensors.size() != outputVarNames.size()) {
                 throw std::runtime_error("Multi-output function returned " + std::to_string(outputTensors.size()) +
@@ -559,7 +559,7 @@ void ONNXGenerator::generateEquationOutputs(
         try {
             // Convert LHS expression to ONNX graph
             try {
-                lhsTensor = convertExpression(eq.lhsContext, info, graph, nodeCounter, nullptr, &derivativeInputs);
+                lhsTensor = convertExpression(eq.lhsContext, ctx);
             } catch (const std::exception& e) {
                 std::cerr << "Error converting LHS of " << prefix << " equation " << i;
                 if (!eq.sourceFile.empty()) {
@@ -572,7 +572,7 @@ void ONNXGenerator::generateEquationOutputs(
 
             // Convert RHS expression to ONNX graph
             try {
-                rhsTensor = convertExpression(eq.rhsContext, info, graph, nodeCounter, nullptr, &derivativeInputs);
+                rhsTensor = convertExpression(eq.rhsContext, ctx);
             } catch (const std::exception& e) {
                 std::cerr << "Error converting RHS of " << prefix << " equation " << i;
                 if (!eq.sourceFile.empty()) {
@@ -715,8 +715,8 @@ size_t ONNXGenerator::generateIfEquation(
     // For: if c1 then v1 elseif c2 then v2 else v3
     // Build: If(c1, v1, If(c2, v2, v3))
 
-    std::string rhsTensor = buildIfEquationRhs(
-        expressions, allEquations, 0, info, graph, nodeCounter, nullptr, &derivativeInputs, "");
+    ConversionContext ifCtx(info, graph, nodeCounter, nullptr, &derivativeInputs);
+    std::string rhsTensor = buildIfEquationRhs(expressions, allEquations, 0, ifCtx);
 
     // Create residual: lhs_var - rhs_if_result = 0
     std::string eqOutputName = prefix + "[" + std::to_string(equationIndex) + "]";
@@ -745,33 +745,23 @@ std::string ONNXGenerator::buildIfEquationRhs(
     const std::vector<basemodelica::BaseModelicaParser::ExpressionContext*>& conditions,
     const std::vector<basemodelica::BaseModelicaParser::EquationContext*>& equations,
     size_t branchIndex,
-    const ModelInfo& info,
-    onnx::GraphProto* graph,
-    int& nodeCounter,
-    const std::map<std::string, std::string>* variableMap,
-    std::map<std::string, std::vector<std::string>>* derivativeInputs,
-    const std::string& tensorPrefix) {
+    const ConversionContext& ctx) {
 
-    // Base case: we're at the else branch (no more conditions)
+    // Base case: else branch (no more conditions)
     if (branchIndex >= conditions.size()) {
-        // This is the else branch - just convert the RHS of the last equation
         if (branchIndex < equations.size()) {
             auto* eqCtx = equations[branchIndex];
             auto* rhsExpr = eqCtx->expression();
             if (rhsExpr) {
-                return convertExpression(
-                    rhsExpr, info, graph, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
+                return convertExpression(rhsExpr, ctx);
             }
         }
-        // No else branch - use 0.0 as default
-        return createDoubleConstant(graph, 0.0, nodeCounter);
+        return createDoubleConstant(ctx.graph, 0.0, ctx.nodeCounter);
     }
 
-    // Convert condition
-    std::string condTensor = convertExpression(
-        conditions[branchIndex], info, graph, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
+    std::string condTensor = convertExpression(conditions[branchIndex], ctx);
 
-    // Create then branch subgraph - convert RHS of this branch's equation
+    // Create then branch subgraph
     onnx::GraphProto thenBranch;
     thenBranch.set_name("then_branch_" + std::to_string(branchIndex));
 
@@ -780,25 +770,21 @@ std::string ONNXGenerator::buildIfEquationRhs(
         auto* eqCtx = equations[branchIndex];
         auto* rhsExpr = eqCtx->expression();
         if (rhsExpr) {
-            thenResult = convertExpression(
-                rhsExpr, info, &thenBranch, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
+            thenResult = convertExpression(rhsExpr, ctx.withGraph(&thenBranch));
         }
     }
     if (thenResult.empty()) {
-        thenResult = createDoubleConstant(&thenBranch, 0.0, nodeCounter);
+        thenResult = createDoubleConstant(&thenBranch, 0.0, ctx.nodeCounter);
     }
     addScalarDoubleOutput(&thenBranch, thenResult);
 
-    // Create else branch subgraph - recursively build rest of if-elseif-else
+    // Create else branch subgraph recursively
     onnx::GraphProto elseBranch;
     elseBranch.set_name("else_branch_" + std::to_string(branchIndex));
-    std::string elseResult = buildIfEquationRhs(
-        conditions, equations, branchIndex + 1, info, &elseBranch, nodeCounter,
-        variableMap, derivativeInputs, tensorPrefix);
+    std::string elseResult = buildIfEquationRhs(conditions, equations, branchIndex + 1, ctx.withGraph(&elseBranch));
     addScalarDoubleOutput(&elseBranch, elseResult);
 
-    // Create If node with branches
-    return createIfNode(graph, condTensor, thenBranch, elseBranch, nodeCounter, "", "If_eq");
+    return createIfNode(ctx.graph, condTensor, thenBranch, elseBranch, ctx.nodeCounter, "", "If_eq");
 }
 
 size_t ONNXGenerator::generateForEquationLoop(
@@ -1216,10 +1202,9 @@ size_t ONNXGenerator::generateForEquationLoop(
         // Convert LHS and RHS with loop variable substitution
         std::string lhsTensor, rhsTensor;
         try {
-            // For body graph, we need to use variable names with "_in" suffix
-            // Pass loopNodeName as tensorPrefix to ensure unique tensor names in nested loops
-            lhsTensor = convertExpression(simpleExpr, info, bodyGraph, bodyNodeCounter, &loopVarMap, &derivativeInputs, loopNodeName);
-            rhsTensor = convertExpression(fullExpr, info, bodyGraph, bodyNodeCounter, &loopVarMap, &derivativeInputs, loopNodeName);
+            ConversionContext bodyCtx(info, bodyGraph, bodyNodeCounter, &loopVarMap, &derivativeInputs, loopNodeName);
+            lhsTensor = convertExpression(simpleExpr, bodyCtx);
+            rhsTensor = convertExpression(fullExpr, bodyCtx);
         } catch (const std::exception& e) {
             std::cerr << "Warning: Failed to convert equation " << eqIdx << " in for-loop: " << e.what() << std::endl;
             continue;
@@ -1324,10 +1309,10 @@ void ONNXGenerator::createFunctionProto(
             int startNodeCount = functionProto->node_size();
 
             // Create a temporary graph to build the expression nodes
-            // We'll add them to the function proto instead
             onnx::GraphProto tempGraph;
             std::map<std::string, std::vector<std::string>> localDerivativeInputs;
-            std::string rhsTensor = convertExpression(stmt.rhsContext, info, &tempGraph, nodeCounter, &variableToTensor, &localDerivativeInputs);
+            ConversionContext funcCtx(info, &tempGraph, nodeCounter, &variableToTensor, &localDerivativeInputs);
+            std::string rhsTensor = convertExpression(stmt.rhsContext, funcCtx);
 
             // Move nodes from tempGraph to functionProto
             for (int i = 0; i < tempGraph.node_size(); i++) {
@@ -1415,159 +1400,104 @@ collectFunctionArguments(basemodelica::BaseModelicaParser::FunctionArgumentsCont
 
 // Expression conversion functions
 
-std::string ONNXGenerator::convertExpression(
-    antlr4::ParserRuleContext* expr,
-    const ModelInfo& info,
-    onnx::GraphProto* graph,
-    int& nodeCounter,
-    const std::map<std::string, std::string>* variableMap,
-    std::map<std::string, std::vector<std::string>>* derivativeInputs,
-    const std::string& tensorPrefix) {
-
+std::string ONNXGenerator::convertExpression(antlr4::ParserRuleContext* expr, const ConversionContext& ctx) {
     if (!expr) {
         throw std::runtime_error("Null expression context");
     }
 
     // Try to cast to specific expression types
     if (auto* exprCtx = dynamic_cast<basemodelica::BaseModelicaParser::ExpressionContext*>(expr)) {
-        // Expression -> ExpressionNoDecoration -> (IfExpression | SimpleExpression)
         auto* exprNoDecoration = exprCtx->expressionNoDecoration();
         if (exprNoDecoration) {
-            // Check for if expression first
-            auto* ifExpr = exprNoDecoration->ifExpression();
-            if (ifExpr) {
-                return convertIfExpression(ifExpr, info, graph, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
+            if (auto* ifExpr = exprNoDecoration->ifExpression()) {
+                return convertIfExpression(ifExpr, ctx);
             }
-
-            auto* simpleExpr = exprNoDecoration->simpleExpression();
-            if (simpleExpr) {
-                return convertSimpleExpression(simpleExpr, info, graph, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
+            if (auto* simpleExpr = exprNoDecoration->simpleExpression()) {
+                return convertSimpleExpression(simpleExpr, ctx);
             }
         }
     } else if (auto* exprNoDecoration = dynamic_cast<basemodelica::BaseModelicaParser::ExpressionNoDecorationContext*>(expr)) {
-        // Handle ExpressionNoDecoration directly (e.g., from if expression conditions)
-        auto* ifExpr = exprNoDecoration->ifExpression();
-        if (ifExpr) {
-            return convertIfExpression(ifExpr, info, graph, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
+        if (auto* ifExpr = exprNoDecoration->ifExpression()) {
+            return convertIfExpression(ifExpr, ctx);
         }
-
-        auto* simpleExpr = exprNoDecoration->simpleExpression();
-        if (simpleExpr) {
-            return convertSimpleExpression(simpleExpr, info, graph, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
+        if (auto* simpleExpr = exprNoDecoration->simpleExpression()) {
+            return convertSimpleExpression(simpleExpr, ctx);
         }
     } else if (auto* simpleExpr = dynamic_cast<basemodelica::BaseModelicaParser::SimpleExpressionContext*>(expr)) {
-        return convertSimpleExpression(simpleExpr, info, graph, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
+        return convertSimpleExpression(simpleExpr, ctx);
     }
 
-    // Fallback: return placeholder
     throw std::runtime_error("Unsupported expression type: " + expr->getText());
 }
 
 std::string ONNXGenerator::convertIfExpression(
     basemodelica::BaseModelicaParser::IfExpressionContext* expr,
-    const ModelInfo& info,
-    onnx::GraphProto* graph,
-    int& nodeCounter,
-    const std::map<std::string, std::string>* variableMap,
-    std::map<std::string, std::vector<std::string>>* derivativeInputs,
-    const std::string& tensorPrefix) {
+    const ConversionContext& ctx) {
 
-    std::cerr << "Converting if expression" << std::endl;
-
-    // Get all expressions: [condition, then, [elseif cond, elseif then]*, else]
     auto expressions = expr->expressionNoDecoration();
 
-    // Need at least 3: if condition, then branch, else branch
     if (expressions.size() < 3) {
         throw std::runtime_error("Invalid if expression structure");
     }
-
-    // Need odd number of expressions: (cond, then), (elseif_cond, elseif_then)*, else
     if (expressions.size() % 2 != 1) {
         throw std::runtime_error("Invalid if expression structure: expected odd number of expressions");
     }
 
-    // Convert condition expression (should produce boolean tensor)
-    std::string condTensor = convertExpression(expressions[0], info, graph, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
+    std::string condTensor = convertExpression(expressions[0], ctx);
 
-    // Create then branch subgraph (shares nodeCounter for SSA compliance)
+    // Create then branch subgraph
     onnx::GraphProto thenBranch;
     thenBranch.set_name("then_branch");
-    std::string thenResult = convertExpression(expressions[1], info, &thenBranch, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
+    std::string thenResult = convertExpression(expressions[1], ctx.withGraph(&thenBranch));
     addScalarDoubleOutput(&thenBranch, thenResult);
 
     // Create else branch subgraph
     onnx::GraphProto elseBranch;
     elseBranch.set_name("else_branch");
+    auto elseCtx = ctx.withGraph(&elseBranch);
     std::string elseResult = (expressions.size() == 3)
-        ? convertExpression(expressions[2], info, &elseBranch, nodeCounter, variableMap, derivativeInputs, tensorPrefix)
-        : convertNestedIfElse(expressions, 2, info, &elseBranch, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
+        ? convertExpression(expressions[2], elseCtx)
+        : convertNestedIfElse(expressions, 2, elseCtx);
     addScalarDoubleOutput(&elseBranch, elseResult);
 
-    // Create If node with branches
-    std::string outputTensor = createIfNode(graph, condTensor, thenBranch, elseBranch, nodeCounter, tensorPrefix);
-    std::cerr << "Created If node with output: " << outputTensor << std::endl;
-    return outputTensor;
+    return createIfNode(ctx.graph, condTensor, thenBranch, elseBranch, ctx.nodeCounter, ctx.tensorPrefix);
 }
 
 std::string ONNXGenerator::convertNestedIfElse(
     const std::vector<basemodelica::BaseModelicaParser::ExpressionNoDecorationContext*>& expressions,
     size_t startIdx,
-    const ModelInfo& info,
-    onnx::GraphProto* graph,
-    int& nodeCounter,
-    const std::map<std::string, std::string>* variableMap,
-    std::map<std::string, std::vector<std::string>>* derivativeInputs,
-    const std::string& tensorPrefix) {
-
-    // expressions structure: [cond, then, elseif_cond1, elseif_then1, ..., else]
-    // startIdx points to the current condition (elseif condition or else value)
+    const ConversionContext& ctx) {
 
     size_t remaining = expressions.size() - startIdx;
 
     if (remaining == 1) {
-        // This is the final else value - just convert it
-        return convertExpression(expressions[startIdx], info, graph, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
+        return convertExpression(expressions[startIdx], ctx);
     }
 
-    // Build: If(condition, then, nested_else)
-    std::string condTensor = convertExpression(expressions[startIdx], info, graph, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
+    std::string condTensor = convertExpression(expressions[startIdx], ctx);
 
-    // Create then branch subgraph
     onnx::GraphProto thenBranch;
     thenBranch.set_name("then_branch");
-    std::string thenResult = convertExpression(expressions[startIdx + 1], info, &thenBranch, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
+    std::string thenResult = convertExpression(expressions[startIdx + 1], ctx.withGraph(&thenBranch));
     addScalarDoubleOutput(&thenBranch, thenResult);
 
-    // Create else branch subgraph (recursively builds the rest of the chain)
     onnx::GraphProto elseBranch;
     elseBranch.set_name("else_branch");
-    std::string elseResult = convertNestedIfElse(expressions, startIdx + 2, info, &elseBranch, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
+    std::string elseResult = convertNestedIfElse(expressions, startIdx + 2, ctx.withGraph(&elseBranch));
     addScalarDoubleOutput(&elseBranch, elseResult);
 
-    // Create If node with branches
-    std::string outputTensor = createIfNode(graph, condTensor, thenBranch, elseBranch, nodeCounter, tensorPrefix, "If_nested");
-    std::cerr << "Created nested If node with output: " << outputTensor << std::endl;
-    return outputTensor;
+    return createIfNode(ctx.graph, condTensor, thenBranch, elseBranch, ctx.nodeCounter, ctx.tensorPrefix, "If_nested");
 }
 
 std::string ONNXGenerator::convertSimpleExpression(
     basemodelica::BaseModelicaParser::SimpleExpressionContext* expr,
-    const ModelInfo& info,
-    onnx::GraphProto* graph,
-    int& nodeCounter,
-    const std::map<std::string, std::string>* variableMap,
-    std::map<std::string, std::vector<std::string>>* derivativeInputs,
-    const std::string& tensorPrefix) {
+    const ConversionContext& ctx) {
 
-    // SimpleExpression: logicalExpression+
-    // For now, assume single logical expression -> arithmetic expression
     auto logicalExprs = expr->logicalExpression();
     if (logicalExprs.empty()) {
         throw std::runtime_error("Empty simple expression");
     }
 
-    // Get first logical expression -> logical term -> logical factor -> relation -> arithmetic
     auto* logicalExpr = logicalExprs[0];
     auto logicalTerms = logicalExpr->logicalTerm();
     if (logicalTerms.empty()) {
@@ -1580,7 +1510,6 @@ std::string ONNXGenerator::convertSimpleExpression(
         throw std::runtime_error("Empty logical term");
     }
 
-    // Handle multiple logical factors connected by 'and'
     std::string resultTensor;
     for (size_t i = 0; i < logicalFactors.size(); i++) {
         auto* logicalFactor = logicalFactors[i];
@@ -1589,73 +1518,57 @@ std::string ONNXGenerator::convertSimpleExpression(
             throw std::runtime_error("No relation in logical factor");
         }
 
-        std::string factorTensor = convertRelation(relation, info, graph, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
+        std::string factorTensor = convertRelation(relation, ctx);
 
-        // Apply NOT if present (logicalFactor has >1 children when 'not' prefix exists)
         if (logicalFactor->children.size() > 1) {
-            factorTensor = createUnaryOp(graph, "Not", factorTensor, nodeCounter, tensorPrefix);
+            factorTensor = createUnaryOp(ctx.graph, "Not", factorTensor, ctx.nodeCounter, ctx.tensorPrefix);
         }
 
-        // Chain with AND for subsequent factors
-        resultTensor = (i == 0) ? factorTensor : createBinaryOp(graph, "And", resultTensor, factorTensor, nodeCounter, tensorPrefix);
+        resultTensor = (i == 0) ? factorTensor
+            : createBinaryOp(ctx.graph, "And", resultTensor, factorTensor, ctx.nodeCounter, ctx.tensorPrefix);
     }
 
     return resultTensor;
 }
 
-// Helper function to convert a relation to ONNX
 std::string ONNXGenerator::convertRelation(
     basemodelica::BaseModelicaParser::RelationContext* relation,
-    const ModelInfo& info,
-    onnx::GraphProto* graph,
-    int& nodeCounter,
-    const std::map<std::string, std::string>* variableMap,
-    std::map<std::string, std::vector<std::string>>* derivativeInputs,
-    const std::string& tensorPrefix) {
+    const ConversionContext& ctx) {
 
     auto arithmeticExprs = relation->arithmeticExpression();
     if (arithmeticExprs.empty()) {
         throw std::runtime_error("No arithmetic expression in relation");
     }
 
-    // Check if there's a relational operator (comparison)
     if (arithmeticExprs.size() > 1) {
         auto relOp = relation->relationalOperator();
         if (!relOp) {
             throw std::runtime_error("Multiple arithmetic expressions but no relational operator");
         }
 
-        std::string leftTensor = convertArithmeticExpression(arithmeticExprs[0], info, graph, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
-        std::string rightTensor = convertArithmeticExpression(arithmeticExprs[1], info, graph, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
+        std::string leftTensor = convertArithmeticExpression(arithmeticExprs[0], ctx);
+        std::string rightTensor = convertArithmeticExpression(arithmeticExprs[1], ctx);
 
         std::string opText = relOp->getText();
 
         auto it = kRelationalOpMap.find(opText);
         if (it != kRelationalOpMap.end()) {
-            return createBinaryOp(graph, it->second, leftTensor, rightTensor, nodeCounter, tensorPrefix);
+            return createBinaryOp(ctx.graph, it->second, leftTensor, rightTensor, ctx.nodeCounter, ctx.tensorPrefix);
         } else if (opText == "<>") {
-            // Not equal: Equal followed by Not
-            std::string equalResult = createBinaryOp(graph, "Equal", leftTensor, rightTensor, nodeCounter, tensorPrefix);
-            return createUnaryOp(graph, "Not", equalResult, nodeCounter, tensorPrefix);
+            std::string equalResult = createBinaryOp(ctx.graph, "Equal", leftTensor, rightTensor, ctx.nodeCounter, ctx.tensorPrefix);
+            return createUnaryOp(ctx.graph, "Not", equalResult, ctx.nodeCounter, ctx.tensorPrefix);
         } else {
             throw std::runtime_error("Unsupported relational operator: " + opText);
         }
     }
 
-    // No comparison, just return the arithmetic expression
-    return convertArithmeticExpression(arithmeticExprs[0], info, graph, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
+    return convertArithmeticExpression(arithmeticExprs[0], ctx);
 }
 
 std::string ONNXGenerator::convertArithmeticExpression(
     basemodelica::BaseModelicaParser::ArithmeticExpressionContext* expr,
-    const ModelInfo& info,
-    onnx::GraphProto* graph,
-    int& nodeCounter,
-    const std::map<std::string, std::string>* variableMap,
-    std::map<std::string, std::vector<std::string>>* derivativeInputs,
-    const std::string& tensorPrefix) {
+    const ConversionContext& ctx) {
 
-    // ArithmeticExpression: addOperator? term (addOperator term)*
     auto terms = expr->term();
     auto addOps = expr->addOperator();
 
@@ -1663,29 +1576,25 @@ std::string ONNXGenerator::convertArithmeticExpression(
         throw std::runtime_error("Empty arithmetic expression");
     }
 
-    // Check if there's a leading addOperator (e.g., unary minus)
     size_t termIndex = 0;
     size_t opIndex = 0;
 
-    // Convert first term
-    std::string result = convertTerm(terms[termIndex++], info, graph, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
+    std::string result = convertTerm(terms[termIndex++], ctx);
 
-    // If we have more addOps than remaining terms, first addOp was a leading unary
+    // Handle leading unary operator
     if (addOps.size() > terms.size() - 1) {
         std::string opText = addOps[opIndex++]->getText();
         if (opText == "-") {
-            result = createUnaryOp(graph, "Neg", result, nodeCounter, tensorPrefix);
-        } else if (opText != "+") {  // Unary plus is a no-op
+            result = createUnaryOp(ctx.graph, "Neg", result, ctx.nodeCounter, ctx.tensorPrefix);
+        } else if (opText != "+") {
             throw std::runtime_error("Unsupported leading operator: " + opText);
         }
     }
 
-    // Process remaining terms with binary operators
     while (opIndex < addOps.size()) {
         std::string opText = addOps[opIndex++]->getText();
-        std::string rightTensor = convertTerm(terms[termIndex++], info, graph, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
+        std::string rightTensor = convertTerm(terms[termIndex++], ctx);
 
-        // Map Modelica operators to ONNX operators (element-wise variants are the same)
         std::string onnxOp;
         if (opText == "+" || opText == ".+") {
             onnxOp = "Add";
@@ -1695,33 +1604,24 @@ std::string ONNXGenerator::convertArithmeticExpression(
             throw std::runtime_error("Unsupported add operator: " + opText);
         }
 
-        result = createBinaryOp(graph, onnxOp, result, rightTensor, nodeCounter, tensorPrefix);
+        result = createBinaryOp(ctx.graph, onnxOp, result, rightTensor, ctx.nodeCounter, ctx.tensorPrefix);
     }
 
     return result;
 }
 
-// Helper function to check if a tensor represents a matrix (has 2 dimensions)
 static bool isMatrixVariable(const std::string& tensorName, const ModelInfo& info) {
-    // Check if tensor name matches a variable name
     auto it = info.variableIndex.find(tensorName);
     if (it != info.variableIndex.end()) {
-        const auto& var = info.variables[it->second];
-        return var.dimensions.size() == 2;
+        return info.variables[it->second].dimensions.size() == 2;
     }
     return false;
 }
 
 std::string ONNXGenerator::convertTerm(
     basemodelica::BaseModelicaParser::TermContext* expr,
-    const ModelInfo& info,
-    onnx::GraphProto* graph,
-    int& nodeCounter,
-    const std::map<std::string, std::string>* variableMap,
-    std::map<std::string, std::vector<std::string>>* derivativeInputs,
-    const std::string& tensorPrefix) {
+    const ConversionContext& ctx) {
 
-    // Term: factor (mulOperator factor)*
     auto factors = expr->factor();
     auto mulOps = expr->mulOperator();
 
@@ -1729,20 +1629,16 @@ std::string ONNXGenerator::convertTerm(
         throw std::runtime_error("Empty term");
     }
 
-    // Convert first factor
-    std::string result = convertFactor(factors[0], info, graph, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
+    std::string result = convertFactor(factors[0], ctx);
 
-    // Process remaining factors with operators
     for (size_t i = 0; i < mulOps.size(); i++) {
         std::string opText = mulOps[i]->getText();
-        std::string rightTensor = convertFactor(factors[i + 1], info, graph, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
+        std::string rightTensor = convertFactor(factors[i + 1], ctx);
 
-        // Determine ONNX operator
         std::string onnxOp;
         if (opText == "*") {
-            // Use MatMul for matrix-matrix multiplication, Mul otherwise
-            bool leftIsMatrix = isMatrixVariable(result, info);
-            bool rightIsMatrix = isMatrixVariable(rightTensor, info);
+            bool leftIsMatrix = isMatrixVariable(result, ctx.info);
+            bool rightIsMatrix = isMatrixVariable(rightTensor, ctx.info);
             onnxOp = (leftIsMatrix && rightIsMatrix) ? "MatMul" : "Mul";
         } else if (opText == "/" || opText == "./") {
             onnxOp = "Div";
@@ -1752,7 +1648,7 @@ std::string ONNXGenerator::convertTerm(
             throw std::runtime_error("Unsupported mul operator: " + opText);
         }
 
-        result = createBinaryOp(graph, onnxOp, result, rightTensor, nodeCounter, tensorPrefix);
+        result = createBinaryOp(ctx.graph, onnxOp, result, rightTensor, ctx.nodeCounter, ctx.tensorPrefix);
     }
 
     return result;
@@ -1760,41 +1656,27 @@ std::string ONNXGenerator::convertTerm(
 
 std::string ONNXGenerator::convertFactor(
     basemodelica::BaseModelicaParser::FactorContext* expr,
-    const ModelInfo& info,
-    onnx::GraphProto* graph,
-    int& nodeCounter,
-    const std::map<std::string, std::string>* variableMap,
-    std::map<std::string, std::vector<std::string>>* derivativeInputs,
-    const std::string& tensorPrefix) {
+    const ConversionContext& ctx) {
 
-    // Factor: primary (('^' | '.^') primary)?
     auto primaries = expr->primary();
 
     if (primaries.empty()) {
         throw std::runtime_error("Empty factor");
     }
 
-    std::string result = convertPrimary(primaries[0], info, graph, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
+    std::string result = convertPrimary(primaries[0], ctx);
 
-    // Handle power operator if present
     if (primaries.size() > 1) {
-        std::string exponentTensor = convertPrimary(primaries[1], info, graph, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
-        result = createBinaryOp(graph, "Pow", result, exponentTensor, nodeCounter, tensorPrefix);
+        std::string exponentTensor = convertPrimary(primaries[1], ctx);
+        result = createBinaryOp(ctx.graph, "Pow", result, exponentTensor, ctx.nodeCounter, ctx.tensorPrefix);
     }
 
     return result;
 }
 
-// Helper function to convert der() function calls
-// Handles simple variable derivatives, array element derivatives, and complex expression derivatives
 std::string ONNXGenerator::convertDerFunctionCall(
     basemodelica::BaseModelicaParser::PrimaryContext* expr,
-    const ModelInfo& info,
-    onnx::GraphProto* graph,
-    int& nodeCounter,
-    const std::map<std::string, std::string>* variableMap,
-    std::map<std::string, std::vector<std::string>>* derivativeInputs,
-    const std::string& tensorPrefix) {
+    const ConversionContext& ctx) {
 
     auto funcCallArgs = expr->functionCallArgs();
     if (!funcCallArgs) {
@@ -1826,7 +1708,7 @@ std::string ONNXGenerator::convertDerFunctionCall(
         }
     }
 
-    // Check if the argument is an array element access like x[1]
+    // Check if the argument is an array element access
     basemodelica::BaseModelicaParser::ComponentReferenceContext* compRef = nullptr;
     if (!isSimpleVariable) {
         auto primary = ParseTreeNavigator::findPrimary(argExpr);
@@ -1837,65 +1719,59 @@ std::string ONNXGenerator::convertDerFunctionCall(
     if (compRef && !compRef->arraySubscripts().empty()) {
         std::string baseVarName = stripQuotes(compRef->IDENT(0)->getText());
 
-        if (derivativeInputs) {
+        if (ctx.derivativeInputs) {
             std::string derInputName = "der('" + baseVarName + "')";
 
-            if (derivativeInputs->find(derInputName) == derivativeInputs->end()) {
+            if (ctx.derivativeInputs->find(derInputName) == ctx.derivativeInputs->end()) {
                 std::vector<std::string> dimensions;
-                const Variable* var = info.findVariable(baseVarName);
+                const Variable* var = ctx.info.findVariable(baseVarName);
                 if (var) {
                     dimensions = var->dimensions;
                 }
-                (*derivativeInputs)[derInputName] = dimensions;
+                (*ctx.derivativeInputs)[derInputName] = dimensions;
             }
 
             auto subscriptList = compRef->arraySubscripts()[0]->subscript();
-            return applyArraySubscripts(graph, derInputName, subscriptList, variableMap, nodeCounter, tensorPrefix);
+            return applyArraySubscripts(ctx.graph, derInputName, subscriptList, ctx.variableMap, ctx.nodeCounter, ctx.tensorPrefix);
         }
     }
 
-    // Handle simple variable derivative: der(x) -> input "der('x')"
-    if (isSimpleVariable && derivativeInputs) {
+    // Handle simple variable derivative
+    if (isSimpleVariable && ctx.derivativeInputs) {
         std::string derInputName = "der('" + varName + "')";
 
-        if (derivativeInputs->find(derInputName) == derivativeInputs->end()) {
+        if (ctx.derivativeInputs->find(derInputName) == ctx.derivativeInputs->end()) {
             std::vector<std::string> dimensions;
-            const Variable* var = info.findVariable(varName);
+            const Variable* var = ctx.info.findVariable(varName);
             if (var) {
                 dimensions = var->dimensions;
             }
-            (*derivativeInputs)[derInputName] = dimensions;
+            (*ctx.derivativeInputs)[derInputName] = dimensions;
         }
 
         return derInputName;
     }
 
     // Complex expression derivative: create a Der node
-    std::string inputTensor = convertExpression(argExpr, info, graph, nodeCounter, variableMap, derivativeInputs);
+    std::string inputTensor = convertExpression(argExpr, ctx);
 
-    auto* node = graph->add_node();
-    std::string outputTensor = makeTensorName(tensorPrefix, nodeCounter);
+    auto* node = ctx.graph->add_node();
+    std::string outputTensor = makeTensorName(ctx.tensorPrefix, ctx.nodeCounter);
 
     node->set_op_type("Der");
     node->set_domain("lacemodelica");
-    node->set_name("Der_" + std::to_string(nodeCounter));
+    node->set_name("Der_" + std::to_string(ctx.nodeCounter));
     node->add_input(inputTensor);
     node->add_output(outputTensor);
 
     return outputTensor;
 }
 
-// Helper function to convert user-defined function calls
 std::string ONNXGenerator::convertUserFunctionCall(
     const std::string& funcName,
     basemodelica::BaseModelicaParser::PrimaryContext* expr,
     const Function* func,
-    const ModelInfo& info,
-    onnx::GraphProto* graph,
-    int& nodeCounter,
-    const std::map<std::string, std::string>* variableMap,
-    std::map<std::string, std::vector<std::string>>* derivativeInputs,
-    const std::string& tensorPrefix) {
+    const ConversionContext& ctx) {
 
     auto funcCallArgs = expr->functionCallArgs();
     auto funcArgs = funcCallArgs->functionArguments();
@@ -1914,17 +1790,15 @@ std::string ONNXGenerator::convertUserFunctionCall(
 
     std::vector<std::string> argTensors;
     for (size_t i = 0; i < arguments.size(); i++) {
-        std::string argTensor = convertExpression(
-            arguments[i], info, graph, nodeCounter, variableMap, derivativeInputs);
-        argTensors.push_back(argTensor);
+        argTensors.push_back(convertExpression(arguments[i], ctx));
     }
 
-    auto* node = graph->add_node();
-    std::string outputTensor = makeTensorName(tensorPrefix, nodeCounter);
+    auto* node = ctx.graph->add_node();
+    std::string outputTensor = makeTensorName(ctx.tensorPrefix, ctx.nodeCounter);
 
     node->set_op_type(funcName);
     node->set_domain("lacemodelica");
-    node->set_name(funcName + "_call_" + std::to_string(nodeCounter));
+    node->set_name(funcName + "_call_" + std::to_string(ctx.nodeCounter));
 
     for (const auto& argTensor : argTensors) {
         node->add_input(argTensor);
@@ -1936,47 +1810,32 @@ std::string ONNXGenerator::convertUserFunctionCall(
 
 std::string ONNXGenerator::convertPrimary(
     basemodelica::BaseModelicaParser::PrimaryContext* expr,
-    const ModelInfo& info,
-    onnx::GraphProto* graph,
-    int& nodeCounter,
-    const std::map<std::string, std::string>* variableMap,
-    std::map<std::string, std::vector<std::string>>* derivativeInputs,
-    const std::string& tensorPrefix) {
-
-    // Handle different primary types
+    const ConversionContext& ctx) {
 
     // 1. Number literal
     if (expr->UNSIGNED_NUMBER()) {
         std::string value = expr->UNSIGNED_NUMBER()->getText();
-
-        // Create constant tensor (scalar - empty dims for rank 0)
-        auto* constant = graph->add_initializer();
-        std::string constName = "const_" + std::to_string(nodeCounter++);
+        auto* constant = ctx.graph->add_initializer();
+        std::string constName = "const_" + std::to_string(ctx.nodeCounter++);
         constant->set_name(constName);
         constant->set_data_type(onnx::TensorProto::DOUBLE);
-        // Scalars have empty dims (rank 0)
         constant->add_double_data(std::stod(value));
-
         return constName;
     }
 
-    // 1b. Boolean literals (true/false)
+    // 1b. Boolean literals
     std::string text = expr->getText();
     if (text == "true" || text == "false") {
-        // Create constant boolean tensor
-        auto* constant = graph->add_initializer();
-        std::string constName = "const_" + std::to_string(nodeCounter++);
+        auto* constant = ctx.graph->add_initializer();
+        std::string constName = "const_" + std::to_string(ctx.nodeCounter++);
         constant->set_name(constName);
         constant->set_data_type(onnx::TensorProto::BOOL);
-        // Scalars have empty dims (rank 0)
         constant->add_int32_data(text == "true" ? 1 : 0);
-
         return constName;
     }
 
-    // 2. Function call (e.g., der(), sin(), cos()) - check BEFORE plain variable
+    // 2. Function call
     if (expr->functionCallArgs()) {
-        // Extract function name
         std::string funcName;
         if (expr->componentReference()) {
             funcName = stripQuotes(expr->componentReference()->getText());
@@ -1989,9 +1848,8 @@ std::string ONNXGenerator::convertPrimary(
             funcName = text.substr(0, parenPos);
         }
 
-        // Dispatch to appropriate handler
         if (funcName == "der") {
-            return convertDerFunctionCall(expr, info, graph, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
+            return convertDerFunctionCall(expr, ctx);
         }
 
         auto mathIt = kMathFunctionMap.find(funcName);
@@ -2000,51 +1858,45 @@ std::string ONNXGenerator::convertPrimary(
             if (!funcArgs || !funcArgs->expression()) {
                 throw std::runtime_error("Function " + funcName + " requires arguments");
             }
-            std::string argTensor = convertExpression(funcArgs->expression(), info, graph, nodeCounter, variableMap, derivativeInputs);
-            return createUnaryOp(graph, mathIt->second, argTensor, nodeCounter, tensorPrefix);
+            std::string argTensor = convertExpression(funcArgs->expression(), ctx);
+            return createUnaryOp(ctx.graph, mathIt->second, argTensor, ctx.nodeCounter, ctx.tensorPrefix);
         }
 
-        const Function* func = info.findFunction(funcName);
+        const Function* func = ctx.info.findFunction(funcName);
         if (func && !func->algorithmStatements.empty()) {
-            return convertUserFunctionCall(funcName, expr, func, info, graph, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
+            return convertUserFunctionCall(funcName, expr, func, ctx);
         }
 
         throw std::runtime_error("Unsupported function call: " + funcName);
     }
 
-    // 3. Component reference (variable) - check AFTER function calls
+    // 3. Component reference (variable)
     if (expr->componentReference()) {
         auto compRef = expr->componentReference();
-
-        // Get base variable name (first IDENT)
         std::string varName = stripQuotes(compRef->IDENT(0)->getText());
 
-        // Get the base tensor (from inputs or variableMap)
         std::string baseTensor;
-        if (variableMap && variableMap->find(varName) != variableMap->end()) {
-            baseTensor = variableMap->at(varName);
+        if (ctx.variableMap && ctx.variableMap->find(varName) != ctx.variableMap->end()) {
+            baseTensor = ctx.variableMap->at(varName);
         } else {
-            baseTensor = varName;  // Variable inputs are already in the graph
+            baseTensor = varName;
         }
 
-        // Check for array subscripts
         auto subscripts = compRef->arraySubscripts();
         if (subscripts.empty()) {
             return baseTensor;
         }
 
-        // Apply array subscripts using the shared helper
         auto subscriptList = subscripts[0]->subscript();
-        return applyArraySubscripts(graph, baseTensor, subscriptList, variableMap, nodeCounter, tensorPrefix);
+        return applyArraySubscripts(ctx.graph, baseTensor, subscriptList, ctx.variableMap, ctx.nodeCounter, ctx.tensorPrefix);
     }
 
     // 4. Parenthesized expression
     if (expr->outputExpressionList()) {
-        // (expression) - just convert the expression inside
         auto outputList = expr->outputExpressionList();
         auto expressions = outputList->expression();
         if (!expressions.empty()) {
-            return convertExpression(expressions[0], info, graph, nodeCounter, variableMap, derivativeInputs, tensorPrefix);
+            return convertExpression(expressions[0], ctx);
         }
     }
 
@@ -2053,26 +1905,19 @@ std::string ONNXGenerator::convertPrimary(
 
 std::vector<std::string> ONNXGenerator::convertMultiOutputFunctionCall(
     antlr4::ParserRuleContext* expr,
-    const ModelInfo& info,
-    onnx::GraphProto* graph,
-    int& nodeCounter,
-    std::map<std::string, std::vector<std::string>>* derivativeInputs,
+    const ConversionContext& ctx,
     size_t expectedOutputCount) {
 
-    // Navigate the expression tree to find the function call
-    // The RHS should be: expression -> ... -> primary -> componentReference + functionCallArgs
     auto primaryCtx = ParseTreeNavigator::findPrimary(expr);
 
     if (!primaryCtx || !primaryCtx->componentReference() || !primaryCtx->functionCallArgs()) {
         throw std::runtime_error("Multi-output expression must be a function call");
     }
 
-    // Extract function name
     auto compRef = primaryCtx->componentReference();
     std::string funcName = stripQuotes(compRef->IDENT(0)->getText());
 
-    // Find the function definition
-    const Function* func = info.findFunction(funcName);
+    const Function* func = ctx.info.findFunction(funcName);
     if (!func) {
         throw std::runtime_error("Function not found: " + funcName);
     }
@@ -2082,14 +1927,12 @@ std::vector<std::string> ONNXGenerator::convertMultiOutputFunctionCall(
                                " outputs, expected " + std::to_string(expectedOutputCount));
     }
 
-    // Get function arguments
     auto funcCallArgs = primaryCtx->functionCallArgs();
     auto funcArgs = funcCallArgs->functionArguments();
     if (!funcArgs) {
         throw std::runtime_error("Function " + funcName + " requires arguments");
     }
 
-    // Collect and convert arguments
     auto arguments = collectFunctionArguments(funcArgs);
     if (arguments.size() != func->inputs.size()) {
         throw std::runtime_error("Function " + funcName + " expects " +
@@ -2099,30 +1942,24 @@ std::vector<std::string> ONNXGenerator::convertMultiOutputFunctionCall(
 
     std::vector<std::string> argTensors;
     for (size_t i = 0; i < arguments.size(); i++) {
-        std::string argTensor = convertExpression(arguments[i], info, graph, nodeCounter, nullptr, derivativeInputs);
-        argTensors.push_back(argTensor);
+        argTensors.push_back(convertExpression(arguments[i], ctx));
     }
 
-    // Create function call node with multiple outputs
-    auto* node = graph->add_node();
+    auto* node = ctx.graph->add_node();
     node->set_op_type(funcName);
     node->set_domain("lacemodelica");
-    node->set_name(funcName + "_call_" + std::to_string(nodeCounter));
+    node->set_name(funcName + "_call_" + std::to_string(ctx.nodeCounter));
 
-    // Add inputs
     for (const auto& argTensor : argTensors) {
         node->add_input(argTensor);
     }
 
-    // Add multiple outputs
     std::vector<std::string> outputTensors;
     for (size_t i = 0; i < expectedOutputCount; i++) {
-        std::string outputTensor = "tensor_" + std::to_string(nodeCounter++);
+        std::string outputTensor = "tensor_" + std::to_string(ctx.nodeCounter++);
         node->add_output(outputTensor);
         outputTensors.push_back(outputTensor);
     }
-
-    std::cerr << "DEBUG: Created multi-output function call: " << funcName << " with " << outputTensors.size() << " outputs" << std::endl;
 
     return outputTensors;
 }

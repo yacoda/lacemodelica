@@ -5,6 +5,7 @@
 
 #include "ModelInfo.h"
 #include "BaseModelicaParser.h"
+#include "ONNXHelpers.hpp"
 #include <string>
 
 // Forward declare ONNX types
@@ -67,13 +68,7 @@ private:
         const std::vector<basemodelica::BaseModelicaParser::ExpressionContext*>& conditions,
         const std::vector<basemodelica::BaseModelicaParser::EquationContext*>& equations,
         size_t branchIndex,
-        const ModelInfo& info,
-        onnx::GraphProto* graph,
-        int& nodeCounter,
-        const std::map<std::string, std::string>* variableMap,
-        std::map<std::string, std::vector<std::string>>* derivativeInputs,
-        const std::string& tensorPrefix
-    );
+        const ConversionContext& ctx);
 
     // Create ONNX FunctionProto for a function with algorithm
     static void createFunctionProto(
@@ -84,131 +79,59 @@ private:
 
     // Convert BaseModelica expression AST to ONNX nodes
     // Returns the name of the output tensor
-    static std::string convertExpression(
-        antlr4::ParserRuleContext* expr,
-        const ModelInfo& info,
-        onnx::GraphProto* graph,
-        int& nodeCounter,
-        const std::map<std::string, std::string>* variableMap = nullptr,
-        std::map<std::string, std::vector<std::string>>* derivativeInputs = nullptr,
-        const std::string& tensorPrefix = ""
-    );
+    static std::string convertExpression(antlr4::ParserRuleContext* expr, const ConversionContext& ctx);
 
     static std::string convertSimpleExpression(
         basemodelica::BaseModelicaParser::SimpleExpressionContext* expr,
-        const ModelInfo& info,
-        onnx::GraphProto* graph,
-        int& nodeCounter,
-        const std::map<std::string, std::string>* variableMap = nullptr,
-        std::map<std::string, std::vector<std::string>>* derivativeInputs = nullptr,
-        const std::string& tensorPrefix = ""
-    );
+        const ConversionContext& ctx);
 
     static std::string convertIfExpression(
         basemodelica::BaseModelicaParser::IfExpressionContext* expr,
-        const ModelInfo& info,
-        onnx::GraphProto* graph,
-        int& nodeCounter,
-        const std::map<std::string, std::string>* variableMap = nullptr,
-        std::map<std::string, std::vector<std::string>>* derivativeInputs = nullptr,
-        const std::string& tensorPrefix = ""
-    );
+        const ConversionContext& ctx);
 
     // Helper for nested if-elseif-else chains
     static std::string convertNestedIfElse(
         const std::vector<basemodelica::BaseModelicaParser::ExpressionNoDecorationContext*>& expressions,
         size_t startIdx,
-        const ModelInfo& info,
-        onnx::GraphProto* graph,
-        int& nodeCounter,
-        const std::map<std::string, std::string>* variableMap = nullptr,
-        std::map<std::string, std::vector<std::string>>* derivativeInputs = nullptr,
-        const std::string& tensorPrefix = ""
-    );
+        const ConversionContext& ctx);
 
     static std::string convertRelation(
         basemodelica::BaseModelicaParser::RelationContext* relation,
-        const ModelInfo& info,
-        onnx::GraphProto* graph,
-        int& nodeCounter,
-        const std::map<std::string, std::string>* variableMap = nullptr,
-        std::map<std::string, std::vector<std::string>>* derivativeInputs = nullptr,
-        const std::string& tensorPrefix = ""
-    );
+        const ConversionContext& ctx);
 
     static std::string convertArithmeticExpression(
         basemodelica::BaseModelicaParser::ArithmeticExpressionContext* expr,
-        const ModelInfo& info,
-        onnx::GraphProto* graph,
-        int& nodeCounter,
-        const std::map<std::string, std::string>* variableMap = nullptr,
-        std::map<std::string, std::vector<std::string>>* derivativeInputs = nullptr,
-        const std::string& tensorPrefix = ""
-    );
+        const ConversionContext& ctx);
 
     static std::string convertTerm(
         basemodelica::BaseModelicaParser::TermContext* expr,
-        const ModelInfo& info,
-        onnx::GraphProto* graph,
-        int& nodeCounter,
-        const std::map<std::string, std::string>* variableMap = nullptr,
-        std::map<std::string, std::vector<std::string>>* derivativeInputs = nullptr,
-        const std::string& tensorPrefix = ""
-    );
+        const ConversionContext& ctx);
 
     static std::string convertFactor(
         basemodelica::BaseModelicaParser::FactorContext* expr,
-        const ModelInfo& info,
-        onnx::GraphProto* graph,
-        int& nodeCounter,
-        const std::map<std::string, std::string>* variableMap = nullptr,
-        std::map<std::string, std::vector<std::string>>* derivativeInputs = nullptr,
-        const std::string& tensorPrefix = ""
-    );
+        const ConversionContext& ctx);
 
     static std::string convertPrimary(
         basemodelica::BaseModelicaParser::PrimaryContext* expr,
-        const ModelInfo& info,
-        onnx::GraphProto* graph,
-        int& nodeCounter,
-        const std::map<std::string, std::string>* variableMap = nullptr,
-        std::map<std::string, std::vector<std::string>>* derivativeInputs = nullptr,
-        const std::string& tensorPrefix = ""
-    );
+        const ConversionContext& ctx);
 
     // Helper to convert der() function calls
     static std::string convertDerFunctionCall(
         basemodelica::BaseModelicaParser::PrimaryContext* expr,
-        const ModelInfo& info,
-        onnx::GraphProto* graph,
-        int& nodeCounter,
-        const std::map<std::string, std::string>* variableMap,
-        std::map<std::string, std::vector<std::string>>* derivativeInputs,
-        const std::string& tensorPrefix
-    );
+        const ConversionContext& ctx);
 
     // Helper to convert user-defined function calls
     static std::string convertUserFunctionCall(
         const std::string& funcName,
         basemodelica::BaseModelicaParser::PrimaryContext* expr,
         const Function* func,
-        const ModelInfo& info,
-        onnx::GraphProto* graph,
-        int& nodeCounter,
-        const std::map<std::string, std::string>* variableMap,
-        std::map<std::string, std::vector<std::string>>* derivativeInputs,
-        const std::string& tensorPrefix
-    );
+        const ConversionContext& ctx);
 
     // Convert multi-output function call
     static std::vector<std::string> convertMultiOutputFunctionCall(
         antlr4::ParserRuleContext* expr,
-        const ModelInfo& info,
-        onnx::GraphProto* graph,
-        int& nodeCounter,
-        std::map<std::string, std::vector<std::string>>* derivativeInputs,
-        size_t expectedOutputCount
-    );
+        const ConversionContext& ctx,
+        size_t expectedOutputCount);
 };
 
 } // namespace lacemodelica
