@@ -63,4 +63,12 @@ std::string createIfNode(onnx::GraphProto* graph, const std::string& condTensor,
                           int& counter, const std::string& prefix = "",
                           const std::string& nameHint = "If");
 
+// Create a Constant node with an int64 array (for indices)
+std::string createInt64ArrayConstant(onnx::GraphProto* graph, const std::vector<int64_t>& values, int& counter);
+
+// Create a GatherND node for multi-dimensional static indexing
+std::string createGatherNDNode(onnx::GraphProto* graph, const std::string& dataTensor,
+                                const std::vector<int64_t>& indices, int& counter,
+                                const std::string& prefix = "");
+
 } // namespace lacemodelica

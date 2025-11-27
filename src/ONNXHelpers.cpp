@@ -207,4 +207,43 @@ std::string createIfNode(onnx::GraphProto* graph, const std::string& condTensor,
     return outputTensor;
 }
 
+std::string createInt64ArrayConstant(onnx::GraphProto* graph, const std::vector<int64_t>& values, int& counter) {
+    std::string name = "const_indices_" + std::to_string(counter++);
+
+    auto* node = graph->add_node();
+    node->set_op_type("Constant");
+    node->set_name(name);
+    node->add_output(name);
+
+    auto* attr = node->add_attribute();
+    attr->set_name("value");
+    attr->set_type(onnx::AttributeProto::TENSOR);
+    auto* tensor = attr->mutable_t();
+    tensor->set_data_type(onnx::TensorProto::INT64);
+    tensor->add_dims(values.size());
+    for (int64_t val : values) {
+        tensor->add_int64_data(val);
+    }
+
+    return name;
+}
+
+std::string createGatherNDNode(onnx::GraphProto* graph, const std::string& dataTensor,
+                                const std::vector<int64_t>& indices, int& counter,
+                                const std::string& prefix) {
+    // Create index constant tensor
+    std::string indexTensor = createInt64ArrayConstant(graph, indices, counter);
+
+    // Create GatherND node
+    std::string outputTensor = makeTensorName(prefix, counter);
+    auto* node = graph->add_node();
+    node->set_op_type("GatherND");
+    node->set_name(outputTensor + "_GatherND");
+    node->add_input(dataTensor);
+    node->add_input(indexTensor);
+    node->add_output(outputTensor);
+
+    return outputTensor;
+}
+
 } // namespace lacemodelica

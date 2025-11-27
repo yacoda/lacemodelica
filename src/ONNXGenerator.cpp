@@ -2095,33 +2095,8 @@ std::string ONNXGenerator::convertPrimary(
                         }
                     }
 
-                    // Create a Constant node for the indices tensor (static indexing)
-                    auto* constNode = graph->add_node();
-                    std::string indexTensor = "const_" + std::to_string(nodeCounter++);
-                    constNode->set_op_type("Constant");
-                    constNode->set_name(indexTensor);
-                    constNode->add_output(indexTensor);
-
-                    auto* attr = constNode->add_attribute();
-                    attr->set_name("value");
-                    attr->set_type(onnx::AttributeProto::TENSOR);
-                    auto* tensorProto = attr->mutable_t();
-                    tensorProto->set_data_type(onnx::TensorProto::INT64);
-                    tensorProto->add_dims(indices.size());
-                    for (int64_t idx : indices) {
-                        tensorProto->add_int64_data(idx);
-                    }
-
-                    // Create GatherND node to extract the element from der('x')
-                    auto* gatherNode = graph->add_node();
-                    std::string outputTensor = (tensorPrefix.empty() ? "" : tensorPrefix + "_") + "tensor_" + std::to_string(nodeCounter++);
-                    gatherNode->set_op_type("GatherND");
-                    gatherNode->set_name("GatherND_" + std::to_string(nodeCounter));
-                    gatherNode->add_input(baseTensor);
-                    gatherNode->add_input(indexTensor);
-                    gatherNode->add_output(outputTensor);
-
-                    return outputTensor;
+                    // Create GatherND node with static indices to extract element from der('x')
+                    return createGatherNDNode(graph, baseTensor, indices, nodeCounter, tensorPrefix);
                 }
             }
 
@@ -2179,26 +2154,13 @@ std::string ONNXGenerator::convertPrimary(
 
         auto it = mathFuncMap.find(funcName);
         if (it != mathFuncMap.end()) {
-            // Get function arguments
             auto funcCallArgs = expr->functionCallArgs();
             auto funcArgs = funcCallArgs->functionArguments();
             if (!funcArgs || !funcArgs->expression()) {
                 throw std::runtime_error("Function " + funcName + " requires arguments");
             }
-
-            // Convert the first argument (for unary functions)
             std::string argTensor = convertExpression(funcArgs->expression(), info, graph, nodeCounter, variableMap, derivativeInputs);
-
-            // Create ONNX node for the math function
-            auto* node = graph->add_node();
-            std::string outputTensor = (tensorPrefix.empty() ? "" : tensorPrefix + "_") + "tensor_" + std::to_string(nodeCounter++);
-
-            node->set_op_type(it->second);  // ONNX operator name
-            node->set_name(funcName + "_" + std::to_string(nodeCounter));
-            node->add_input(argTensor);
-            node->add_output(outputTensor);
-
-            return outputTensor;
+            return createUnaryOp(graph, it->second, argTensor, nodeCounter, tensorPrefix);
         }
 
         // Check if this is a user-defined function with algorithm
@@ -2352,34 +2314,8 @@ std::string ONNXGenerator::convertPrimary(
             }
         }
 
-        // Create a Constant node for the indices tensor (static indexing)
-        auto* constNode = graph->add_node();
-        std::string indexTensor = "const_" + std::to_string(nodeCounter++);
-        constNode->set_op_type("Constant");
-        constNode->set_name(indexTensor);
-        constNode->add_output(indexTensor);
-
-        auto* attr = constNode->add_attribute();
-        attr->set_name("value");
-        attr->set_type(onnx::AttributeProto::TENSOR);
-        auto* t = attr->mutable_t();
-        t->set_data_type(onnx::TensorProto::INT64);
-        // Shape is [num_indices] for GatherND
-        t->add_dims(indices.size());
-        for (auto idx : indices) {
-            t->add_int64_data(idx);
-        }
-
-        // Create GatherND node to extract the element
-        auto* gatherNode = graph->add_node();
-        std::string outputTensor = (tensorPrefix.empty() ? "" : tensorPrefix + "_") + "tensor_" + std::to_string(nodeCounter++);
-        gatherNode->set_op_type("GatherND");
-        gatherNode->set_name("GatherND_" + std::to_string(nodeCounter));
-        gatherNode->add_input(baseTensor);
-        gatherNode->add_input(indexTensor);
-        gatherNode->add_output(outputTensor);
-
-        return outputTensor;
+        // Create GatherND node with static indices to extract element
+        return createGatherNDNode(graph, baseTensor, indices, nodeCounter, tensorPrefix);
     }
 
     // 4. Parenthesized expression
