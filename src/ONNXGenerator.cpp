@@ -119,6 +119,564 @@ static AlgorithmForLoopRange parseAlgorithmForLoopRange(
     return range;
 }
 
+// Recursively identify written variables in statements, including nested for-loops
+static void identifyWrittenVariables(
+    const std::vector<basemodelica::BaseModelicaParser::StatementContext*>& statements,
+    std::set<std::string>& writtenVars) {
+
+    for (auto* stmt : statements) {
+        if (stmt->componentReference() && stmt->expression()) {
+            // Direct assignment
+            std::string varName = stripQuotes(stmt->componentReference()->IDENT(0)->getText());
+            writtenVars.insert(varName);
+        } else if (stmt->forStatement()) {
+            // Nested for-loop - recurse into its body
+            auto* nestedFor = stmt->forStatement();
+            auto nestedStatements = nestedFor->statement();
+            identifyWrittenVariables(nestedStatements, writtenVars);
+        }
+    }
+}
+
+// Context for recursive loop body processing
+struct LoopBodyContext {
+    onnx::GraphProto* graph;                              // Graph to add nodes to
+    const Function& func;
+    const ModelInfo& info;
+    std::map<std::string, std::string>& loopVarMap;       // All loop vars (1-based tensors)
+    std::map<std::string, std::string>& varMap;           // Variables available in this scope
+    int& nodeCounter;
+    int& loopCounter;
+    std::string iterName;                                  // 0-based iteration counter name ("i", "j", etc.)
+    std::string loopName;                                  // Current loop name for prefixing
+};
+
+// Forward declaration
+static void processLoopBodyStatements(
+    const std::vector<basemodelica::BaseModelicaParser::StatementContext*>& statements,
+    LoopBodyContext& ctx);
+
+// Process a single indexed assignment with ScatterND
+static void processIndexedAssignment(
+    basemodelica::BaseModelicaParser::StatementContext* stmt,
+    LoopBodyContext& ctx) {
+
+    auto* lhsCompRef = stmt->componentReference();
+    std::string baseVarName = stripQuotes(lhsCompRef->IDENT(0)->getText());
+
+    // Collect all indices
+    struct IndexInfo {
+        bool isDynamic;
+        std::string varName;
+        int64_t staticValue;
+    };
+    std::vector<IndexInfo> indexInfos;
+    bool hasDynamicIndex = false;
+
+    auto arraySubscripts = lhsCompRef->arraySubscripts();
+    if (!arraySubscripts.empty()) {
+        auto subscriptList = arraySubscripts[0]->subscript();
+        for (auto sub : subscriptList) {
+            if (auto subExpr = sub->expression()) {
+                std::string indexText = subExpr->getText();
+                try {
+                    int modelicaIndex = std::stoi(indexText);
+                    indexInfos.push_back({false, "", modelicaIndex - 1});
+                } catch (...) {
+                    indexInfos.push_back({true, indexText, 0});
+                    hasDynamicIndex = true;
+                }
+            }
+        }
+    }
+
+    // Convert RHS expression
+    onnx::GraphProto rhsGraph;
+    std::map<std::string, std::vector<std::string>> derivInputs;
+    ConversionContext convCtx(ctx.info, &rhsGraph, ctx.nodeCounter, &ctx.loopVarMap, &derivInputs, ctx.loopName);
+
+    // Add current scope variables to conversion context
+    for (const auto& [vn, tn] : ctx.varMap) {
+        ctx.loopVarMap[vn] = tn;
+    }
+
+    std::string rhsTensor = ExpressionConverter::convert(stmt->expression(), convCtx);
+
+    // Copy RHS nodes to body graph
+    for (int i = 0; i < rhsGraph.initializer_size(); i++) {
+        const auto& init = rhsGraph.initializer(i);
+        auto* constNode = ctx.graph->add_node();
+        constNode->set_op_type("Constant");
+        constNode->set_name(init.name());
+        constNode->add_output(init.name());
+        auto* attr = constNode->add_attribute();
+        attr->set_name("value");
+        attr->set_type(onnx::AttributeProto::TENSOR);
+        attr->mutable_t()->CopyFrom(init);
+    }
+
+    for (int i = 0; i < rhsGraph.node_size(); i++) {
+        auto* node = ctx.graph->add_node();
+        node->CopyFrom(rhsGraph.node(i));
+    }
+
+    // Handle ScatterND for indexed assignments
+    std::string finalTensor = rhsTensor;
+    if (hasDynamicIndex && ctx.varMap.find(baseVarName) != ctx.varMap.end()) {
+        std::string currentArrayTensor = ctx.varMap[baseVarName];
+        size_t numIndices = indexInfos.size();
+
+        // Build individual 0-based index tensors
+        std::vector<std::string> indexTensors;
+        for (size_t idx = 0; idx < numIndices; idx++) {
+            const auto& idxInfo = indexInfos[idx];
+            std::string indexTensor;
+
+            if (!idxInfo.isDynamic) {
+                // Static index
+                indexTensor = ctx.loopName + "_static_idx_" + std::to_string(ctx.nodeCounter);
+                auto* constNode = ctx.graph->add_node();
+                constNode->set_op_type("Constant");
+                constNode->set_name(indexTensor);
+                constNode->add_output(indexTensor);
+                auto* attr = constNode->add_attribute();
+                attr->set_name("value");
+                attr->set_type(onnx::AttributeProto::TENSOR);
+                auto* tensor = attr->mutable_t();
+                tensor->set_data_type(onnx::TensorProto::INT64);
+                tensor->add_int64_data(idxInfo.staticValue);
+                ctx.nodeCounter++;
+            } else {
+                // Dynamic index - look up in loopVarMap
+                auto it = ctx.loopVarMap.find(idxInfo.varName);
+                if (it != ctx.loopVarMap.end()) {
+                    std::string oneBasedTensor = it->second;
+                    // Subtract 1 to get 0-based
+                    std::string oneConst = ctx.loopName + "_one_" + std::to_string(ctx.nodeCounter);
+                    auto* oneNode = ctx.graph->add_node();
+                    oneNode->set_op_type("Constant");
+                    oneNode->set_name(oneConst);
+                    oneNode->add_output(oneConst);
+                    auto* oneAttr = oneNode->add_attribute();
+                    oneAttr->set_name("value");
+                    oneAttr->set_type(onnx::AttributeProto::TENSOR);
+                    auto* oneTensor = oneAttr->mutable_t();
+                    oneTensor->set_data_type(onnx::TensorProto::INT64);
+                    oneTensor->add_int64_data(1);
+                    ctx.nodeCounter++;
+
+                    indexTensor = ctx.loopName + "_idx0_" + std::to_string(ctx.nodeCounter);
+                    auto* subNode = ctx.graph->add_node();
+                    subNode->set_op_type("Sub");
+                    subNode->set_name(ctx.loopName + "_to0based_" + std::to_string(ctx.nodeCounter));
+                    subNode->add_input(oneBasedTensor);
+                    subNode->add_input(oneConst);
+                    subNode->add_output(indexTensor);
+                    ctx.nodeCounter++;
+                } else {
+                    throw std::runtime_error("Unknown loop variable in index: " + idxInfo.varName);
+                }
+            }
+            indexTensors.push_back(indexTensor);
+        }
+
+        // Unsqueeze each index and concatenate
+        std::vector<std::string> unsqueezedIndices;
+        for (size_t idx = 0; idx < numIndices; idx++) {
+            std::string axesConst = ctx.loopName + "_axes_" + std::to_string(ctx.nodeCounter);
+            auto* axesNode = ctx.graph->add_node();
+            axesNode->set_op_type("Constant");
+            axesNode->set_name(axesConst);
+            axesNode->add_output(axesConst);
+            auto* axesAttr = axesNode->add_attribute();
+            axesAttr->set_name("value");
+            axesAttr->set_type(onnx::AttributeProto::TENSOR);
+            auto* axesTensor = axesAttr->mutable_t();
+            axesTensor->set_data_type(onnx::TensorProto::INT64);
+            axesTensor->add_dims(1);
+            axesTensor->add_int64_data(0);
+            ctx.nodeCounter++;
+
+            std::string unsqueezed = ctx.loopName + "_unsq_idx_" + std::to_string(ctx.nodeCounter);
+            auto* unsqNode = ctx.graph->add_node();
+            unsqNode->set_op_type("Unsqueeze");
+            unsqNode->set_name(unsqueezed + "_op");
+            unsqNode->add_input(indexTensors[idx]);
+            unsqNode->add_input(axesConst);
+            unsqNode->add_output(unsqueezed);
+            ctx.nodeCounter++;
+
+            unsqueezedIndices.push_back(unsqueezed);
+        }
+
+        // Concat indices
+        std::string concatIndices = ctx.loopName + "_concat_idx_" + std::to_string(ctx.nodeCounter);
+        auto* concatNode = ctx.graph->add_node();
+        concatNode->set_op_type("Concat");
+        concatNode->set_name(concatIndices + "_op");
+        for (const auto& t : unsqueezedIndices) {
+            concatNode->add_input(t);
+        }
+        concatNode->add_output(concatIndices);
+        auto* axisAttr = concatNode->add_attribute();
+        axisAttr->set_name("axis");
+        axisAttr->set_type(onnx::AttributeProto::INT);
+        axisAttr->set_i(0);
+        ctx.nodeCounter++;
+
+        // Unsqueeze to add batch dimension
+        std::string batchAxesConst = ctx.loopName + "_batch_axes_" + std::to_string(ctx.nodeCounter);
+        auto* batchAxesNode = ctx.graph->add_node();
+        batchAxesNode->set_op_type("Constant");
+        batchAxesNode->set_name(batchAxesConst);
+        batchAxesNode->add_output(batchAxesConst);
+        auto* batchAxesAttr = batchAxesNode->add_attribute();
+        batchAxesAttr->set_name("value");
+        batchAxesAttr->set_type(onnx::AttributeProto::TENSOR);
+        auto* batchAxesTensor = batchAxesAttr->mutable_t();
+        batchAxesTensor->set_data_type(onnx::TensorProto::INT64);
+        batchAxesTensor->add_dims(1);
+        batchAxesTensor->add_int64_data(0);
+        ctx.nodeCounter++;
+
+        std::string finalIndices = ctx.loopName + "_final_idx_" + std::to_string(ctx.nodeCounter);
+        auto* batchUnsqNode = ctx.graph->add_node();
+        batchUnsqNode->set_op_type("Unsqueeze");
+        batchUnsqNode->set_name(finalIndices + "_op");
+        batchUnsqNode->add_input(concatIndices);
+        batchUnsqNode->add_input(batchAxesConst);
+        batchUnsqNode->add_output(finalIndices);
+        ctx.nodeCounter++;
+
+        // Unsqueeze update
+        std::string updateAxesConst = ctx.loopName + "_update_axes_" + std::to_string(ctx.nodeCounter);
+        auto* updateAxesNode = ctx.graph->add_node();
+        updateAxesNode->set_op_type("Constant");
+        updateAxesNode->set_name(updateAxesConst);
+        updateAxesNode->add_output(updateAxesConst);
+        auto* updateAxesAttr = updateAxesNode->add_attribute();
+        updateAxesAttr->set_name("value");
+        updateAxesAttr->set_type(onnx::AttributeProto::TENSOR);
+        auto* updateAxesTensor = updateAxesAttr->mutable_t();
+        updateAxesTensor->set_data_type(onnx::TensorProto::INT64);
+        updateAxesTensor->add_dims(1);
+        updateAxesTensor->add_int64_data(0);
+        ctx.nodeCounter++;
+
+        std::string unsqueezedUpdate = ctx.loopName + "_unsq_update_" + std::to_string(ctx.nodeCounter);
+        auto* updateUnsqNode = ctx.graph->add_node();
+        updateUnsqNode->set_op_type("Unsqueeze");
+        updateUnsqNode->set_name(unsqueezedUpdate + "_op");
+        updateUnsqNode->add_input(rhsTensor);
+        updateUnsqNode->add_input(updateAxesConst);
+        updateUnsqNode->add_output(unsqueezedUpdate);
+        ctx.nodeCounter++;
+
+        // ScatterND
+        finalTensor = "scattered_" + baseVarName + "_" + std::to_string(ctx.nodeCounter);
+        auto* scatterNode = ctx.graph->add_node();
+        scatterNode->set_op_type("ScatterND");
+        scatterNode->set_name("scatter_" + baseVarName + "_" + std::to_string(ctx.nodeCounter));
+        scatterNode->add_input(currentArrayTensor);
+        scatterNode->add_input(finalIndices);
+        scatterNode->add_input(unsqueezedUpdate);
+        scatterNode->add_output(finalTensor);
+        ctx.nodeCounter++;
+    }
+
+    ctx.varMap[baseVarName] = finalTensor;
+}
+
+// Process a nested for-loop statement
+static void processNestedForLoop(
+    basemodelica::BaseModelicaParser::ForStatementContext* forCtx,
+    LoopBodyContext& ctx) {
+
+    AlgorithmForLoopRange range = parseAlgorithmForLoopRange(forCtx);
+    auto innerStatements = forCtx->statement();
+    std::string innerLoopName = "loop_" + std::to_string(ctx.loopCounter++);
+
+    // Create trip count and condition constants
+    std::string tripCountConst = innerLoopName + "_trip";
+    auto* tripNode = ctx.graph->add_node();
+    tripNode->set_op_type("Constant");
+    tripNode->set_name(tripCountConst);
+    tripNode->add_output(tripCountConst);
+    auto* tripAttr = tripNode->add_attribute();
+    tripAttr->set_name("value");
+    tripAttr->set_type(onnx::AttributeProto::TENSOR);
+    auto* tripTensor = tripAttr->mutable_t();
+    tripTensor->set_data_type(onnx::TensorProto::INT64);
+    tripTensor->add_int64_data(range.tripCount());
+
+    std::string condConst = innerLoopName + "_cond";
+    auto* condNode = ctx.graph->add_node();
+    condNode->set_op_type("Constant");
+    condNode->set_name(condConst);
+    condNode->add_output(condConst);
+    auto* condAttr = condNode->add_attribute();
+    condAttr->set_name("value");
+    condAttr->set_type(onnx::AttributeProto::TENSOR);
+    auto* condTensor = condAttr->mutable_t();
+    condTensor->set_data_type(onnx::TensorProto::BOOL);
+    condTensor->add_int32_data(1);
+
+    // Create Loop node
+    auto* loopNode = ctx.graph->add_node();
+    loopNode->set_op_type("Loop");
+    loopNode->set_name(innerLoopName);
+    loopNode->add_input(tripCountConst);
+    loopNode->add_input(condConst);
+
+    // Setup loop body
+    auto* bodyAttr = loopNode->add_attribute();
+    bodyAttr->set_name("body");
+    bodyAttr->set_type(onnx::AttributeProto::GRAPH);
+    auto* innerBodyGraph = bodyAttr->mutable_g();
+    innerBodyGraph->set_name(innerLoopName + "_body");
+
+    // Standard loop body inputs
+    std::string innerIterName = innerLoopName + "_iter";
+    auto* iterInput = innerBodyGraph->add_input();
+    iterInput->set_name(innerIterName);
+    auto* iterType = iterInput->mutable_type()->mutable_tensor_type();
+    iterType->set_elem_type(onnx::TensorProto::INT64);
+    iterType->mutable_shape();
+
+    std::string innerCondIn = innerLoopName + "_cond_in";
+    auto* condInput = innerBodyGraph->add_input();
+    condInput->set_name(innerCondIn);
+    auto* condType = condInput->mutable_type()->mutable_tensor_type();
+    condType->set_elem_type(onnx::TensorProto::BOOL);
+    condType->mutable_shape();
+
+    // Condition output (first output)
+    std::string innerCondOut = innerLoopName + "_cond_out";
+    auto* condOutput = innerBodyGraph->add_output();
+    condOutput->set_name(innerCondOut);
+    auto* condOutType = condOutput->mutable_type()->mutable_tensor_type();
+    condOutType->set_elem_type(onnx::TensorProto::BOOL);
+    condOutType->mutable_shape();
+
+    auto* condIdentity = innerBodyGraph->add_node();
+    condIdentity->set_op_type("Identity");
+    condIdentity->set_name(innerLoopName + "_cond_pass");
+    condIdentity->add_input(innerCondIn);
+    condIdentity->add_output(innerCondOut);
+
+    // Convert 0-based iter to 1-based
+    std::string oneConst = innerLoopName + "_one";
+    auto* oneNode = innerBodyGraph->add_node();
+    oneNode->set_op_type("Constant");
+    oneNode->set_name(oneConst);
+    oneNode->add_output(oneConst);
+    auto* oneAttr = oneNode->add_attribute();
+    oneAttr->set_name("value");
+    oneAttr->set_type(onnx::AttributeProto::TENSOR);
+    auto* oneTensor = oneAttr->mutable_t();
+    oneTensor->set_data_type(onnx::TensorProto::INT64);
+    oneTensor->add_int64_data(1);
+
+    std::string loopVar1Based = innerLoopName + "_" + range.loopVar + "_1based";
+    auto* addNode = innerBodyGraph->add_node();
+    addNode->set_op_type("Add");
+    addNode->set_name(loopVar1Based + "_add");
+    addNode->add_input(innerIterName);
+    addNode->add_input(oneConst);
+    addNode->add_output(loopVar1Based);
+
+    // Find written variables in inner loop
+    std::set<std::string> innerWrittenVars;
+    identifyWrittenVariables(innerStatements, innerWrittenVars);
+
+    // Setup carried variables
+    std::map<std::string, std::string> innerVarMap;
+    std::vector<std::string> carriedVars;
+
+    for (const auto& varName : innerWrittenVars) {
+        if (ctx.varMap.find(varName) != ctx.varMap.end()) {
+            carriedVars.push_back(varName);
+
+            std::string outerTensor = ctx.varMap[varName];
+            loopNode->add_input(outerTensor);
+
+            std::string innerInputName = innerLoopName + "_" + varName + "_in";
+            auto* innerInput = innerBodyGraph->add_input();
+            innerInput->set_name(innerInputName);
+            auto* innerInputType = innerInput->mutable_type()->mutable_tensor_type();
+            innerInputType->set_elem_type(onnx::TensorProto::DOUBLE);
+
+            // Set shape
+            for (const auto& output : ctx.func.outputs) {
+                if (output.name == varName && !output.dimensions.empty()) {
+                    auto* shape = innerInputType->mutable_shape();
+                    for (const auto& dim : output.dimensions) {
+                        try { shape->add_dim()->set_dim_value(std::stoi(dim)); }
+                        catch (...) { shape->add_dim()->set_dim_param(dim); }
+                    }
+                    break;
+                }
+            }
+
+            innerVarMap[varName] = innerInputName;
+        }
+    }
+
+    // Pass through all outer loop variables (1-based)
+    std::map<std::string, std::string> innerLoopVarMap = ctx.loopVarMap;
+    for (const auto& [loopVar, loopVarTensor] : ctx.loopVarMap) {
+        std::string passName = innerLoopName + "_" + loopVar + "_pass";
+        loopNode->add_input(loopVarTensor);
+
+        auto* passInput = innerBodyGraph->add_input();
+        passInput->set_name(passName);
+        auto* passType = passInput->mutable_type()->mutable_tensor_type();
+        passType->set_elem_type(onnx::TensorProto::INT64);
+        passType->mutable_shape();
+
+        innerLoopVarMap[loopVar] = passName;
+    }
+
+    // Add current loop variable
+    innerLoopVarMap[range.loopVar] = loopVar1Based;
+
+    // Pass through other variables (inputs like factor, mat)
+    std::vector<std::string> passthroughVars;
+    for (const auto& [varName, tensorName] : ctx.varMap) {
+        if (std::find(carriedVars.begin(), carriedVars.end(), varName) == carriedVars.end()) {
+            std::string passName = innerLoopName + "_" + varName + "_pass";
+            loopNode->add_input(tensorName);
+
+            auto* passInput = innerBodyGraph->add_input();
+            passInput->set_name(passName);
+            auto* passType = passInput->mutable_type()->mutable_tensor_type();
+            passType->set_elem_type(onnx::TensorProto::DOUBLE);
+
+            for (const auto& input : ctx.func.inputs) {
+                if (input.name == varName && !input.dimensions.empty()) {
+                    auto* shape = passType->mutable_shape();
+                    for (const auto& dim : input.dimensions) {
+                        try { shape->add_dim()->set_dim_value(std::stoi(dim)); }
+                        catch (...) { shape->add_dim()->set_dim_param(dim); }
+                    }
+                    break;
+                }
+            }
+
+            innerVarMap[varName] = passName;
+            passthroughVars.push_back(varName);
+        }
+    }
+
+    // Recursively process inner loop statements
+    LoopBodyContext innerCtx{
+        innerBodyGraph, ctx.func, ctx.info, innerLoopVarMap, innerVarMap,
+        ctx.nodeCounter, ctx.loopCounter, innerIterName, innerLoopName
+    };
+    processLoopBodyStatements(innerStatements, innerCtx);
+
+    // Add carried variable outputs
+    for (const auto& varName : carriedVars) {
+        std::string finalTensor = innerVarMap[varName];
+        std::string outputName = innerLoopName + "_" + varName + "_out";
+
+        auto* output = innerBodyGraph->add_output();
+        output->set_name(outputName);
+        auto* outputType = output->mutable_type()->mutable_tensor_type();
+        outputType->set_elem_type(onnx::TensorProto::DOUBLE);
+
+        for (const auto& out : ctx.func.outputs) {
+            if (out.name == varName && !out.dimensions.empty()) {
+                auto* shape = outputType->mutable_shape();
+                for (const auto& dim : out.dimensions) {
+                    try { shape->add_dim()->set_dim_value(std::stoi(dim)); }
+                    catch (...) { shape->add_dim()->set_dim_param(dim); }
+                }
+                break;
+            }
+        }
+
+        auto* identityNode = innerBodyGraph->add_node();
+        identityNode->set_op_type("Identity");
+        identityNode->set_name(innerLoopName + "_out_" + varName);
+        identityNode->add_input(finalTensor);
+        identityNode->add_output(outputName);
+
+        std::string loopOutputName = innerLoopName + "_" + varName + "_result";
+        loopNode->add_output(loopOutputName);
+
+        // Update outer scope
+        ctx.varMap[varName] = loopOutputName;
+    }
+
+    // Add passthrough outputs for loop variables
+    for (const auto& [loopVar, loopVarTensor] : ctx.loopVarMap) {
+        std::string passInName = innerLoopName + "_" + loopVar + "_pass";
+        std::string passOutName = innerLoopName + "_" + loopVar + "_pass_out";
+
+        auto* passOutput = innerBodyGraph->add_output();
+        passOutput->set_name(passOutName);
+        auto* passOutType = passOutput->mutable_type()->mutable_tensor_type();
+        passOutType->set_elem_type(onnx::TensorProto::INT64);
+        passOutType->mutable_shape();
+
+        auto* passIdentity = innerBodyGraph->add_node();
+        passIdentity->set_op_type("Identity");
+        passIdentity->set_name(innerLoopName + "_" + loopVar + "_pass_identity");
+        passIdentity->add_input(passInName);
+        passIdentity->add_output(passOutName);
+
+        loopNode->add_output(innerLoopName + "_" + loopVar + "_final");
+    }
+
+    // Add passthrough outputs for other variables
+    for (const auto& varName : passthroughVars) {
+        std::string passInName = innerLoopName + "_" + varName + "_pass";
+        std::string passOutName = innerLoopName + "_" + varName + "_pass_out";
+
+        auto* passOutput = innerBodyGraph->add_output();
+        passOutput->set_name(passOutName);
+        auto* passOutType = passOutput->mutable_type()->mutable_tensor_type();
+        passOutType->set_elem_type(onnx::TensorProto::DOUBLE);
+
+        for (const auto& input : ctx.func.inputs) {
+            if (input.name == varName && !input.dimensions.empty()) {
+                auto* shape = passOutType->mutable_shape();
+                for (const auto& dim : input.dimensions) {
+                    try { shape->add_dim()->set_dim_value(std::stoi(dim)); }
+                    catch (...) { shape->add_dim()->set_dim_param(dim); }
+                }
+                break;
+            }
+        }
+
+        auto* passIdentity = innerBodyGraph->add_node();
+        passIdentity->set_op_type("Identity");
+        passIdentity->set_name(innerLoopName + "_" + varName + "_pass_identity");
+        passIdentity->add_input(passInName);
+        passIdentity->add_output(passOutName);
+
+        loopNode->add_output(innerLoopName + "_" + varName + "_final");
+    }
+}
+
+// Recursively process statements in a loop body
+static void processLoopBodyStatements(
+    const std::vector<basemodelica::BaseModelicaParser::StatementContext*>& statements,
+    LoopBodyContext& ctx) {
+
+    for (auto* stmt : statements) {
+        if (stmt->forStatement()) {
+            // Nested for-loop
+            processNestedForLoop(stmt->forStatement(), ctx);
+        } else if (stmt->componentReference() && stmt->expression()) {
+            // Direct assignment
+            processIndexedAssignment(stmt, ctx);
+        }
+        // Skip other statement types for now
+    }
+}
+
 // Generate ONNX Loop for an algorithm for-statement
 // Updates variableToTensor with any modified loop-carried variables
 static void generateAlgorithmForLoop(
@@ -145,13 +703,8 @@ static void generateAlgorithmForLoop(
     // Variables that are both read AND written in the loop body
     std::set<std::string> writtenVars;
 
-    // First pass: identify written variables
-    for (auto* innerStmt : loopStatements) {
-        if (innerStmt->componentReference() && innerStmt->expression()) {
-            std::string varName = stripQuotes(innerStmt->componentReference()->IDENT(0)->getText());
-            writtenVars.insert(varName);
-        }
-    }
+    // First pass: identify written variables (recursively through nested loops)
+    identifyWrittenVariables(loopStatements, writtenVars);
 
     // For output variables that are written but don't exist yet, initialize with zeros
     // This MUST happen BEFORE creating the Loop node so the zeros constant is defined first
@@ -301,147 +854,14 @@ static void generateAlgorithmForLoop(
         }
     }
 
-    // Process statements in the loop body
-    for (auto* innerStmt : loopStatements) {
-        if (!innerStmt->componentReference() || !innerStmt->expression()) {
-            continue;  // Skip non-assignment statements for now
-        }
 
-        auto* lhsCompRef = innerStmt->componentReference();
-        std::string baseVarName = stripQuotes(lhsCompRef->IDENT(0)->getText());
+    // Process statements in the loop body using recursive helper
+    LoopBodyContext ctx{
+        bodyGraph, func, info, loopVarMap, bodyVariableMap,
+        nodeCounter, loopCounter, "i", loopNodeName
+    };
+    processLoopBodyStatements(loopStatements, ctx);
 
-        // Check for indexed assignment
-        std::vector<int64_t> lhsIndices;
-        bool isIndexedAssignment = false;
-        bool hasDynamicIndex = false;
-
-        auto arraySubscripts = lhsCompRef->arraySubscripts();
-        if (!arraySubscripts.empty()) {
-            auto subscriptList = arraySubscripts[0]->subscript();
-            for (auto sub : subscriptList) {
-                if (auto subExpr = sub->expression()) {
-                    std::string indexText = subExpr->getText();
-                    // Check if it's the loop variable
-                    if (indexText == range.loopVar) {
-                        hasDynamicIndex = true;
-                        isIndexedAssignment = true;
-                    } else {
-                        try {
-                            int modelicaIndex = std::stoi(indexText);
-                            lhsIndices.push_back(modelicaIndex - 1);
-                            isIndexedAssignment = true;
-                        } catch (...) {
-                            hasDynamicIndex = true;
-                            isIndexedAssignment = true;
-                        }
-                    }
-                }
-            }
-        }
-
-        // Convert RHS expression
-        onnx::GraphProto rhsGraph;
-        std::map<std::string, std::vector<std::string>> localDerivativeInputs;
-        ConversionContext bodyCtx(info, &rhsGraph, nodeCounter, &loopVarMap, &localDerivativeInputs, loopNodeName);
-
-        // Add body variables to context
-        for (const auto& [varName, tensorName] : bodyVariableMap) {
-            loopVarMap[varName] = tensorName;
-        }
-
-        std::string rhsTensor = ExpressionConverter::convert(innerStmt->expression(), bodyCtx);
-
-        // Copy nodes to body graph
-        for (int i = 0; i < rhsGraph.initializer_size(); i++) {
-            const auto& init = rhsGraph.initializer(i);
-            auto* constNode = bodyGraph->add_node();
-            constNode->set_op_type("Constant");
-            constNode->set_name(init.name());
-            constNode->add_output(init.name());
-
-            auto* attr = constNode->add_attribute();
-            attr->set_name("value");
-            attr->set_type(onnx::AttributeProto::TENSOR);
-            attr->mutable_t()->CopyFrom(init);
-        }
-
-        for (int i = 0; i < rhsGraph.node_size(); i++) {
-            auto* node = bodyGraph->add_node();
-            node->CopyFrom(rhsGraph.node(i));
-        }
-
-        // Handle indexed assignments with ScatterND
-        std::string finalTensor = rhsTensor;
-        if (hasDynamicIndex && bodyVariableMap.find(baseVarName) != bodyVariableMap.end()) {
-            // Use ScatterND to update the array at the dynamic index
-            // The index is (loopVarTensor - 1) which is the 0-based iteration variable "i"
-            std::string currentArrayTensor = bodyVariableMap[baseVarName];
-
-            // Create index tensor: reshape iter (which is 0-based) to [1, 1] for ScatterND
-            std::string indicesShapeConst = "indices_shape_" + std::to_string(nodeCounter);
-            auto* shapeConstNode = bodyGraph->add_node();
-            shapeConstNode->set_op_type("Constant");
-            shapeConstNode->set_name(indicesShapeConst);
-            shapeConstNode->add_output(indicesShapeConst);
-            auto* shapeAttr = shapeConstNode->add_attribute();
-            shapeAttr->set_name("value");
-            shapeAttr->set_type(onnx::AttributeProto::TENSOR);
-            auto* shapeTensor = shapeAttr->mutable_t();
-            shapeTensor->set_data_type(onnx::TensorProto::INT64);
-            shapeTensor->add_dims(2);
-            shapeTensor->add_int64_data(1);
-            shapeTensor->add_int64_data(1);
-            nodeCounter++;
-
-            // Reshape the iteration variable (0-based "i" input) to [1, 1]
-            std::string reshapedIndexTensor = "reshaped_index_" + std::to_string(nodeCounter);
-            auto* reshapeNode = bodyGraph->add_node();
-            reshapeNode->set_op_type("Reshape");
-            reshapeNode->set_name("reshape_index_" + std::to_string(nodeCounter));
-            reshapeNode->add_input("i");  // The 0-based iteration count
-            reshapeNode->add_input(indicesShapeConst);
-            reshapeNode->add_output(reshapedIndexTensor);
-            nodeCounter++;
-
-            // Unsqueeze RHS to add batch dimension [1]
-            std::string unsqueezeAxesConst = "unsqueeze_axes_" + std::to_string(nodeCounter);
-            auto* axesConstNode = bodyGraph->add_node();
-            axesConstNode->set_op_type("Constant");
-            axesConstNode->set_name(unsqueezeAxesConst);
-            axesConstNode->add_output(unsqueezeAxesConst);
-            auto* axesAttr = axesConstNode->add_attribute();
-            axesAttr->set_name("value");
-            axesAttr->set_type(onnx::AttributeProto::TENSOR);
-            auto* axesTensor = axesAttr->mutable_t();
-            axesTensor->set_data_type(onnx::TensorProto::INT64);
-            axesTensor->add_dims(1);
-            axesTensor->add_int64_data(0);
-            nodeCounter++;
-
-            std::string unsqueezedUpdateTensor = "unsqueezed_update_" + std::to_string(nodeCounter);
-            auto* unsqueezeNode = bodyGraph->add_node();
-            unsqueezeNode->set_op_type("Unsqueeze");
-            unsqueezeNode->set_name("unsqueeze_update_" + std::to_string(nodeCounter));
-            unsqueezeNode->add_input(rhsTensor);
-            unsqueezeNode->add_input(unsqueezeAxesConst);
-            unsqueezeNode->add_output(unsqueezedUpdateTensor);
-            nodeCounter++;
-
-            // ScatterND: update array at dynamic index
-            finalTensor = "scattered_" + baseVarName + "_" + std::to_string(nodeCounter);
-            auto* scatterNode = bodyGraph->add_node();
-            scatterNode->set_op_type("ScatterND");
-            scatterNode->set_name("scatter_" + baseVarName + "_" + std::to_string(nodeCounter));
-            scatterNode->add_input(currentArrayTensor);
-            scatterNode->add_input(reshapedIndexTensor);
-            scatterNode->add_input(unsqueezedUpdateTensor);
-            scatterNode->add_output(finalTensor);
-            nodeCounter++;
-        }
-
-        // Update the variable tensor mapping
-        bodyVariableMap[baseVarName] = finalTensor;
-    }
 
     // Add carried variable outputs
     for (const auto& varName : carriedVars) {
