@@ -99,6 +99,10 @@ private:
         basemodelica::BaseModelicaParser::ArrayArgumentsContext* arrayArgs,
         const ConversionContext& ctx);
 
+    static std::string convertArrayLiteral(
+        basemodelica::BaseModelicaParser::ArrayArgumentsContext* arrayArgs,
+        const ConversionContext& ctx);
+
     static std::string convertArrayComprehension(
         basemodelica::BaseModelicaParser::ExpressionContext* bodyExpr,
         basemodelica::BaseModelicaParser::ForIndexContext* forIndex,

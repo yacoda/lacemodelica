@@ -1,0 +1,258 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2025 Joris Gillis, YACODA
+
+//! base 0.1.0
+package 'ArraySlice2D'
+  // Function extracting first row using slice
+  pure function 'extractFirstRow' "Extract first row from matrix"
+    input Real 'mat'[3,4];
+    output Real 'result'[4];
+  algorithm
+    'result'[:] := 'mat'[1, :];
+  end 'extractFirstRow';
+
+  // Function extracting second row using slice
+  pure function 'extractSecondRow' "Extract second row from matrix"
+    input Real 'mat'[3,4];
+    output Real 'result'[4];
+  algorithm
+    'result'[:] := 'mat'[2, :];
+  end 'extractSecondRow';
+
+  // Function extracting a column using slice
+  pure function 'extractThirdColumn' "Extract third column from matrix"
+    input Real 'mat'[3,4];
+    output Real 'result'[3];
+  algorithm
+    'result'[:] := 'mat'[:, 3];
+  end 'extractThirdColumn';
+
+  // Function extracting a submatrix using range slices
+  pure function 'extractSubmatrix' "Extract submatrix using range slices"
+    input Real 'mat'[4,4];
+    output Real 'result'[2,2];
+  algorithm
+    'result'[:,:] := 'mat'[2:3, 2:3];  // Extract center 2x2 submatrix
+  end 'extractSubmatrix';
+
+  // Function copying full matrix using slices
+  pure function 'copyMatrix' "Copy matrix using full slices"
+    input Real 'mat'[2,3];
+    output Real 'result'[2,3];
+  algorithm
+    'result'[:,:] := 'mat'[:,:];
+  end 'copyMatrix';
+
+  // Function assigning to a row
+  pure function 'setSecondRow' "Set second row of matrix"
+    input Real 'mat'[2,3];
+    input Real 'row'[3];
+    output Real 'result'[2,3];
+  algorithm
+    'result'[:,:] := 'mat'[:,:];
+    'result'[2,:] := 'row'[:];  // Set second row
+  end 'setSecondRow';
+
+  // Function assigning to a column
+  pure function 'setFirstColumn' "Set first column of matrix"
+    input Real 'mat'[3,2];
+    input Real 'col'[3];
+    output Real 'result'[3,2];
+  algorithm
+    'result'[:,:] := 'mat'[:,:];
+    'result'[:,1] := 'col'[:];  // Set first column
+  end 'setFirstColumn';
+
+  model 'ArraySlice2D' "Model testing 2D array slice operations"
+    parameter Real 'mat1'[3,4] = {{1.0, 2.0, 3.0, 4.0},
+                                   {5.0, 6.0, 7.0, 8.0},
+                                   {9.0, 10.0, 11.0, 12.0}};
+    parameter Real 'mat2'[4,4] = {{1.0, 2.0, 3.0, 4.0},
+                                   {5.0, 6.0, 7.0, 8.0},
+                                   {9.0, 10.0, 11.0, 12.0},
+                                   {13.0, 14.0, 15.0, 16.0}};
+    parameter Real 'mat3'[2,3] = {{1.0, 2.0, 3.0},
+                                   {4.0, 5.0, 6.0}};
+    parameter Real 'mat4'[3,2] = {{1.0, 2.0},
+                                   {3.0, 4.0},
+                                   {5.0, 6.0}};
+    parameter Real 'newRow'[3] = {10.0, 20.0, 30.0};
+    parameter Real 'newCol'[3] = {100.0, 200.0, 300.0};
+    Real 'x'(start = 0.0);
+    Real 'row1'[4];
+    Real 'row2'[4];
+    Real 'col3'[3];
+    Real 'sub'[2,2];
+    Real 'copied'[2,3];
+    Real 'withNewRow'[2,3];
+    Real 'withNewCol'[3,2];
+  equation
+    der('x') = 0.1;
+    'row1' = 'extractFirstRow'('mat1');
+    'row2' = 'extractSecondRow'('mat1');
+    'col3' = 'extractThirdColumn'('mat1');
+    'sub' = 'extractSubmatrix'('mat2');
+    'copied' = 'copyMatrix'('mat3');
+    'withNewRow' = 'setSecondRow'('mat3', 'newRow');
+    'withNewCol' = 'setFirstColumn'('mat4', 'newCol');
+  end 'ArraySlice2D';
+end 'ArraySlice2D';
+
+// @onnx-test-reference
+// Python reference implementation for ONNX runtime testing
+// def reference_implementation(inputs):
+//     import numpy as np
+//     outputs = {}
+//
+//     # Extract inputs
+//     x = inputs['x']
+//     der_x = inputs["der(x)"]
+//     row1 = inputs['row1']
+//     row2 = inputs['row2']
+//     col3 = inputs['col3']
+//     sub = inputs['sub']
+//     copied = inputs['copied']
+//     withNewRow = inputs['withNewRow']
+//     withNewCol = inputs['withNewCol']
+//     mat1 = inputs['mat1']
+//     mat2 = inputs['mat2']
+//     mat3 = inputs['mat3']
+//     mat4 = inputs['mat4']
+//     newRow = inputs['newRow']
+//     newCol = inputs['newCol']
+//
+//     # Equation 0: der(x) = 0.1
+//     outputs['eq[0]'] = der_x - 0.1
+//
+//     # Equation 1: row1 = extractFirstRow(mat1)
+//     # Extract row at index 0 (0-based for Modelica's row 1)
+//     expected_row1 = mat1[0, :]
+//     outputs['eq[1]'] = row1 - expected_row1
+//
+//     # Equation 2: row2 = extractSecondRow(mat1)
+//     # Extract row at index 1 (0-based for Modelica's row 2)
+//     expected_row2 = mat1[1, :]
+//     outputs['eq[2]'] = row2 - expected_row2
+//
+//     # Equation 3: col3 = extractThirdColumn(mat1)
+//     # Extract column at index 2 (0-based for Modelica's column 3)
+//     expected_col3 = mat1[:, 2]
+//     outputs['eq[3]'] = col3 - expected_col3
+//
+//     # Equation 4: sub = extractSubmatrix(mat2)
+//     # Extract center 2x2: mat2[1:3, 1:3] (0-based for Modelica's 2:3, 2:3)
+//     expected_sub = mat2[1:3, 1:3]
+//     outputs['eq[4]'] = sub - expected_sub
+//
+//     # Equation 5: copied = copyMatrix(mat3)
+//     expected_copied = np.copy(mat3)
+//     outputs['eq[5]'] = copied - expected_copied
+//
+//     # Equation 6: withNewRow = setSecondRow(mat3, newRow)
+//     expected_withNewRow = np.copy(mat3)
+//     expected_withNewRow[1, :] = newRow
+//     outputs['eq[6]'] = withNewRow - expected_withNewRow
+//
+//     # Equation 7: withNewCol = setFirstColumn(mat4, newCol)
+//     expected_withNewCol = np.copy(mat4)
+//     expected_withNewCol[:, 0] = newCol
+//     outputs['eq[7]'] = withNewCol - expected_withNewCol
+//
+//     # Initial values for parameters (model defaults)
+//     outputs['start[0]'] = np.array([[1.0, 2.0, 3.0, 4.0], [5.0, 6.0, 7.0, 8.0], [9.0, 10.0, 11.0, 12.0]])  # mat1
+//     outputs['start[1]'] = np.array([[1.0, 2.0, 3.0, 4.0], [5.0, 6.0, 7.0, 8.0], [9.0, 10.0, 11.0, 12.0], [13.0, 14.0, 15.0, 16.0]])  # mat2
+//     outputs['start[2]'] = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])  # mat3
+//     outputs['start[3]'] = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])  # mat4
+//     outputs['start[4]'] = np.array([10.0, 20.0, 30.0])  # newRow
+//     outputs['start[5]'] = np.array([100.0, 200.0, 300.0])  # newCol
+//
+//     return outputs
+//
+// @onnx-test-case
+// # Test case 1: Default parameters
+// import numpy as np
+// x = 0.0
+// der_x = 0.1
+// mat1 = np.array([[1.0, 2.0, 3.0, 4.0],
+//                  [5.0, 6.0, 7.0, 8.0],
+//                  [9.0, 10.0, 11.0, 12.0]])
+// mat2 = np.array([[1.0, 2.0, 3.0, 4.0],
+//                  [5.0, 6.0, 7.0, 8.0],
+//                  [9.0, 10.0, 11.0, 12.0],
+//                  [13.0, 14.0, 15.0, 16.0]])
+// mat3 = np.array([[1.0, 2.0, 3.0],
+//                  [4.0, 5.0, 6.0]])
+// mat4 = np.array([[1.0, 2.0],
+//                  [3.0, 4.0],
+//                  [5.0, 6.0]])
+// newRow = np.array([10.0, 20.0, 30.0])
+// newCol = np.array([100.0, 200.0, 300.0])
+// row1 = np.array([1.0, 2.0, 3.0, 4.0])
+// row2 = np.array([5.0, 6.0, 7.0, 8.0])
+// col3 = np.array([3.0, 7.0, 11.0])
+// sub = np.array([[6.0, 7.0], [10.0, 11.0]])
+// copied = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+// withNewRow = np.array([[1.0, 2.0, 3.0], [10.0, 20.0, 30.0]])
+// withNewCol = np.array([[100.0, 2.0], [200.0, 4.0], [300.0, 6.0]])
+// {
+//   "x": np.array(x),
+//   "der(x)": np.array(der_x),
+//   "row1": row1,
+//   "row2": row2,
+//   "col3": col3,
+//   "sub": sub,
+//   "copied": copied,
+//   "withNewRow": withNewRow,
+//   "withNewCol": withNewCol,
+//   "mat1": mat1,
+//   "mat2": mat2,
+//   "mat3": mat3,
+//   "mat4": mat4,
+//   "newRow": newRow,
+//   "newCol": newCol
+// }
+//
+// @onnx-test-case
+// # Test case 2: Different time value
+// import numpy as np
+// x = 5.0
+// der_x = 0.1
+// mat1 = np.array([[1.0, 2.0, 3.0, 4.0],
+//                  [5.0, 6.0, 7.0, 8.0],
+//                  [9.0, 10.0, 11.0, 12.0]])
+// mat2 = np.array([[1.0, 2.0, 3.0, 4.0],
+//                  [5.0, 6.0, 7.0, 8.0],
+//                  [9.0, 10.0, 11.0, 12.0],
+//                  [13.0, 14.0, 15.0, 16.0]])
+// mat3 = np.array([[1.0, 2.0, 3.0],
+//                  [4.0, 5.0, 6.0]])
+// mat4 = np.array([[1.0, 2.0],
+//                  [3.0, 4.0],
+//                  [5.0, 6.0]])
+// newRow = np.array([10.0, 20.0, 30.0])
+// newCol = np.array([100.0, 200.0, 300.0])
+// row1 = np.array([1.0, 2.0, 3.0, 4.0])
+// row2 = np.array([5.0, 6.0, 7.0, 8.0])
+// col3 = np.array([3.0, 7.0, 11.0])
+// sub = np.array([[6.0, 7.0], [10.0, 11.0]])
+// copied = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+// withNewRow = np.array([[1.0, 2.0, 3.0], [10.0, 20.0, 30.0]])
+// withNewCol = np.array([[100.0, 2.0], [200.0, 4.0], [300.0, 6.0]])
+// {
+//   "x": np.array(x),
+//   "der(x)": np.array(der_x),
+//   "row1": row1,
+//   "row2": row2,
+//   "col3": col3,
+//   "sub": sub,
+//   "copied": copied,
+//   "withNewRow": withNewRow,
+//   "withNewCol": withNewCol,
+//   "mat1": mat1,
+//   "mat2": mat2,
+//   "mat3": mat3,
+//   "mat4": mat4,
+//   "newRow": newRow,
+//   "newCol": newCol
+// }
+//

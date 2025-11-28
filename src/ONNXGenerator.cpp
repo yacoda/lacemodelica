@@ -1388,6 +1388,10 @@ void ONNXGenerator::createFunctionProto(
         std::string baseVarName;
         std::vector<int64_t> lhsIndices;  // 0-based indices for ScatterND
         bool isIndexedAssignment = false;
+        bool isFullSliceAssignment = false;  // For result[:] := ...
+        bool isRowAssignment = false;        // For result[i,:] := ...
+        bool isColumnAssignment = false;     // For result[:,j] := ...
+        int64_t rowOrColIndex = -1;          // The index value for row/column assignment
 
         if (lhsCompRef) {
             baseVarName = stripQuotes(lhsCompRef->IDENT(0)->getText());
@@ -1395,22 +1399,104 @@ void ONNXGenerator::createFunctionProto(
             auto arraySubscripts = lhsCompRef->arraySubscripts();
             if (!arraySubscripts.empty()) {
                 auto subscriptList = arraySubscripts[0]->subscript();
+
+                // Check if all subscripts are full slices (":")
+                bool allFullSlices = true;
                 for (auto sub : subscriptList) {
-                    if (auto subExpr = sub->expression()) {
-                        try {
-                            int modelicaIndex = std::stoi(subExpr->getText());
-                            lhsIndices.push_back(modelicaIndex - 1);  // Convert to 0-based
-                            isIndexedAssignment = true;
-                        } catch (...) {
-                            throw std::runtime_error("Dynamic indices in LHS not yet supported: " +
-                                                   subExpr->getText());
+                    if (sub->getText() != ":") {
+                        allFullSlices = false;
+                        break;
+                    }
+                }
+
+                if (allFullSlices) {
+                    // result[:] or result[:,:] - assign to whole array
+                    isFullSliceAssignment = true;
+                } else if (subscriptList.size() == 2) {
+                    // 2D case - check for row or column assignment
+                    bool firstIsSlice = (subscriptList[0]->getText() == ":");
+                    bool secondIsSlice = (subscriptList[1]->getText() == ":");
+
+                    if (!firstIsSlice && secondIsSlice) {
+                        // result[i,:] - row assignment
+                        auto subExpr = subscriptList[0]->expression();
+                        if (subExpr) {
+                            try {
+                                rowOrColIndex = std::stoi(subExpr->getText()) - 1;  // 0-based
+                                isRowAssignment = true;
+                            } catch (...) {
+                                throw std::runtime_error("Dynamic row index not yet supported: " + subExpr->getText());
+                            }
+                        }
+                    } else if (firstIsSlice && !secondIsSlice) {
+                        // result[:,j] - column assignment
+                        auto subExpr = subscriptList[1]->expression();
+                        if (subExpr) {
+                            try {
+                                rowOrColIndex = std::stoi(subExpr->getText()) - 1;  // 0-based
+                                isColumnAssignment = true;
+                            } catch (...) {
+                                throw std::runtime_error("Dynamic column index not yet supported: " + subExpr->getText());
+                            }
+                        }
+                    } else if (!firstIsSlice && !secondIsSlice) {
+                        // result[i,j] - scalar indexed assignment
+                        for (auto sub : subscriptList) {
+                            if (auto subExpr = sub->expression()) {
+                                try {
+                                    int modelicaIndex = std::stoi(subExpr->getText());
+                                    lhsIndices.push_back(modelicaIndex - 1);
+                                    isIndexedAssignment = true;
+                                } catch (...) {
+                                    throw std::runtime_error("Dynamic indices not yet supported: " + subExpr->getText());
+                                }
+                            }
+                        }
+                    } else {
+                        throw std::runtime_error("Unsupported 2D slice pattern on LHS");
+                    }
+                } else if (subscriptList.size() == 1 && subscriptList[0]->getText() != ":") {
+                    // 1D case: result[i] or result[i:j]
+                    auto subExpr = subscriptList[0]->expression();
+                    if (subExpr) {
+                        // Check if it's a range expression (e.g., 2:3)
+                        auto* exprNoDeco = subExpr->expressionNoDecoration();
+                        auto* simpleExpr = exprNoDeco ? exprNoDeco->simpleExpression() : nullptr;
+                        bool isRangeExpr = simpleExpr && simpleExpr->logicalExpression().size() > 1;
+
+                        if (isRangeExpr) {
+                            // Range subscript: result[2:3] - store start and end for later
+                            auto logExprs = simpleExpr->logicalExpression();
+                            try {
+                                int64_t start = std::stoi(logExprs[0]->getText()) - 1;  // 0-based
+                                int64_t end = std::stoi(logExprs[logExprs.size() > 2 ? 2 : 1]->getText());  // inclusive end
+                                // Generate all indices in the range
+                                for (int64_t idx = start; idx < end; idx++) {
+                                    lhsIndices.push_back(idx);
+                                }
+                                isIndexedAssignment = true;
+                            } catch (...) {
+                                throw std::runtime_error("Dynamic range index not yet supported: " + subExpr->getText());
+                            }
+                        } else {
+                            // Simple index
+                            try {
+                                int modelicaIndex = std::stoi(subExpr->getText());
+                                lhsIndices.push_back(modelicaIndex - 1);
+                                isIndexedAssignment = true;
+                            } catch (...) {
+                                throw std::runtime_error("Dynamic index not yet supported: " + subExpr->getText());
+                            }
                         }
                     }
+                } else {
+                    throw std::runtime_error("Unsupported LHS subscript pattern");
                 }
             }
         }
 
-        std::string lhsVarName = isIndexedAssignment ? baseVarName : stripQuotes(stmt.lhsContext->getText());
+        std::string lhsVarName = (isIndexedAssignment || isFullSliceAssignment || isRowAssignment || isColumnAssignment)
+            ? baseVarName : stripQuotes(stmt.lhsContext->getText());
 
         try {
             onnx::GraphProto tempGraph;
@@ -1420,7 +1506,7 @@ void ONNXGenerator::createFunctionProto(
 
             std::string finalTensor = rhsTensor;
 
-            if (isIndexedAssignment) {
+            if (isIndexedAssignment || isRowAssignment || isColumnAssignment) {
                 // Use GraphBuilder to add ScatterND nodes to tempGraph
                 GraphBuilder builder(&tempGraph, nodeCounter);
 
@@ -1453,11 +1539,60 @@ void ONNXGenerator::createFunctionProto(
                     variableToTensor[baseVarName] = currentTensor;
                 }
 
-                // Unsqueeze RHS to be [1] shaped for ScatterND updates
-                std::string updatesTensor = builder.addUnsqueeze(rhsTensor, {0});
+                if (isRowAssignment) {
+                    // result[i,:] := row[:] - update entire row i
+                    // Unsqueeze row to [1, n] shape
+                    std::string unsqueezedRow = builder.addUnsqueeze(rhsTensor, {0});
+                    // ScatterND with index [[i]]
+                    finalTensor = builder.addScatterND(currentTensor, {rowOrColIndex}, unsqueezedRow);
+                } else if (isColumnAssignment) {
+                    // result[:,j] := col[:] - update entire column j
+                    // This is trickier: transpose, scatter as row, transpose back
 
-                // ScatterND: update the specific index of the array
-                finalTensor = builder.addScatterND(currentTensor, lhsIndices, updatesTensor);
+                    // Transpose [m,n] -> [n,m]
+                    std::string permTensor = builder.addInt64ArrayConstant({1, 0});
+                    std::string transposed = builder.makeTensorName("transposed");
+                    auto* transposeNode1 = tempGraph.add_node();
+                    transposeNode1->set_op_type("Transpose");
+                    transposeNode1->set_name(transposed + "_Transpose");
+                    transposeNode1->add_input(currentTensor);
+                    transposeNode1->add_output(transposed);
+                    auto* permAttr1 = transposeNode1->add_attribute();
+                    permAttr1->set_name("perm");
+                    permAttr1->set_type(onnx::AttributeProto::INTS);
+                    permAttr1->add_ints(1);
+                    permAttr1->add_ints(0);
+
+                    // Unsqueeze column to [1, m] shape (column becomes row in transposed)
+                    std::string unsqueezedCol = builder.addUnsqueeze(rhsTensor, {0});
+
+                    // ScatterND to update row j (which is column j in original)
+                    std::string scattered = builder.addScatterND(transposed, {rowOrColIndex}, unsqueezedCol);
+
+                    // Transpose back [n,m] -> [m,n]
+                    finalTensor = builder.makeTensorName("result");
+                    auto* transposeNode2 = tempGraph.add_node();
+                    transposeNode2->set_op_type("Transpose");
+                    transposeNode2->set_name(finalTensor + "_Transpose");
+                    transposeNode2->add_input(scattered);
+                    transposeNode2->add_output(finalTensor);
+                    auto* permAttr2 = transposeNode2->add_attribute();
+                    permAttr2->set_name("perm");
+                    permAttr2->set_type(onnx::AttributeProto::INTS);
+                    permAttr2->add_ints(1);
+                    permAttr2->add_ints(0);
+                } else {
+                    // Indexed assignment (scalar or range)
+                    if (lhsIndices.size() == 1) {
+                        // Single element: Unsqueeze RHS to be [1] shaped for ScatterND updates
+                        std::string updatesTensor = builder.addUnsqueeze(rhsTensor, {0});
+                        finalTensor = builder.addScatterND(currentTensor, lhsIndices, updatesTensor);
+                    } else {
+                        // Range assignment (e.g., result[2:3] := {val1, val2})
+                        // RHS is already an array with the right shape, use ScatterND1D
+                        finalTensor = builder.addScatterND1D(currentTensor, lhsIndices, rhsTensor);
+                    }
+                }
             }
 
             // Convert initializers from tempGraph to Constant nodes in functionProto

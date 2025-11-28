@@ -481,14 +481,21 @@ std::string ExpressionConverter::convertPrimary(
 
         auto subscriptList = subscripts[0]->subscript();
 
-        // Check if any subscript contains a complex expression (not just a constant or simple loop var)
+        // Check if any subscript contains a complex expression (not just a constant, loop var, or range)
         bool hasComplexSubscript = false;
         for (auto sub : subscriptList) {
             if (sub->getText() == ":") {
-                continue;  // Slice notation - handled by applySubscripts
+                continue;  // Full slice notation - handled by applySubscripts
             }
             auto subExpr = sub->expression();
             if (!subExpr) continue;
+
+            // Check if it's a range expression (e.g., "2:4")
+            auto* exprNoDeco = subExpr->expressionNoDecoration();
+            auto* simpleExpr = exprNoDeco ? exprNoDeco->simpleExpression() : nullptr;
+            if (simpleExpr && simpleExpr->logicalExpression().size() > 1) {
+                continue;  // Range expression - handled by applySubscripts
+            }
 
             std::string indexText = subExpr->getText();
 
@@ -544,15 +551,13 @@ std::string ExpressionConverter::convertPrimary(
     }
 
     // 5. Array constructor {arrayArguments}
-    // Only handle array comprehensions (with for index) - constant arrays should
-    // continue to throw for backwards compatibility with bound output generation
     if (expr->arrayArguments()) {
         auto* arrayArgs = expr->arrayArguments();
         if (arrayArgs->forIndex()) {
             return convertArrayConstructor(arrayArgs, ctx);
         }
-        // Fall through to throw for constant array literals - they're handled
-        // as constants elsewhere and shouldn't generate bound outputs
+        // Handle constant/expression array literals like {1, 2, 3} or {val, val*2}
+        return convertArrayLiteral(arrayArgs, ctx);
     }
 
     // 6. Parenthesized expression
@@ -785,7 +790,7 @@ std::string ExpressionConverter::convertArrayConstructor(
     const ConversionContext& ctx) {
 
     // This function only handles array comprehensions: {expr for i in 1:n}
-    // Regular array literals are handled elsewhere as constants
+    // Regular array literals are handled by convertArrayLiteral
     if (!arrayArgs->forIndex()) {
         throw std::runtime_error("Array literal without comprehension not supported in expressions");
     }
@@ -795,6 +800,90 @@ std::string ExpressionConverter::convertArrayConstructor(
         throw std::runtime_error("Array comprehension requires a body expression");
     }
     return convertArrayComprehension(expressions[0], arrayArgs->forIndex(), ctx);
+}
+
+std::string ExpressionConverter::convertArrayLiteral(
+    basemodelica::BaseModelicaParser::ArrayArgumentsContext* arrayArgs,
+    const ConversionContext& ctx) {
+
+    auto builder = ctx.builder();
+    auto expressions = arrayArgs->expression();
+
+    if (expressions.empty()) {
+        throw std::runtime_error("Empty array literal");
+    }
+
+    // Check if this is a 2D array literal (nested braces)
+    // For 2D, the outer arrayArguments contains expressions that are themselves array constructors
+    bool is2D = false;
+    for (auto* expr : expressions) {
+        // Check if the expression is itself an array constructor {a, b, c}
+        auto* primary = ParseTreeNavigator::findPrimary(expr);
+        if (primary && primary->arrayArguments()) {
+            is2D = true;
+            break;
+        }
+    }
+
+    if (is2D) {
+        // 2D array: each expression is a row {a, b, c}
+        std::vector<std::string> rowTensors;
+        for (auto* expr : expressions) {
+            std::string rowTensor = convert(expr, ctx);
+            // Unsqueeze row to shape [1, n]
+            std::string unsqueezedRow = builder.addUnsqueeze(rowTensor, {0});
+            rowTensors.push_back(unsqueezedRow);
+        }
+
+        // Concat rows along axis 0 to get [m, n]
+        if (rowTensors.size() == 1) {
+            return rowTensors[0];
+        }
+
+        std::string resultTensor = builder.makeTensorName("array2d");
+        auto* concatNode = ctx.graph->add_node();
+        concatNode->set_op_type("Concat");
+        concatNode->set_name(resultTensor + "_Concat");
+        for (const auto& rowTensor : rowTensors) {
+            concatNode->add_input(rowTensor);
+        }
+        concatNode->add_output(resultTensor);
+        auto* axisAttr = concatNode->add_attribute();
+        axisAttr->set_name("axis");
+        axisAttr->set_type(onnx::AttributeProto::INT);
+        axisAttr->set_i(0);
+
+        return resultTensor;
+    }
+
+    // 1D array: convert each element, unsqueeze to [1], and concat
+    std::vector<std::string> elementTensors;
+    for (auto* expr : expressions) {
+        std::string elemTensor = convert(expr, ctx);
+        // Unsqueeze scalar to shape [1]
+        std::string unsqueezedElem = builder.addUnsqueeze(elemTensor, {0});
+        elementTensors.push_back(unsqueezedElem);
+    }
+
+    if (elementTensors.size() == 1) {
+        return elementTensors[0];
+    }
+
+    // Concat elements along axis 0
+    std::string resultTensor = builder.makeTensorName("array1d");
+    auto* concatNode = ctx.graph->add_node();
+    concatNode->set_op_type("Concat");
+    concatNode->set_name(resultTensor + "_Concat");
+    for (const auto& elemTensor : elementTensors) {
+        concatNode->add_input(elemTensor);
+    }
+    concatNode->add_output(resultTensor);
+    auto* axisAttr = concatNode->add_attribute();
+    axisAttr->set_name("axis");
+    axisAttr->set_type(onnx::AttributeProto::INT);
+    axisAttr->set_i(0);
+
+    return resultTensor;
 }
 
 // -----------------------------------------------------------------------------

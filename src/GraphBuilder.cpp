@@ -280,6 +280,44 @@ std::string GraphBuilder::addScatterND(const std::string& data,
     return outputTensor;
 }
 
+std::string GraphBuilder::addScatterND1D(const std::string& data,
+                                          const std::vector<int64_t>& indices1D,
+                                          const std::string& updates) {
+    // Create indices tensor with shape [n, 1] for updating multiple 1D positions
+    // For example, to update indices [1, 2] in a 1D array, indices should be [[1], [2]]
+    std::string name = prefix_.empty()
+        ? ("scatter_idx_" + std::to_string(nodeCounter_++))
+        : (prefix_ + "_scatter_idx_" + std::to_string(nodeCounter_++));
+
+    auto* constNode = graph_->add_node();
+    constNode->set_op_type("Constant");
+    constNode->set_name(name);
+    constNode->add_output(name);
+
+    auto* attr = constNode->add_attribute();
+    attr->set_name("value");
+    attr->set_type(onnx::AttributeProto::TENSOR);
+    auto* tensor = attr->mutable_t();
+    tensor->set_data_type(onnx::TensorProto::INT64);
+    tensor->add_dims(indices1D.size());  // number of elements to update
+    tensor->add_dims(1);                  // each index is 1D
+    for (int64_t val : indices1D) {
+        tensor->add_int64_data(val);
+    }
+
+    std::string outputTensor = makeTensorName();
+
+    auto* node = graph_->add_node();
+    node->set_op_type("ScatterND");
+    node->set_name(outputTensor + "_ScatterND");
+    node->add_input(data);
+    node->add_input(name);
+    node->add_input(updates);
+    node->add_output(outputTensor);
+
+    return outputTensor;
+}
+
 std::string GraphBuilder::addUnsqueeze(const std::string& input,
                                         const std::vector<int64_t>& axes) {
     std::string axesTensor = addInt64ArrayConstant(axes);
@@ -289,6 +327,42 @@ std::string GraphBuilder::addUnsqueeze(const std::string& input,
     node->set_op_type("Unsqueeze");
     node->set_name(outputTensor + "_Unsqueeze");
     node->add_input(input);
+    node->add_input(axesTensor);
+    node->add_output(outputTensor);
+
+    return outputTensor;
+}
+
+std::string GraphBuilder::addSqueeze(const std::string& input,
+                                      const std::vector<int64_t>& axes) {
+    std::string axesTensor = addInt64ArrayConstant(axes);
+    std::string outputTensor = makeTensorName();
+
+    auto* node = graph_->add_node();
+    node->set_op_type("Squeeze");
+    node->set_name(outputTensor + "_Squeeze");
+    node->add_input(input);
+    node->add_input(axesTensor);
+    node->add_output(outputTensor);
+
+    return outputTensor;
+}
+
+std::string GraphBuilder::addSlice(const std::string& data,
+                                    const std::vector<int64_t>& starts,
+                                    const std::vector<int64_t>& ends,
+                                    const std::vector<int64_t>& axes) {
+    std::string startsTensor = addInt64ArrayConstant(starts);
+    std::string endsTensor = addInt64ArrayConstant(ends);
+    std::string axesTensor = addInt64ArrayConstant(axes);
+    std::string outputTensor = makeTensorName();
+
+    auto* node = graph_->add_node();
+    node->set_op_type("Slice");
+    node->set_name(outputTensor + "_Slice");
+    node->add_input(data);
+    node->add_input(startsTensor);
+    node->add_input(endsTensor);
     node->add_input(axesTensor);
     node->add_output(outputTensor);
 
@@ -406,6 +480,38 @@ void GraphBuilder::addShapeDimensions(onnx::TensorShapeProto* shape,
 // Array Subscripts
 // -----------------------------------------------------------------------------
 
+// Helper to check if a simple expression is a range (has colons like "2:4")
+static bool isRangeExpression(basemodelica::BaseModelicaParser::ExpressionContext* expr) {
+    if (!expr) return false;
+    auto* exprNoDeco = expr->expressionNoDecoration();
+    if (!exprNoDeco) return false;
+    auto* simpleExpr = exprNoDeco->simpleExpression();
+    if (!simpleExpr) return false;
+    // Range expression has multiple logicalExpressions separated by ':'
+    return simpleExpr->logicalExpression().size() > 1;
+}
+
+// Parse range bounds from a simple expression like "2:4" or "1:2:10"
+// Returns {start, end} (1-based, inclusive as in Modelica)
+static std::pair<int64_t, int64_t> parseRangeBounds(basemodelica::BaseModelicaParser::ExpressionContext* expr) {
+    auto* simpleExpr = expr->expressionNoDecoration()->simpleExpression();
+    auto logExprs = simpleExpr->logicalExpression();
+
+    if (logExprs.size() == 2) {
+        // start:end
+        int64_t start = std::stoi(logExprs[0]->getText());
+        int64_t end = std::stoi(logExprs[1]->getText());
+        return {start, end};
+    } else if (logExprs.size() == 3) {
+        // start:step:end - step is ignored for now (assume step=1)
+        int64_t start = std::stoi(logExprs[0]->getText());
+        int64_t end = std::stoi(logExprs[2]->getText());
+        return {start, end};
+    }
+
+    throw std::runtime_error("Invalid range expression: " + expr->getText());
+}
+
 GraphBuilder::SubscriptAnalysis GraphBuilder::analyzeSubscripts(
     const std::vector<basemodelica::BaseModelicaParser::SubscriptContext*>& subscripts,
     const std::map<std::string, std::string>* variableMap) {
@@ -413,6 +519,7 @@ GraphBuilder::SubscriptAnalysis GraphBuilder::analyzeSubscripts(
     SubscriptAnalysis result;
 
     for (auto sub : subscripts) {
+        // Full slice ":"
         if (sub->getText() == ":") {
             result.hasLoopVariable = true;
             return result;
@@ -421,6 +528,12 @@ GraphBuilder::SubscriptAnalysis GraphBuilder::analyzeSubscripts(
         auto subExpr = sub->expression();
         if (!subExpr) {
             continue;
+        }
+
+        // Range expression "2:4"
+        if (isRangeExpression(subExpr)) {
+            result.hasLoopVariable = true;
+            return result;
         }
 
         std::string indexExpr = subExpr->getText();
@@ -453,29 +566,95 @@ std::string GraphBuilder::applySubscripts(
         return addGatherND(baseTensor, analysis.staticIndices);
     }
 
-    // Dynamic indexing with loop variables
+    // Handle slices and mixed indexing
     std::string currentTensor = baseTensor;
 
+    // Collect information about each subscript
+    struct SubscriptInfo {
+        enum Type { FULL_SLICE, RANGE_SLICE, STATIC_INDEX, DYNAMIC_INDEX };
+        Type type;
+        int64_t start = 0;      // For RANGE_SLICE: 0-based start
+        int64_t end = 0;        // For RANGE_SLICE: 0-based exclusive end
+        int64_t staticIdx = 0;  // For STATIC_INDEX: 0-based index
+        std::string loopVar;    // For DYNAMIC_INDEX: loop variable name
+    };
+
+    std::vector<SubscriptInfo> subInfos;
     for (size_t dimIdx = 0; dimIdx < subscripts.size(); dimIdx++) {
         auto sub = subscripts[dimIdx];
+        SubscriptInfo info;
 
         if (sub->getText() == ":") {
-            throw std::runtime_error("Array slice ':' not yet supported in ONNX conversion");
-        }
-
-        auto subExpr = sub->expression();
-        if (!subExpr) {
-            throw std::runtime_error("Invalid array subscript");
-        }
-
-        std::string indexExpr = subExpr->getText();
-
-        if (variableMap && variableMap->count(indexExpr) > 0) {
-            std::string loopVar1Based = variableMap->at(indexExpr);
-            std::string index0Based = convertToZeroBasedIndex(loopVar1Based);
-            currentTensor = addGather(currentTensor, index0Based, 0);
+            info.type = SubscriptInfo::FULL_SLICE;
         } else {
-            throw std::runtime_error("Mixed static and dynamic indexing not yet fully supported");
+            auto subExpr = sub->expression();
+            if (!subExpr) {
+                throw std::runtime_error("Invalid array subscript");
+            }
+
+            if (isRangeExpression(subExpr)) {
+                info.type = SubscriptInfo::RANGE_SLICE;
+                auto [start, end] = parseRangeBounds(subExpr);
+                info.start = start - 1;  // Convert to 0-based
+                info.end = end;          // Modelica end is inclusive, ONNX is exclusive, so don't subtract
+            } else {
+                std::string indexExpr = subExpr->getText();
+                if (variableMap && variableMap->count(indexExpr) > 0) {
+                    info.type = SubscriptInfo::DYNAMIC_INDEX;
+                    info.loopVar = indexExpr;
+                } else {
+                    try {
+                        info.type = SubscriptInfo::STATIC_INDEX;
+                        info.staticIdx = std::stoi(indexExpr) - 1;  // Convert to 0-based
+                    } catch (...) {
+                        throw std::runtime_error("Unsupported subscript expression: " + indexExpr);
+                    }
+                }
+            }
+        }
+        subInfos.push_back(info);
+    }
+
+    // Process subscripts from first to last dimension
+    // We need to track axis offset as dimensions get removed by static indexing
+    int axisOffset = 0;
+
+    for (size_t dimIdx = 0; dimIdx < subInfos.size(); dimIdx++) {
+        const auto& info = subInfos[dimIdx];
+        int currentAxis = static_cast<int>(dimIdx) - axisOffset;
+
+        switch (info.type) {
+            case SubscriptInfo::FULL_SLICE:
+                // Full slice: keep all elements on this dimension - no operation needed
+                break;
+
+            case SubscriptInfo::RANGE_SLICE: {
+                // Range slice: use Slice operator
+                currentTensor = addSlice(currentTensor,
+                                         {info.start},
+                                         {info.end},
+                                         {currentAxis});
+                break;
+            }
+
+            case SubscriptInfo::STATIC_INDEX: {
+                // Static index: use Gather to select one element, then squeeze
+                std::string indexTensor = addInt64Constant(info.staticIdx, "idx");
+                currentTensor = addGather(currentTensor, indexTensor, currentAxis);
+                // Gather removes the dimension, so adjust axis offset for subsequent subscripts
+                axisOffset++;
+                break;
+            }
+
+            case SubscriptInfo::DYNAMIC_INDEX: {
+                // Dynamic index with loop variable
+                std::string loopVar1Based = variableMap->at(info.loopVar);
+                std::string index0Based = convertToZeroBasedIndex(loopVar1Based);
+                currentTensor = addGather(currentTensor, index0Based, currentAxis);
+                // Gather removes the dimension
+                axisOffset++;
+                break;
+            }
         }
     }
 

@@ -81,6 +81,21 @@ public:
                              const std::vector<int64_t>& indices,
                              const std::string& updates);
 
+    // Scatter multiple elements at given 1D indices (for range assignments)
+    // indices are 0-based positions, updates should have shape [n] matching indices count
+    std::string addScatterND1D(const std::string& data,
+                                const std::vector<int64_t>& indices1D,
+                                const std::string& updates);
+
+    // Slice operation for range subscripts (0-based, exclusive end)
+    std::string addSlice(const std::string& data,
+                         const std::vector<int64_t>& starts,
+                         const std::vector<int64_t>& ends,
+                         const std::vector<int64_t>& axes);
+
+    // Squeeze operation to remove dimensions of size 1
+    std::string addSqueeze(const std::string& input, const std::vector<int64_t>& axes);
+
     // Convert Modelica 1-based index to ONNX 0-based
     std::string convertToZeroBasedIndex(const std::string& oneBasedTensor);
 
