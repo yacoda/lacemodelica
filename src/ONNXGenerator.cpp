@@ -1391,6 +1391,7 @@ void ONNXGenerator::createFunctionProto(
         bool isFullSliceAssignment = false;  // For result[:] := ...
         bool isRowAssignment = false;        // For result[i,:] := ...
         bool isColumnAssignment = false;     // For result[:,j] := ...
+        bool isRangeAssignment = false;      // For result[2:3] := ... (1D range)
         int64_t rowOrColIndex = -1;          // The index value for row/column assignment
 
         if (lhsCompRef) {
@@ -1455,6 +1456,31 @@ void ONNXGenerator::createFunctionProto(
                     } else {
                         throw std::runtime_error("Unsupported 2D slice pattern on LHS");
                     }
+                } else if (subscriptList.size() >= 3) {
+                    // N-D case (3D, 4D, etc.): result[i,j,k,...] - scalar indexed assignment
+                    // Check that all subscripts are static indices (no slices)
+                    bool allStaticIndices = true;
+                    for (auto sub : subscriptList) {
+                        if (sub->getText() == ":") {
+                            allStaticIndices = false;
+                            break;
+                        }
+                    }
+                    if (allStaticIndices) {
+                        for (auto sub : subscriptList) {
+                            if (auto subExpr = sub->expression()) {
+                                try {
+                                    int modelicaIndex = std::stoi(subExpr->getText());
+                                    lhsIndices.push_back(modelicaIndex - 1);
+                                    isIndexedAssignment = true;
+                                } catch (...) {
+                                    throw std::runtime_error("Dynamic indices not yet supported in N-D array: " + subExpr->getText());
+                                }
+                            }
+                        }
+                    } else {
+                        throw std::runtime_error("Slice patterns not yet supported for 3D+ arrays on LHS");
+                    }
                 } else if (subscriptList.size() == 1 && subscriptList[0]->getText() != ":") {
                     // 1D case: result[i] or result[i:j]
                     auto subExpr = subscriptList[0]->expression();
@@ -1475,6 +1501,7 @@ void ONNXGenerator::createFunctionProto(
                                     lhsIndices.push_back(idx);
                                 }
                                 isIndexedAssignment = true;
+                                isRangeAssignment = true;
                             } catch (...) {
                                 throw std::runtime_error("Dynamic range index not yet supported: " + subExpr->getText());
                             }
@@ -1583,8 +1610,8 @@ void ONNXGenerator::createFunctionProto(
                     permAttr2->add_ints(0);
                 } else {
                     // Indexed assignment (scalar or range)
-                    if (lhsIndices.size() == 1) {
-                        // Single element: Unsqueeze RHS to be [1] shaped for ScatterND updates
+                    if (!isRangeAssignment) {
+                        // Single element (1D, 2D, 3D, etc.): Unsqueeze RHS to be [1] shaped for ScatterND updates
                         std::string updatesTensor = builder.addUnsqueeze(rhsTensor, {0});
                         finalTensor = builder.addScatterND(currentTensor, lhsIndices, updatesTensor);
                     } else {

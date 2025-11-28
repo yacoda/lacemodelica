@@ -440,6 +440,40 @@ bool ModelInfoExtractor::isConstExpression(const std::string& expr) {
         return true;
     }
 
+    // Check for array literals like {1.0, 2.0, 3.0} or {{1, 2}, {3, 4}}
+    // An array literal is constant if all its elements are constants
+    if (expr.size() >= 2 && expr.front() == '{' && expr.back() == '}') {
+        // Extract content between braces
+        std::string content = expr.substr(1, expr.size() - 2);
+
+        // Parse elements (handle nested braces)
+        int braceDepth = 0;
+        size_t elementStart = 0;
+        for (size_t i = 0; i <= content.size(); i++) {
+            char c = (i < content.size()) ? content[i] : ',';  // Treat end as comma
+            if (c == '{') {
+                braceDepth++;
+            } else if (c == '}') {
+                braceDepth--;
+            } else if (c == ',' && braceDepth == 0) {
+                // Found element boundary
+                std::string element = content.substr(elementStart, i - elementStart);
+                // Trim whitespace
+                size_t start = element.find_first_not_of(" \t\n\r");
+                size_t end = element.find_last_not_of(" \t\n\r");
+                if (start != std::string::npos && end != std::string::npos) {
+                    element = element.substr(start, end - start + 1);
+                    // Recursively check if element is constant
+                    if (!isConstExpression(element)) {
+                        return false;
+                    }
+                }
+                elementStart = i + 1;
+            }
+        }
+        return true;  // All elements are constants
+    }
+
     try {
         size_t pos = 0;
         std::stod(expr, &pos);

@@ -813,6 +813,22 @@ std::string ExpressionConverter::convertArrayLiteral(
         throw std::runtime_error("Empty array literal");
     }
 
+    // Check if all elements are pure constant values (numbers/booleans).
+    // If so, throw an exception - constant array literals are handled elsewhere
+    // (as ONNX initializers) and shouldn't generate bound outputs.
+    bool allConstant = true;
+    for (auto* expr : expressions) {
+        std::string exprText = expr->getText();
+        if (!isConstValue(exprText)) {
+            allConstant = false;
+            break;
+        }
+    }
+    if (allConstant) {
+        throw std::runtime_error("Constant array literal should be handled as initializer: " +
+                                 arrayArgs->getText());
+    }
+
     // Check if this is a 2D array literal (nested braces)
     // For 2D, the outer arrayArguments contains expressions that are themselves array constructors
     bool is2D = false;
