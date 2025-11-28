@@ -77,6 +77,44 @@ std::string setupLoopBodyIO(onnx::GraphProto* bodyGraph, const std::string& loop
     return condOutName;
 }
 
+LoopSetupResult createForLoopBase(
+    onnx::GraphProto* graph,
+    GraphBuilder& builder,
+    const ForLoopRange& range,
+    const std::string& namePrefix) {
+
+    LoopSetupResult result;
+    result.loopNodeName = builder.makeTensorName(namePrefix);
+
+    // Create trip count and condition constants in outer graph
+    std::string tripCountTensor = builder.addInt64Constant(range.tripCount(), "n_" + result.loopNodeName);
+    std::string condTensor = builder.addBoolConstant(true);
+
+    // Create Loop node
+    result.loopNode = graph->add_node();
+    result.loopNode->set_op_type("Loop");
+    result.loopNode->set_name(result.loopNodeName);
+    result.loopNode->add_input(tripCountTensor);
+    result.loopNode->add_input(condTensor);
+
+    // Create body graph attribute
+    auto* bodyAttr = result.loopNode->add_attribute();
+    bodyAttr->set_name("body");
+    bodyAttr->set_type(onnx::AttributeProto::GRAPH);
+    result.bodyGraph = bodyAttr->mutable_g();
+    result.bodyGraph->set_name("body");
+
+    // Set up standard body I/O (iter, cond passthrough)
+    setupLoopBodyIO(result.bodyGraph, result.loopNodeName);
+
+    // Convert 0-based iter to 1-based Modelica index using a temporary body builder
+    auto bodyBuilder = builder.forSubgraph(result.bodyGraph, result.loopNodeName);
+    std::string constOneTensor = bodyBuilder.addInt64Constant(1, "one");
+    result.loopVarTensor = bodyBuilder.addBinaryOp("Add", "i", constOneTensor);
+
+    return result;
+}
+
 std::set<std::string> scanForDerivatives(
     const std::vector<basemodelica::BaseModelicaParser::EquationContext*>& equations) {
 

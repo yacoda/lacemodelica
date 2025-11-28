@@ -108,6 +108,33 @@ ForLoopRange parseForLoopRange(basemodelica::BaseModelicaParser::ForEquationCont
 // Returns the condition output name
 std::string setupLoopBodyIO(onnx::GraphProto* bodyGraph, const std::string& loopNodeName);
 
+// Result of createForLoopBase - contains all common loop setup components
+struct LoopSetupResult {
+    onnx::NodeProto* loopNode;       // The Loop node (add inputs/outputs to this)
+    onnx::GraphProto* bodyGraph;     // The body subgraph (add body nodes to this)
+    std::string loopNodeName;        // Name of the loop node
+    std::string loopVarTensor;       // 1-based loop variable tensor (in body graph)
+
+    // Create a GraphBuilder for the body graph (caller must manage lifetime)
+    GraphBuilder makeBodyBuilder(GraphBuilder& parentBuilder) const {
+        return parentBuilder.forSubgraph(bodyGraph, loopNodeName);
+    }
+};
+
+// Create the common ONNX Loop structure used by all for-loop contexts.
+// Sets up: trip count, condition, Loop node, body graph, iter/cond I/O, 1-based index.
+// Caller is responsible for:
+//   - Adding loop-carried inputs (after tripCount and cond)
+//   - Adding body graph inputs for carried vars
+//   - Processing body content
+//   - Adding body graph outputs
+//   - Adding loop node outputs
+LoopSetupResult createForLoopBase(
+    onnx::GraphProto* graph,
+    GraphBuilder& builder,
+    const ForLoopRange& range,
+    const std::string& namePrefix);
+
 // Scan equations for der() calls and return the set of derivative variable names
 std::set<std::string> scanForDerivatives(
     const std::vector<basemodelica::BaseModelicaParser::EquationContext*>& equations);

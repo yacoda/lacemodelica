@@ -807,49 +807,23 @@ std::string ExpressionConverter::convertArrayComprehension(
     const ConversionContext& ctx) {
 
     auto builder = ctx.builder();
-
-    // Parse the for-loop range using shared helper
     ForLoopRange range = parseForLoopRangeFromIndex(forIndex);
 
-    // Create ONNX Loop node
-    std::string loopNodeName = builder.makeTensorName("comprehension");
-    std::string tripCountTensor = builder.addInt64Constant(range.tripCount(), "n_" + loopNodeName);
-    std::string condTensor = builder.addBoolConstant(true);
-
-    auto* loopNode = ctx.graph->add_node();
-    loopNode->set_op_type("Loop");
-    loopNode->set_name(loopNodeName);
-    loopNode->add_input(tripCountTensor);
-    loopNode->add_input(condTensor);
-
-    // Create loop body graph
-    auto* bodyAttr = loopNode->add_attribute();
-    bodyAttr->set_name("body");
-    bodyAttr->set_type(onnx::AttributeProto::GRAPH);
-    auto* bodyGraph = bodyAttr->mutable_g();
-    bodyGraph->set_name("comprehension_body");
-
-    // Set up loop body standard inputs (iter, cond)
-    setupLoopBodyIO(bodyGraph, loopNodeName);
-
-    // Create body builder
-    auto bodyBuilder = builder.forSubgraph(bodyGraph, loopNodeName);
-
-    // Convert 0-based iter to 1-based Modelica index
-    std::string constOneTensor = bodyBuilder.addInt64Constant(1, "one");
-    std::string loopVarTensor = bodyBuilder.addBinaryOp("Add", "i", constOneTensor);
+    // Create common loop structure
+    auto loop = createForLoopBase(ctx.graph, builder, range, "comprehension");
+    auto bodyBuilder = loop.makeBodyBuilder(builder);
 
     // Create variable map with loop variable
     std::map<std::string, std::string> bodyVarMap;
     if (ctx.variableMap) {
         bodyVarMap = *ctx.variableMap;
     }
-    bodyVarMap[range.loopVar] = loopVarTensor;
+    bodyVarMap[range.loopVar] = loop.loopVarTensor;
 
     // Create context for body expression
-    ConversionContext bodyCtx = ctx.withGraph(bodyGraph);
+    ConversionContext bodyCtx = ctx.withGraph(loop.bodyGraph);
     bodyCtx.variableMap = &bodyVarMap;
-    bodyCtx.tensorPrefix = loopNodeName + "_";
+    bodyCtx.tensorPrefix = loop.loopNodeName + "_";
 
     // Convert body expression
     std::string bodyResultTensor = convert(bodyExpr, bodyCtx);
@@ -858,23 +832,23 @@ std::string ExpressionConverter::convertArrayComprehension(
     std::string unsqueezedResult = bodyBuilder.addUnsqueeze(bodyResultTensor, {0});
 
     // Add scan output (accumulated across iterations)
-    std::string scanOutputName = loopNodeName + "_scan_out";
-    auto* scanOutput = bodyGraph->add_output();
+    std::string scanOutputName = loop.loopNodeName + "_scan_out";
+    auto* scanOutput = loop.bodyGraph->add_output();
     scanOutput->set_name(scanOutputName);
     auto* scanOutType = scanOutput->mutable_type()->mutable_tensor_type();
     scanOutType->set_elem_type(onnx::TensorProto::DOUBLE);
     scanOutType->mutable_shape()->add_dim()->set_dim_value(1);
 
     // Identity to connect body result to scan output
-    auto* identityNode = bodyGraph->add_node();
+    auto* identityNode = loop.bodyGraph->add_node();
     identityNode->set_op_type("Identity");
-    identityNode->set_name(loopNodeName + "_scan_identity");
+    identityNode->set_name(loop.loopNodeName + "_scan_identity");
     identityNode->add_input(unsqueezedResult);
     identityNode->add_output(scanOutputName);
 
     // Add loop output (scan outputs become array)
-    std::string loopOutputTensor = loopNodeName + "_result";
-    loopNode->add_output(loopOutputTensor);
+    std::string loopOutputTensor = loop.loopNodeName + "_result";
+    loop.loopNode->add_output(loopOutputTensor);
 
     // Squeeze the result from [n, 1] to [n]
     // Create axes constant before Squeeze node for correct topological order
@@ -901,16 +875,9 @@ std::string ExpressionConverter::convertReductionExpression(
     const ConversionContext& ctx) {
 
     auto builder = ctx.builder();
-
-    // Parse the for-loop range using shared helper
     ForLoopRange range = parseForLoopRangeFromIndex(forIndex);
 
-    // Create ONNX Loop node
-    std::string loopNodeName = builder.makeTensorName("reduce_" + reductionOp);
-    std::string tripCountTensor = builder.addInt64Constant(range.tripCount(), "n_" + loopNodeName);
-    std::string condTensor = builder.addBoolConstant(true);
-
-    // Initial accumulator value (0 for sum, 1 for product)
+    // Initial accumulator value (0 for sum, 1 for product) - must be before loop node
     std::string initAccumTensor;
     if (reductionOp == "sum") {
         initAccumTensor = builder.addDoubleConstant(0.0);
@@ -920,49 +887,32 @@ std::string ExpressionConverter::convertReductionExpression(
         throw std::runtime_error("Unknown reduction operation: " + reductionOp);
     }
 
-    auto* loopNode = ctx.graph->add_node();
-    loopNode->set_op_type("Loop");
-    loopNode->set_name(loopNodeName);
-    loopNode->add_input(tripCountTensor);
-    loopNode->add_input(condTensor);
-    loopNode->add_input(initAccumTensor);  // Loop-carried accumulator
+    // Create common loop structure
+    auto loop = createForLoopBase(ctx.graph, builder, range, "reduce_" + reductionOp);
+    auto bodyBuilder = loop.makeBodyBuilder(builder);
 
-    // Create loop body graph
-    auto* bodyAttr = loopNode->add_attribute();
-    bodyAttr->set_name("body");
-    bodyAttr->set_type(onnx::AttributeProto::GRAPH);
-    auto* bodyGraph = bodyAttr->mutable_g();
-    bodyGraph->set_name("reduction_body");
+    // Add loop-carried accumulator input
+    loop.loopNode->add_input(initAccumTensor);
 
-    // Set up loop body standard inputs (iter, cond)
-    setupLoopBodyIO(bodyGraph, loopNodeName);
-
-    // Add accumulator input to body
-    std::string accumInputName = loopNodeName + "_accum_in";
-    auto* accumInput = bodyGraph->add_input();
+    // Add accumulator input to body graph
+    std::string accumInputName = loop.loopNodeName + "_accum_in";
+    auto* accumInput = loop.bodyGraph->add_input();
     accumInput->set_name(accumInputName);
     auto* accumInputType = accumInput->mutable_type()->mutable_tensor_type();
     accumInputType->set_elem_type(onnx::TensorProto::DOUBLE);
     accumInputType->mutable_shape();  // Scalar
-
-    // Create body builder
-    auto bodyBuilder = builder.forSubgraph(bodyGraph, loopNodeName);
-
-    // Convert 0-based iter to 1-based Modelica index
-    std::string constOneTensor = bodyBuilder.addInt64Constant(1, "one");
-    std::string loopVarTensor = bodyBuilder.addBinaryOp("Add", "i", constOneTensor);
 
     // Create variable map with loop variable
     std::map<std::string, std::string> bodyVarMap;
     if (ctx.variableMap) {
         bodyVarMap = *ctx.variableMap;
     }
-    bodyVarMap[range.loopVar] = loopVarTensor;
+    bodyVarMap[range.loopVar] = loop.loopVarTensor;
 
     // Create context for body expression
-    ConversionContext bodyCtx = ctx.withGraph(bodyGraph);
+    ConversionContext bodyCtx = ctx.withGraph(loop.bodyGraph);
     bodyCtx.variableMap = &bodyVarMap;
-    bodyCtx.tensorPrefix = loopNodeName + "_";
+    bodyCtx.tensorPrefix = loop.loopNodeName + "_";
 
     // Convert body expression
     std::string bodyResultTensor = convert(bodyExpr, bodyCtx);
@@ -972,23 +922,23 @@ std::string ExpressionConverter::convertReductionExpression(
     std::string accumOutputTensor = bodyBuilder.addBinaryOp(onnxOp, accumInputName, bodyResultTensor);
 
     // Add accumulator output to body
-    std::string accumOutputName = loopNodeName + "_accum_out";
-    auto* accumOutput = bodyGraph->add_output();
+    std::string accumOutputName = loop.loopNodeName + "_accum_out";
+    auto* accumOutput = loop.bodyGraph->add_output();
     accumOutput->set_name(accumOutputName);
     auto* accumOutputType = accumOutput->mutable_type()->mutable_tensor_type();
     accumOutputType->set_elem_type(onnx::TensorProto::DOUBLE);
     accumOutputType->mutable_shape();  // Scalar
 
     // Identity to connect to output
-    auto* identityNode = bodyGraph->add_node();
+    auto* identityNode = loop.bodyGraph->add_node();
     identityNode->set_op_type("Identity");
-    identityNode->set_name(loopNodeName + "_accum_identity");
+    identityNode->set_name(loop.loopNodeName + "_accum_identity");
     identityNode->add_input(accumOutputTensor);
     identityNode->add_output(accumOutputName);
 
     // Add loop output (final accumulator value)
-    std::string loopOutputTensor = loopNodeName + "_result";
-    loopNode->add_output(loopOutputTensor);
+    std::string loopOutputTensor = loop.loopNodeName + "_result";
+    loop.loopNode->add_output(loopOutputTensor);
 
     return loopOutputTensor;
 }
