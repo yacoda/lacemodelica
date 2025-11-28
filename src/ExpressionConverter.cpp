@@ -36,6 +36,106 @@ const std::map<std::string, std::string> kMathFunctionMap = {
     {"abs", "Abs"}, {"ceil", "Ceil"}, {"floor", "Floor"}, {"sign", "Sign"}
 };
 
+// Structure to hold both positional and named arguments
+struct FunctionCallArguments {
+    std::vector<basemodelica::BaseModelicaParser::ExpressionContext*> positional;
+    std::map<std::string, basemodelica::BaseModelicaParser::ExpressionContext*> named;
+};
+
+// Collect all function arguments (positional and named)
+FunctionCallArguments collectAllFunctionArguments(
+    basemodelica::BaseModelicaParser::FunctionArgumentsContext* funcArgs) {
+    FunctionCallArguments result;
+
+    if (!funcArgs) return result;
+
+    // Case 1: Only named arguments (no positional first expression)
+    if (funcArgs->namedArguments()) {
+        auto namedArgs = funcArgs->namedArguments();
+        for (auto* namedArg : namedArgs->namedArgument()) {
+            std::string paramName = stripQuotes(namedArg->IDENT()->getText());
+            if (auto* funcArg = namedArg->functionArgument()) {
+                if (auto* expr = funcArg->expression()) {
+                    result.named[paramName] = expr;
+                }
+            }
+        }
+        return result;
+    }
+
+    // Case 2: Starts with positional expression
+    if (auto firstExpr = funcArgs->expression()) {
+        result.positional.push_back(firstExpr);
+    }
+
+    // Process remaining arguments (can be positional or switch to named)
+    auto nonFirst = funcArgs->functionArgumentsNonFirst();
+    while (nonFirst) {
+        // Check if we've switched to named arguments
+        if (nonFirst->namedArguments()) {
+            auto namedArgs = nonFirst->namedArguments();
+            for (auto* namedArg : namedArgs->namedArgument()) {
+                std::string paramName = stripQuotes(namedArg->IDENT()->getText());
+                if (auto* funcArg = namedArg->functionArgument()) {
+                    if (auto* expr = funcArg->expression()) {
+                        result.named[paramName] = expr;
+                    }
+                }
+            }
+            break;  // Named arguments must be last
+        }
+
+        // Still positional argument
+        if (auto funcArg = nonFirst->functionArgument()) {
+            if (auto expr = funcArg->expression()) {
+                result.positional.push_back(expr);
+            }
+        }
+        nonFirst = nonFirst->functionArgumentsNonFirst();
+    }
+
+    return result;
+}
+
+// Resolve arguments to correct order based on function signature
+std::vector<basemodelica::BaseModelicaParser::ExpressionContext*>
+resolveArgumentOrder(const FunctionCallArguments& args, const Function* func) {
+    std::vector<basemodelica::BaseModelicaParser::ExpressionContext*> result;
+    result.resize(func->inputs.size(), nullptr);
+
+    // First, place positional arguments
+    for (size_t i = 0; i < args.positional.size() && i < func->inputs.size(); i++) {
+        result[i] = args.positional[i];
+    }
+
+    // Then, place named arguments by finding their position in the function signature
+    for (const auto& [name, expr] : args.named) {
+        bool found = false;
+        for (size_t i = 0; i < func->inputs.size(); i++) {
+            if (func->inputs[i].name == name) {
+                if (result[i] != nullptr) {
+                    throw std::runtime_error("Parameter '" + name + "' specified both positionally and by name");
+                }
+                result[i] = expr;
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            throw std::runtime_error("Unknown parameter name: " + name);
+        }
+    }
+
+    // Check all arguments are provided
+    for (size_t i = 0; i < result.size(); i++) {
+        if (result[i] == nullptr) {
+            throw std::runtime_error("Missing argument for parameter: " + func->inputs[i].name);
+        }
+    }
+
+    return result;
+}
+
 std::vector<basemodelica::BaseModelicaParser::ExpressionContext*>
 collectFunctionArguments(basemodelica::BaseModelicaParser::FunctionArgumentsContext* funcArgs) {
     std::vector<basemodelica::BaseModelicaParser::ExpressionContext*> arguments;
@@ -442,10 +542,28 @@ std::string ExpressionConverter::convertPrimary(
         throw std::runtime_error("Unsupported function call: " + funcName);
     }
 
-    // 4. Component reference (variable)
+    // 4. Component reference (variable or enum literal)
     if (expr->componentReference()) {
         auto compRef = expr->componentReference();
         std::string varName = stripQuotes(compRef->IDENT(0)->getText());
+
+        // Check if this is an enum literal (e.g., 'State'.'off')
+        // Enum literals have multiple IDENTs: TypeName.literalName
+        if (compRef->IDENT().size() >= 2) {
+            std::string typeName = varName;
+            std::string literalName = stripQuotes(compRef->IDENT(1)->getText());
+
+            // Look up enum type
+            const EnumType* enumType = ctx.info.findEnumType(typeName);
+            if (enumType) {
+                int enumValue = enumType->getValue(literalName);
+                if (enumValue >= 0) {
+                    // Return the enum value as a double constant
+                    return builder.addDoubleConstant(static_cast<double>(enumValue));
+                }
+                throw std::runtime_error("Unknown enum literal: " + typeName + "." + literalName);
+            }
+        }
 
         std::string baseTensor;
         bool isLoopIndex = false;
@@ -685,13 +803,9 @@ std::string ExpressionConverter::convertUserFunctionCall(
         throw std::runtime_error("Function " + funcName + " requires arguments");
     }
 
-    auto arguments = collectFunctionArguments(funcArgs);
-
-    if (arguments.size() != func->inputs.size()) {
-        throw std::runtime_error("Function " + funcName + " expects " +
-            std::to_string(func->inputs.size()) + " arguments, got " +
-            std::to_string(arguments.size()));
-    }
+    // Collect all arguments (positional and named) and resolve to correct order
+    auto allArgs = collectAllFunctionArguments(funcArgs);
+    auto arguments = resolveArgumentOrder(allArgs, func);
 
     std::vector<std::string> argTensors;
     for (size_t i = 0; i < arguments.size(); i++) {
@@ -748,12 +862,9 @@ std::vector<std::string> ExpressionConverter::convertMultiOutput(
         throw std::runtime_error("Function " + funcName + " requires arguments");
     }
 
-    auto arguments = collectFunctionArguments(funcArgs);
-    if (arguments.size() != func->inputs.size()) {
-        throw std::runtime_error("Function " + funcName + " expects " +
-            std::to_string(func->inputs.size()) + " arguments, got " +
-            std::to_string(arguments.size()));
-    }
+    // Collect all arguments (positional and named) and resolve to correct order
+    auto allArgs = collectAllFunctionArguments(funcArgs);
+    auto arguments = resolveArgumentOrder(allArgs, func);
 
     std::vector<std::string> argTensors;
     for (size_t i = 0; i < arguments.size(); i++) {

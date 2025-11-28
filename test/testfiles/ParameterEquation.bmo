@@ -1,0 +1,106 @@
+//! base 0.1.0
+package 'ParameterEquation'
+  model 'ParameterEquation' "Model with parameter equations and guess values"
+    parameter Real 'k' = 1.0 "Known parameter";
+    parameter Real 'a';
+    parameter Real 'b';
+    Real 'x'(start = 1.0);
+    Real 'y';
+    // Parameter equation: solve for 'a' given a guess
+    parameter equation guess('a') = 'k' * 2.0 "Compute a from k";
+    // Parameter equation: solve for 'b' with expression
+    parameter equation guess('b') = 'a' + 1.0 "Compute b from a";
+  equation
+    der('x') = -'k' * 'x';
+    'y' = 'a' * 'x' + 'b';
+  end 'ParameterEquation';
+end 'ParameterEquation';
+
+// @onnx-test-reference
+// Python reference implementation for ONNX runtime testing
+// def reference_implementation(inputs):
+//     import numpy as np
+//     outputs = {}
+//
+//     # Extract inputs
+//     k = inputs['k']
+//     a = inputs['a']
+//     b = inputs['b']
+//     x = inputs['x']
+//     der_x = inputs["der(x)"]
+//     y = inputs['y']
+//
+//     # Parameter equations (computed at initialization):
+//     # a = k * 2.0 = 1.0 * 2.0 = 2.0
+//     # b = a + 1.0 = 2.0 + 1.0 = 3.0
+//     expected_a = k * 2.0
+//     expected_b = expected_a + 1.0
+//
+//     # Equation 0: der(x) = -k * x
+//     outputs['eq[0]'] = der_x - (-k * x)
+//
+//     # Equation 1: y = a * x + b
+//     outputs['eq[1]'] = y - (a * x + b)
+//
+//     # Parameter equation residuals
+//     outputs['param_eq[0]'] = a - expected_a
+//     outputs['param_eq[1]'] = b - expected_b
+//
+//     # Initial value
+//     outputs['start[0]'] = np.array(1.0)
+//
+//     return outputs
+//
+// @onnx-test-case
+// # Test case 1: k=1.0 => a=2.0, b=3.0, x=1.0, y=5.0
+// import numpy as np
+// k = 1.0
+// a = k * 2.0
+// b = a + 1.0
+// x = 1.0
+// der_x = -k * x
+// y = a * x + b
+// {
+//   "k": np.array(k),
+//   "a": np.array(a),
+//   "b": np.array(b),
+//   "x": np.array(x),
+//   "der(x)": np.array(der_x),
+//   "y": np.array(y)
+// }
+//
+// @onnx-test-case
+// # Test case 2: k=0.5 => a=1.0, b=2.0, x=2.0, y=4.0
+// import numpy as np
+// k = 0.5
+// a = k * 2.0
+// b = a + 1.0
+// x = 2.0
+// der_x = -k * x
+// y = a * x + b
+// {
+//   "k": np.array(k),
+//   "a": np.array(a),
+//   "b": np.array(b),
+//   "x": np.array(x),
+//   "der(x)": np.array(der_x),
+//   "y": np.array(y)
+// }
+//
+// @onnx-test-case
+// # Test case 3: k=2.0 => a=4.0, b=5.0, x=0.5, y=7.0
+// import numpy as np
+// k = 2.0
+// a = k * 2.0
+// b = a + 1.0
+// x = 0.5
+// der_x = -k * x
+// y = a * x + b
+// {
+//   "k": np.array(k),
+//   "a": np.array(a),
+//   "b": np.array(b),
+//   "x": np.array(x),
+//   "der(x)": np.array(der_x),
+//   "y": np.array(y)
+// }

@@ -1,0 +1,116 @@
+//! base 0.1.0
+package 'NamedArguments'
+  pure function 'linearCombination' "Compute a*x + b*y"
+    input Real 'a';
+    input Real 'x';
+    input Real 'b';
+    input Real 'y';
+    output Real 'result';
+  algorithm
+    'result' := 'a' * 'x' + 'b' * 'y';
+  end 'linearCombination';
+
+  model 'NamedArguments' "Model using named arguments in function calls"
+    parameter Real 'p1' = 2.0;
+    parameter Real 'p2' = 3.0;
+    Real 't'(start = 0.0);
+    Real 'z1';
+    Real 'z2';
+    Real 'z3';
+  equation
+    der('t') = 1.0;
+    // Using all named arguments
+    'z1' = 'linearCombination'(a = 1.0, x = 'p1', b = 2.0, y = 'p2');
+    // Using named arguments in different order
+    'z2' = 'linearCombination'(y = 'p2', b = 2.0, x = 'p1', a = 1.0);
+    // Mixing positional and named arguments
+    'z3' = 'linearCombination'(1.0, 'p1', b = 2.0, y = 'p2');
+  end 'NamedArguments';
+end 'NamedArguments';
+
+// @onnx-test-reference
+// Python reference implementation for ONNX runtime testing
+// def reference_implementation(inputs):
+//     import numpy as np
+//     outputs = {}
+//
+//     # Extract inputs
+//     p1 = inputs['p1']
+//     p2 = inputs['p2']
+//     t = inputs['t']
+//     der_t = inputs["der(t)"]
+//     z1 = inputs['z1']
+//     z2 = inputs['z2']
+//     z3 = inputs['z3']
+//
+//     # linearCombination(a, x, b, y) = a*x + b*y
+//     def linearCombination(a, x, b, y):
+//         return a * x + b * y
+//
+//     # Equation 0: der(t) = 1.0
+//     outputs['eq[0]'] = der_t - 1.0
+//
+//     # Equation 1: z1 = linearCombination(a=1.0, x=p1, b=2.0, y=p2)
+//     expected_z1 = linearCombination(a=1.0, x=p1, b=2.0, y=p2)
+//     outputs['eq[1]'] = z1 - expected_z1
+//
+//     # Equation 2: z2 = linearCombination(y=p2, b=2.0, x=p1, a=1.0)
+//     expected_z2 = linearCombination(y=p2, b=2.0, x=p1, a=1.0)
+//     outputs['eq[2]'] = z2 - expected_z2
+//
+//     # Equation 3: z3 = linearCombination(1.0, p1, b=2.0, y=p2)
+//     expected_z3 = linearCombination(1.0, p1, b=2.0, y=p2)
+//     outputs['eq[3]'] = z3 - expected_z3
+//
+//     # Initial value
+//     outputs['start[0]'] = np.array(0.0)
+//
+//     return outputs
+//
+// @onnx-test-case
+// # Test case 1: p1=2.0, p2=3.0 => z = 1.0*2.0 + 2.0*3.0 = 8.0
+// import numpy as np
+// p1 = 2.0
+// p2 = 3.0
+// z = 1.0 * p1 + 2.0 * p2
+// {
+//   "p1": np.array(p1),
+//   "p2": np.array(p2),
+//   "t": np.array(0.0),
+//   "der(t)": np.array(1.0),
+//   "z1": np.array(z),
+//   "z2": np.array(z),
+//   "z3": np.array(z)
+// }
+//
+// @onnx-test-case
+// # Test case 2: p1=1.0, p2=1.0 => z = 1.0*1.0 + 2.0*1.0 = 3.0
+// import numpy as np
+// p1 = 1.0
+// p2 = 1.0
+// z = 1.0 * p1 + 2.0 * p2
+// {
+//   "p1": np.array(p1),
+//   "p2": np.array(p2),
+//   "t": np.array(0.5),
+//   "der(t)": np.array(1.0),
+//   "z1": np.array(z),
+//   "z2": np.array(z),
+//   "z3": np.array(z)
+// }
+//
+// @onnx-test-case
+// # Test case 3: p1=-1.0, p2=2.0 => z = 1.0*(-1.0) + 2.0*2.0 = 3.0
+// import numpy as np
+// p1 = -1.0
+// p2 = 2.0
+// z = 1.0 * p1 + 2.0 * p2
+// {
+//   "p1": np.array(p1),
+//   "p2": np.array(p2),
+//   "t": np.array(1.0),
+//   "der(t)": np.array(1.0),
+//   "z1": np.array(z),
+//   "z2": np.array(z),
+//   "z3": np.array(z)
+// }

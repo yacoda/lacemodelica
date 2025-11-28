@@ -1,0 +1,97 @@
+//! base 0.1.0
+package 'StringComment'
+  pure function 'scale' "Scale a value by a factor" + " (concatenated documentation)"
+    input Real 'x' "The input value";
+    output Real 'y' "The scaled output";
+  algorithm
+    'y' := 'x' * 2.0;
+  end 'scale';
+
+  model 'StringComment' "Model demonstrating string comments"
+    + " with multi-line documentation"
+    + " across multiple strings"
+    parameter Real 'k' = 1.0 "Gain coefficient" + " for the system";
+    Real 'x'(start = 0.0) "State variable";
+    Real 'y' "Output variable" + " computed from x";
+    Real 'z' "Scaled output";
+  equation
+    der('x') = 'k' "Rate of change equation";
+    'y' = 'x' * 'k' "Linear relationship";
+    'z' = 'scale'('y') "Apply scaling function";
+  end 'StringComment';
+end 'StringComment';
+
+// @onnx-test-reference
+// Python reference implementation for ONNX runtime testing
+// def reference_implementation(inputs):
+//     import numpy as np
+//     outputs = {}
+//
+//     # Extract inputs
+//     k = inputs['k']
+//     x = inputs['x']
+//     der_x = inputs["der(x)"]
+//     y = inputs['y']
+//     z = inputs['z']
+//
+//     # Equation 0: der(x) = k
+//     outputs['eq[0]'] = der_x - k
+//
+//     # Equation 1: y = x * k
+//     outputs['eq[1]'] = y - (x * k)
+//
+//     # Equation 2: z = scale(y) = y * 2.0
+//     outputs['eq[2]'] = z - (y * 2.0)
+//
+//     # Initial value
+//     outputs['start[0]'] = np.array(0.0)
+//
+//     return outputs
+//
+// @onnx-test-case
+// # Test case 1: k=1.0, x=2.0 => y=2.0, z=4.0
+// import numpy as np
+// k = 1.0
+// x = 2.0
+// der_x = k
+// y = x * k
+// z = y * 2.0
+// {
+//   "k": np.array(k),
+//   "x": np.array(x),
+//   "der(x)": np.array(der_x),
+//   "y": np.array(y),
+//   "z": np.array(z)
+// }
+//
+// @onnx-test-case
+// # Test case 2: k=0.5, x=4.0 => y=2.0, z=4.0
+// import numpy as np
+// k = 0.5
+// x = 4.0
+// der_x = k
+// y = x * k
+// z = y * 2.0
+// {
+//   "k": np.array(k),
+//   "x": np.array(x),
+//   "der(x)": np.array(der_x),
+//   "y": np.array(y),
+//   "z": np.array(z)
+// }
+//
+// @onnx-test-case
+// # Test case 3: k=2.0, x=1.5 => y=3.0, z=6.0
+// import numpy as np
+// k = 2.0
+// x = 1.5
+// der_x = k
+// y = x * k
+// z = y * 2.0
+// {
+//   "k": np.array(k),
+//   "x": np.array(x),
+//   "der(x)": np.array(der_x),
+//   "y": np.array(y),
+//   "z": np.array(z)
+// }

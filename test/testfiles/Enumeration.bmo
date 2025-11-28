@@ -1,0 +1,78 @@
+//! base 0.1.0
+package 'Enumeration'
+  type 'State' = enumeration('off', 'starting', 'running', 'stopping') "Operating states";
+
+  type 'Priority' = enumeration('low' "Low priority", 'medium' "Medium priority", 'high' "High priority");
+
+  model 'Enumeration' "Model using enumeration types and literals"
+    Real 't'(start = 0.0);
+    Real 'offValue';
+    Real 'runningValue';
+    Real 'lowValue';
+    Real 'highValue';
+  equation
+    der('t') = 1.0;
+    // Test enum literals directly - they convert to integers (0-based)
+    // State: off=0, starting=1, running=2, stopping=3
+    // Priority: low=0, medium=1, high=2
+    'offValue' = 'State'.'off';
+    'runningValue' = 'State'.'running';
+    'lowValue' = 'Priority'.'low';
+    'highValue' = 'Priority'.'high';
+  end 'Enumeration';
+end 'Enumeration';
+
+// @onnx-test-reference
+// Python reference implementation for ONNX runtime testing
+// def reference_implementation(inputs):
+//     import numpy as np
+//     outputs = {}
+//
+//     # Extract inputs
+//     t = inputs['t']
+//     der_t = inputs["der(t)"]
+//     offValue = inputs['offValue']
+//     runningValue = inputs['runningValue']
+//     lowValue = inputs['lowValue']
+//     highValue = inputs['highValue']
+//
+//     # Equation 0: der(t) = 1.0
+//     outputs['eq[0]'] = der_t - 1.0
+//
+//     # Equation 1: offValue = State.off = 0
+//     outputs['eq[1]'] = offValue - 0.0
+//
+//     # Equation 2: runningValue = State.running = 2
+//     outputs['eq[2]'] = runningValue - 2.0
+//
+//     # Equation 3: lowValue = Priority.low = 0
+//     outputs['eq[3]'] = lowValue - 0.0
+//
+//     # Equation 4: highValue = Priority.high = 2
+//     outputs['eq[4]'] = highValue - 2.0
+//
+//     return outputs
+//
+// @onnx-test-case
+// # Test case 1: All enum literals should convert to correct integers
+// import numpy as np
+// {
+//   "t": np.array(0.0),
+//   "der(t)": np.array(1.0),
+//   "offValue": np.array(0.0),
+//   "runningValue": np.array(2.0),
+//   "lowValue": np.array(0.0),
+//   "highValue": np.array(2.0)
+// }
+//
+// @onnx-test-case
+// # Test case 2: Same values at different time
+// import numpy as np
+// {
+//   "t": np.array(1.0),
+//   "der(t)": np.array(1.0),
+//   "offValue": np.array(0.0),
+//   "runningValue": np.array(2.0),
+//   "lowValue": np.array(0.0),
+//   "highValue": np.array(2.0)
+// }

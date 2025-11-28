@@ -75,6 +75,28 @@ struct Function {
     size_t sourceLine = 0;
 };
 
+struct EnumLiteral {
+    std::string name;
+    std::string description;
+    int value;  // 0-based integer value
+};
+
+struct EnumType {
+    std::string name;
+    std::string description;
+    std::vector<EnumLiteral> literals;
+
+    // Get the integer value for a literal name, returns -1 if not found
+    int getValue(const std::string& literalName) const {
+        for (const auto& lit : literals) {
+            if (lit.name == literalName) {
+                return lit.value;
+            }
+        }
+        return -1;
+    }
+};
+
 class ModelInfo {
 public:
     std::string packageName;
@@ -87,6 +109,8 @@ public:
     std::vector<Equation> initialEquations;
     std::vector<Function> functions;
     std::map<std::string, int> functionIndex;  // name -> index in functions
+    std::vector<EnumType> enumTypes;
+    std::map<std::string, int> enumTypeIndex;  // name -> index in enumTypes
 
     int nextValueReference = 1;
 
@@ -128,6 +152,27 @@ public:
         auto it = functionIndex.find(name);
         if (it != functionIndex.end()) {
             return &functions[it->second];
+        }
+        return nullptr;
+    }
+
+    void addEnumType(const EnumType& enumType) {
+        enumTypeIndex[enumType.name] = enumTypes.size();
+        enumTypes.push_back(enumType);
+    }
+
+    EnumType* findEnumType(const std::string& name) {
+        auto it = enumTypeIndex.find(name);
+        if (it != enumTypeIndex.end()) {
+            return &enumTypes[it->second];
+        }
+        return nullptr;
+    }
+
+    const EnumType* findEnumType(const std::string& name) const {
+        auto it = enumTypeIndex.find(name);
+        if (it != enumTypeIndex.end()) {
+            return &enumTypes[it->second];
         }
         return nullptr;
     }

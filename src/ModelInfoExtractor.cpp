@@ -94,6 +94,65 @@ void ModelInfoExtractor::extractRecordDefinitions(basemodelica::BaseModelicaPars
             }
         }
     }
+
+    // Also extract enum type definitions
+    extractEnumDefinitions(ctx);
+}
+
+void ModelInfoExtractor::extractEnumDefinitions(basemodelica::BaseModelicaParser::BaseModelicaContext* ctx) {
+    // Look for type definitions with enumeration in classDefinition elements
+    for (auto classDef : ctx->classDefinition()) {
+        if (!classDef->classPrefixes() || !classDef->classSpecifier()) continue;
+
+        std::string classPrefix = classDef->classPrefixes()->getText();
+        if (classPrefix != "type") continue;
+
+        // Check for shortClassSpecifier with enumeration
+        auto classSpec = classDef->classSpecifier();
+        auto shortClassSpec = classSpec->shortClassSpecifier();
+        if (!shortClassSpec) continue;
+
+        // Get the type name (IDENT before '=')
+        if (!shortClassSpec->IDENT()) continue;
+        std::string enumName = stripQuotes(shortClassSpec->IDENT()->getText());
+
+        // Check if this has an enumList (enumeration definition)
+        auto enumList = shortClassSpec->enumList();
+        if (!enumList) continue;
+
+        EnumType enumType;
+        enumType.name = enumName;
+
+        // Extract description from comment
+        if (shortClassSpec->comment() && shortClassSpec->comment()->stringComment()) {
+            auto stringComment = shortClassSpec->comment()->stringComment();
+            if (!stringComment->STRING().empty()) {
+                enumType.description = stripQuotes(stringComment->STRING(0)->getText());
+            }
+        }
+
+        // Extract literals
+        int value = 0;
+        for (auto enumLiteral : enumList->enumerationLiteral()) {
+            EnumLiteral lit;
+            lit.name = stripQuotes(enumLiteral->IDENT()->getText());
+            lit.value = value++;
+
+            // Extract literal description from comment
+            if (enumLiteral->comment() && enumLiteral->comment()->stringComment()) {
+                auto stringComment = enumLiteral->comment()->stringComment();
+                if (!stringComment->STRING().empty()) {
+                    lit.description = stripQuotes(stringComment->STRING(0)->getText());
+                }
+            }
+
+            enumType.literals.push_back(lit);
+        }
+
+        if (!enumType.literals.empty()) {
+            info.addEnumType(enumType);
+        }
+    }
 }
 
 void ModelInfoExtractor::extractGlobalConstants(basemodelica::BaseModelicaParser::BaseModelicaContext* ctx) {

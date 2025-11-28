@@ -21,6 +21,7 @@ private:
 
     void extractPackageAndModelName(basemodelica::BaseModelicaParser::BaseModelicaContext* ctx);
     void extractRecordDefinitions(basemodelica::BaseModelicaParser::BaseModelicaContext* ctx);
+    void extractEnumDefinitions(basemodelica::BaseModelicaParser::BaseModelicaContext* ctx);
     void extractGlobalConstants(basemodelica::BaseModelicaParser::BaseModelicaContext* ctx);
     void extractVariables(basemodelica::BaseModelicaParser::BaseModelicaContext* ctx);
     void extractEquations(basemodelica::BaseModelicaParser::BaseModelicaContext* ctx);
