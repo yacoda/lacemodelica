@@ -96,6 +96,12 @@ public:
     // Squeeze operation to remove dimensions of size 1
     std::string addSqueeze(const std::string& input, const std::vector<int64_t>& axes);
 
+    // Concatenate tensors along an axis
+    std::string addConcat(const std::vector<std::string>& inputs, int64_t axis);
+
+    // Transpose with permutation
+    std::string addTranspose(const std::string& input, const std::vector<int64_t>& perm);
+
     // Convert Modelica 1-based index to ONNX 0-based
     std::string convertToZeroBasedIndex(const std::string& oneBasedTensor);
 

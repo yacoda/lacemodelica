@@ -8,6 +8,7 @@
 #include <typeindex>
 #include <functional>
 #include <map>
+#include <utility>
 
 namespace lacemodelica {
 
@@ -73,6 +74,19 @@ public:
         auto primary = findPrimary(start);
         return primary ? primary->outputExpressionList() : nullptr;
     }
+
+    /**
+     * Check if an expression is a range expression (has colons like "2:4" or "1:2:10").
+     */
+    static bool isRangeExpression(basemodelica::BaseModelicaParser::ExpressionContext* expr);
+
+    /**
+     * Parse range bounds from a range expression like "2:4" or "1:2:10".
+     * Returns {start, end} (1-based, inclusive as in Modelica).
+     * Step is ignored for now (assumes step=1).
+     */
+    static std::pair<int64_t, int64_t> parseRangeBounds(
+        basemodelica::BaseModelicaParser::ExpressionContext* expr);
 
 private:
     // Navigation map: type -> function that returns next child node

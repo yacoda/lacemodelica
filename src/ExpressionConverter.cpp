@@ -491,9 +491,7 @@ std::string ExpressionConverter::convertPrimary(
             if (!subExpr) continue;
 
             // Check if it's a range expression (e.g., "2:4")
-            auto* exprNoDeco = subExpr->expressionNoDecoration();
-            auto* simpleExpr = exprNoDeco ? exprNoDeco->simpleExpression() : nullptr;
-            if (simpleExpr && simpleExpr->logicalExpression().size() > 1) {
+            if (ParseTreeNavigator::isRangeExpression(subExpr)) {
                 continue;  // Range expression - handled by applySubscripts
             }
 
@@ -829,77 +827,16 @@ std::string ExpressionConverter::convertArrayLiteral(
                                  arrayArgs->getText());
     }
 
-    // Check if this is a 2D array literal (nested braces)
-    // For 2D, the outer arrayArguments contains expressions that are themselves array constructors
-    bool is2D = false;
+    // Convert and unsqueeze each element/row, then concat along axis 0
+    // Works for both 1D {a, b, c} and 2D {{a, b}, {c, d}} cases
+    std::vector<std::string> tensors;
     for (auto* expr : expressions) {
-        // Check if the expression is itself an array constructor {a, b, c}
-        auto* primary = ParseTreeNavigator::findPrimary(expr);
-        if (primary && primary->arrayArguments()) {
-            is2D = true;
-            break;
-        }
+        std::string tensor = convert(expr, ctx);
+        // Unsqueeze to add leading dimension: scalar->[1] or row->[1,n]
+        tensors.push_back(builder.addUnsqueeze(tensor, {0}));
     }
 
-    if (is2D) {
-        // 2D array: each expression is a row {a, b, c}
-        std::vector<std::string> rowTensors;
-        for (auto* expr : expressions) {
-            std::string rowTensor = convert(expr, ctx);
-            // Unsqueeze row to shape [1, n]
-            std::string unsqueezedRow = builder.addUnsqueeze(rowTensor, {0});
-            rowTensors.push_back(unsqueezedRow);
-        }
-
-        // Concat rows along axis 0 to get [m, n]
-        if (rowTensors.size() == 1) {
-            return rowTensors[0];
-        }
-
-        std::string resultTensor = builder.makeTensorName("array2d");
-        auto* concatNode = ctx.graph->add_node();
-        concatNode->set_op_type("Concat");
-        concatNode->set_name(resultTensor + "_Concat");
-        for (const auto& rowTensor : rowTensors) {
-            concatNode->add_input(rowTensor);
-        }
-        concatNode->add_output(resultTensor);
-        auto* axisAttr = concatNode->add_attribute();
-        axisAttr->set_name("axis");
-        axisAttr->set_type(onnx::AttributeProto::INT);
-        axisAttr->set_i(0);
-
-        return resultTensor;
-    }
-
-    // 1D array: convert each element, unsqueeze to [1], and concat
-    std::vector<std::string> elementTensors;
-    for (auto* expr : expressions) {
-        std::string elemTensor = convert(expr, ctx);
-        // Unsqueeze scalar to shape [1]
-        std::string unsqueezedElem = builder.addUnsqueeze(elemTensor, {0});
-        elementTensors.push_back(unsqueezedElem);
-    }
-
-    if (elementTensors.size() == 1) {
-        return elementTensors[0];
-    }
-
-    // Concat elements along axis 0
-    std::string resultTensor = builder.makeTensorName("array1d");
-    auto* concatNode = ctx.graph->add_node();
-    concatNode->set_op_type("Concat");
-    concatNode->set_name(resultTensor + "_Concat");
-    for (const auto& elemTensor : elementTensors) {
-        concatNode->add_input(elemTensor);
-    }
-    concatNode->add_output(resultTensor);
-    auto* axisAttr = concatNode->add_attribute();
-    axisAttr->set_name("axis");
-    axisAttr->set_type(onnx::AttributeProto::INT);
-    axisAttr->set_i(0);
-
-    return resultTensor;
+    return builder.addConcat(tensors, 0);
 }
 
 // -----------------------------------------------------------------------------

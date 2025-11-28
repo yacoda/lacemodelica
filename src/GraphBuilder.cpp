@@ -2,6 +2,7 @@
 // Copyright (c) 2025 Joris Gillis, YACODA
 
 #include "GraphBuilder.h"
+#include "ParseTreeNavigator.h"
 
 #define ONNX_ML 1
 #define ONNX_NAMESPACE onnx
@@ -369,6 +370,51 @@ std::string GraphBuilder::addSlice(const std::string& data,
     return outputTensor;
 }
 
+std::string GraphBuilder::addConcat(const std::vector<std::string>& inputs, int64_t axis) {
+    if (inputs.empty()) {
+        throw std::runtime_error("Concat requires at least one input");
+    }
+    if (inputs.size() == 1) {
+        return inputs[0];  // No concat needed for single input
+    }
+
+    std::string outputTensor = makeTensorName("concat");
+
+    auto* node = graph_->add_node();
+    node->set_op_type("Concat");
+    node->set_name(outputTensor + "_Concat");
+    for (const auto& input : inputs) {
+        node->add_input(input);
+    }
+    node->add_output(outputTensor);
+
+    auto* axisAttr = node->add_attribute();
+    axisAttr->set_name("axis");
+    axisAttr->set_type(onnx::AttributeProto::INT);
+    axisAttr->set_i(axis);
+
+    return outputTensor;
+}
+
+std::string GraphBuilder::addTranspose(const std::string& input, const std::vector<int64_t>& perm) {
+    std::string outputTensor = makeTensorName("transposed");
+
+    auto* node = graph_->add_node();
+    node->set_op_type("Transpose");
+    node->set_name(outputTensor + "_Transpose");
+    node->add_input(input);
+    node->add_output(outputTensor);
+
+    auto* permAttr = node->add_attribute();
+    permAttr->set_name("perm");
+    permAttr->set_type(onnx::AttributeProto::INTS);
+    for (int64_t p : perm) {
+        permAttr->add_ints(p);
+    }
+
+    return outputTensor;
+}
+
 std::string GraphBuilder::convertToZeroBasedIndex(const std::string& oneBasedTensor) {
     std::string constOne = addInt64Constant(1, "one");
 
@@ -480,38 +526,6 @@ void GraphBuilder::addShapeDimensions(onnx::TensorShapeProto* shape,
 // Array Subscripts
 // -----------------------------------------------------------------------------
 
-// Helper to check if a simple expression is a range (has colons like "2:4")
-static bool isRangeExpression(basemodelica::BaseModelicaParser::ExpressionContext* expr) {
-    if (!expr) return false;
-    auto* exprNoDeco = expr->expressionNoDecoration();
-    if (!exprNoDeco) return false;
-    auto* simpleExpr = exprNoDeco->simpleExpression();
-    if (!simpleExpr) return false;
-    // Range expression has multiple logicalExpressions separated by ':'
-    return simpleExpr->logicalExpression().size() > 1;
-}
-
-// Parse range bounds from a simple expression like "2:4" or "1:2:10"
-// Returns {start, end} (1-based, inclusive as in Modelica)
-static std::pair<int64_t, int64_t> parseRangeBounds(basemodelica::BaseModelicaParser::ExpressionContext* expr) {
-    auto* simpleExpr = expr->expressionNoDecoration()->simpleExpression();
-    auto logExprs = simpleExpr->logicalExpression();
-
-    if (logExprs.size() == 2) {
-        // start:end
-        int64_t start = std::stoi(logExprs[0]->getText());
-        int64_t end = std::stoi(logExprs[1]->getText());
-        return {start, end};
-    } else if (logExprs.size() == 3) {
-        // start:step:end - step is ignored for now (assume step=1)
-        int64_t start = std::stoi(logExprs[0]->getText());
-        int64_t end = std::stoi(logExprs[2]->getText());
-        return {start, end};
-    }
-
-    throw std::runtime_error("Invalid range expression: " + expr->getText());
-}
-
 GraphBuilder::SubscriptAnalysis GraphBuilder::analyzeSubscripts(
     const std::vector<basemodelica::BaseModelicaParser::SubscriptContext*>& subscripts,
     const std::map<std::string, std::string>* variableMap) {
@@ -531,7 +545,7 @@ GraphBuilder::SubscriptAnalysis GraphBuilder::analyzeSubscripts(
         }
 
         // Range expression "2:4"
-        if (isRangeExpression(subExpr)) {
+        if (ParseTreeNavigator::isRangeExpression(subExpr)) {
             result.hasLoopVariable = true;
             return result;
         }
@@ -592,9 +606,9 @@ std::string GraphBuilder::applySubscripts(
                 throw std::runtime_error("Invalid array subscript");
             }
 
-            if (isRangeExpression(subExpr)) {
+            if (ParseTreeNavigator::isRangeExpression(subExpr)) {
                 info.type = SubscriptInfo::RANGE_SLICE;
-                auto [start, end] = parseRangeBounds(subExpr);
+                auto [start, end] = ParseTreeNavigator::parseRangeBounds(subExpr);
                 info.start = start - 1;  // Convert to 0-based
                 info.end = end;          // Modelica end is inclusive, ONNX is exclusive, so don't subtract
             } else {
