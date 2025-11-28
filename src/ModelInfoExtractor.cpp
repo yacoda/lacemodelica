@@ -590,7 +590,12 @@ void ModelInfoExtractor::extractFunctions(basemodelica::BaseModelicaParser::Base
                 stmt.forStatementContext = statement->forStatement();
                 func.algorithmStatements.push_back(stmt);
             }
-            // Note: We're skipping other statement types (function calls, if, while, etc.)
+            // Check if this is a while-statement
+            else if (statement->whileStatement()) {
+                stmt.whileStatementContext = statement->whileStatement();
+                func.algorithmStatements.push_back(stmt);
+            }
+            // Note: We're skipping other statement types (function calls, if, etc.)
             // These would need special handling in the future
         }
 

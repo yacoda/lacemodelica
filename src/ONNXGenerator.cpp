@@ -949,6 +949,260 @@ static void generateAlgorithmForLoop(
 }
 
 // -----------------------------------------------------------------------------
+// While Loop ONNX Generation
+// -----------------------------------------------------------------------------
+
+// Set up while loop body I/O without condition passthrough
+// Returns the condition output name (caller must compute and output the condition)
+static std::string setupWhileLoopBodyIO(onnx::GraphProto* bodyGraph, const std::string& loopNodeName) {
+    // Add iter input (0-based iteration counter)
+    auto* iterInput = bodyGraph->add_input();
+    iterInput->set_name("i");
+    auto* iterType = iterInput->mutable_type()->mutable_tensor_type();
+    iterType->set_elem_type(onnx::TensorProto::INT64);
+    iterType->mutable_shape();  // Scalar
+
+    // Add condition input
+    auto* condInput = bodyGraph->add_input();
+    condInput->set_name("cond");
+    auto* condInputType = condInput->mutable_type()->mutable_tensor_type();
+    condInputType->set_elem_type(onnx::TensorProto::BOOL);
+    condInputType->mutable_shape();  // Scalar
+
+    // Create condition output (will be set by while condition expression)
+    std::string condOutName = loopNodeName + "_cond_out";
+    auto* condOutput = bodyGraph->add_output();
+    condOutput->set_name(condOutName);
+    auto* condOutputType = condOutput->mutable_type()->mutable_tensor_type();
+    condOutputType->set_elem_type(onnx::TensorProto::BOOL);
+    condOutputType->mutable_shape();  // Scalar
+
+    // Note: No Identity passthrough here - caller will compute condition
+
+    return condOutName;
+}
+
+static void generateAlgorithmWhileLoop(
+    basemodelica::BaseModelicaParser::WhileStatementContext* whileStmtCtx,
+    onnx::FunctionProto* functionProto,
+    const Function& func,
+    const ModelInfo& info,
+    std::map<std::string, std::string>& variableToTensor,
+    int& nodeCounter,
+    int& loopCounter,
+    const std::string& sourceFile,
+    size_t sourceLine) {
+
+    auto* condExpr = whileStmtCtx->expression();
+    auto loopStatements = whileStmtCtx->statement();
+
+    // Create a temporary graph to build the loop structure
+    onnx::GraphProto tempGraph;
+    GraphBuilder builder(&tempGraph, nodeCounter);
+
+    std::string loopNodeName = "while_" + std::to_string(loopCounter++);
+
+    // Identify written variables
+    std::set<std::string> writtenVars;
+    identifyWrittenVariables(loopStatements, writtenVars);
+
+    // Initialize output variables that don't exist yet
+    for (const auto& varName : writtenVars) {
+        if (variableToTensor.find(varName) == variableToTensor.end()) {
+            for (const auto& output : func.outputs) {
+                if (output.name == varName && !output.dimensions.empty()) {
+                    std::vector<int64_t> shape;
+                    for (const auto& dim : output.dimensions) {
+                        try {
+                            shape.push_back(std::stoi(dim));
+                        } catch (...) {
+                            throw std::runtime_error("Symbolic dimensions not supported: " + dim);
+                        }
+                    }
+                    std::string zerosTensor = builder.addDoubleZerosConstant(shape);
+                    variableToTensor[varName] = zerosTensor;
+                    break;
+                }
+            }
+        }
+    }
+
+    // Max iterations (use a reasonable limit to prevent infinite loops)
+    // Use empty string for unlimited in ONNX, but we'll use a large constant for safety
+    std::string maxIterTensor = builder.addInt64Constant(1000, "max_" + loopNodeName);
+    std::string condTensor = builder.addBoolConstant(true);
+
+    auto* loopNode = tempGraph.add_node();
+    loopNode->set_op_type("Loop");
+    loopNode->set_name(loopNodeName);
+    loopNode->add_input(maxIterTensor);
+    loopNode->add_input(condTensor);
+
+    auto* bodyAttr = loopNode->add_attribute();
+    bodyAttr->set_name("body");
+    bodyAttr->set_type(onnx::AttributeProto::GRAPH);
+    auto* bodyGraph = bodyAttr->mutable_g();
+    bodyGraph->set_name("while_body");
+
+    // Set up body I/O (without condition passthrough)
+    std::string condOutName = setupWhileLoopBodyIO(bodyGraph, loopNodeName);
+
+    auto bodyBuilder = builder.forSubgraph(bodyGraph, loopNodeName);
+
+    // No loop variable for while loops, but we need maps for processing
+    std::map<std::string, std::string> loopVarMap;  // Empty - no loop variable
+
+    // Variables that exist before the loop and are written are loop-carried
+    std::vector<std::string> carriedVars;
+    for (const auto& varName : writtenVars) {
+        if (variableToTensor.find(varName) != variableToTensor.end()) {
+            carriedVars.push_back(varName);
+        }
+    }
+
+    // Set up loop-carried inputs/outputs
+    std::map<std::string, std::string> bodyInputTensors;
+    std::map<std::string, std::string> bodyOutputTensors;
+
+    for (const auto& varName : carriedVars) {
+        std::string externalTensor = variableToTensor[varName];
+        loopNode->add_input(externalTensor);
+
+        std::string bodyInputName = loopNodeName + "_" + varName + "_in";
+        auto* bodyInput = bodyGraph->add_input();
+        bodyInput->set_name(bodyInputName);
+        auto* inputType = bodyInput->mutable_type()->mutable_tensor_type();
+        inputType->set_elem_type(onnx::TensorProto::DOUBLE);
+        inputType->mutable_shape();  // Scalar
+
+        bodyInputTensors[varName] = bodyInputName;
+        bodyOutputTensors[varName] = loopNodeName + "_" + varName + "_out";
+    }
+
+    // Map for variable tensors inside the loop body
+    std::map<std::string, std::string> bodyVariableMap;
+    for (const auto& varName : carriedVars) {
+        bodyVariableMap[varName] = bodyInputTensors[varName];
+    }
+
+    // Pass through non-carried variables
+    std::vector<std::string> passthroughVars;
+    for (const auto& [varName, tensorName] : variableToTensor) {
+        if (bodyVariableMap.find(varName) == bodyVariableMap.end()) {
+            loopNode->add_input(tensorName);
+
+            std::string bodyInputName = loopNodeName + "_" + varName + "_pass";
+            auto* bodyInput = bodyGraph->add_input();
+            bodyInput->set_name(bodyInputName);
+            auto* inputType = bodyInput->mutable_type()->mutable_tensor_type();
+            inputType->set_elem_type(onnx::TensorProto::DOUBLE);
+
+            for (const auto& input : func.inputs) {
+                if (input.name == varName && !input.dimensions.empty()) {
+                    auto* shape = inputType->mutable_shape();
+                    for (const auto& dim : input.dimensions) {
+                        try {
+                            shape->add_dim()->set_dim_value(std::stoi(dim));
+                        } catch (...) {
+                            shape->add_dim()->set_dim_param(dim);
+                        }
+                    }
+                    break;
+                }
+            }
+
+            bodyVariableMap[varName] = bodyInputName;
+            passthroughVars.push_back(varName);
+        }
+    }
+
+    // Process statements in the loop body
+    LoopBodyContext ctx{
+        bodyGraph, func, info, loopVarMap, bodyVariableMap,
+        nodeCounter, loopCounter, "", loopNodeName  // Empty loop var name
+    };
+    processLoopBodyStatements(loopStatements, ctx);
+
+    // Evaluate while condition expression at end of loop body
+    // This determines if the loop should continue
+    std::map<std::string, std::vector<std::string>> localDerivativeInputs;
+    ConversionContext condCtx(info, bodyGraph, nodeCounter, &bodyVariableMap, &localDerivativeInputs);
+    condCtx.tensorPrefix = loopNodeName + "_";
+    std::string condResultTensor = ExpressionConverter::convert(condExpr, condCtx);
+
+    // Connect condition result to condition output
+    auto* condIdentity = bodyGraph->add_node();
+    condIdentity->set_op_type("Identity");
+    condIdentity->set_name(loopNodeName + "_cond_eval");
+    condIdentity->add_input(condResultTensor);
+    condIdentity->add_output(condOutName);
+
+    // Add carried variable outputs
+    for (const auto& varName : carriedVars) {
+        std::string finalTensor = bodyVariableMap[varName];
+        std::string bodyOutputName = bodyOutputTensors[varName];
+
+        auto* bodyOutput = bodyGraph->add_output();
+        bodyOutput->set_name(bodyOutputName);
+        auto* outputType = bodyOutput->mutable_type()->mutable_tensor_type();
+        outputType->set_elem_type(onnx::TensorProto::DOUBLE);
+        outputType->mutable_shape();  // Scalar
+
+        auto* identityNode = bodyGraph->add_node();
+        identityNode->set_op_type("Identity");
+        identityNode->set_name(loopNodeName + "_out_" + varName);
+        identityNode->add_input(finalTensor);
+        identityNode->add_output(bodyOutputName);
+
+        std::string loopOutputName = loopNodeName + "_" + varName + "_result";
+        loopNode->add_output(loopOutputName);
+        variableToTensor[varName] = loopOutputName;
+    }
+
+    // Add passthrough variable outputs
+    for (const auto& varName : passthroughVars) {
+        std::string bodyInputName = loopNodeName + "_" + varName + "_pass";
+        std::string bodyOutputName = loopNodeName + "_" + varName + "_pass_out";
+
+        auto* bodyOutput = bodyGraph->add_output();
+        bodyOutput->set_name(bodyOutputName);
+        auto* outputType = bodyOutput->mutable_type()->mutable_tensor_type();
+        outputType->set_elem_type(onnx::TensorProto::DOUBLE);
+
+        auto* identityNode = bodyGraph->add_node();
+        identityNode->set_op_type("Identity");
+        identityNode->set_name(loopNodeName + "_pass_" + varName);
+        identityNode->add_input(bodyInputName);
+        identityNode->add_output(bodyOutputName);
+
+        std::string loopOutputName = loopNodeName + "_" + varName + "_final";
+        loopNode->add_output(loopOutputName);
+    }
+
+    // Copy from tempGraph to functionProto
+    for (int i = 0; i < tempGraph.initializer_size(); i++) {
+        const auto& init = tempGraph.initializer(i);
+        auto* constNode = functionProto->add_node();
+        constNode->set_op_type("Constant");
+        constNode->set_name(init.name());
+        constNode->add_output(init.name());
+
+        auto* attr = constNode->add_attribute();
+        attr->set_name("value");
+        attr->set_type(onnx::AttributeProto::TENSOR);
+        attr->mutable_t()->CopyFrom(init);
+
+        addSourceLocationMetadata(constNode, sourceFile, sourceLine);
+    }
+
+    for (int i = 0; i < tempGraph.node_size(); i++) {
+        auto* node = functionProto->add_node();
+        node->CopyFrom(tempGraph.node(i));
+        addSourceLocationMetadata(node, sourceFile, sourceLine);
+    }
+}
+
+// -----------------------------------------------------------------------------
 // Function Proto Generation
 // -----------------------------------------------------------------------------
 
@@ -1010,6 +1264,17 @@ void ONNXGenerator::createFunctionProto(
                 generateAlgorithmForLoop(forStmtCtx, functionProto, func, info,
                                          variableToTensor, nodeCounter, loopCounter,
                                          stmt.sourceFile, stmt.sourceLine);
+                continue;
+            }
+        }
+
+        // Check if this is a while-statement
+        if (stmt.isWhileStatement()) {
+            auto* whileStmtCtx = dynamic_cast<basemodelica::BaseModelicaParser::WhileStatementContext*>(stmt.whileStatementContext);
+            if (whileStmtCtx) {
+                generateAlgorithmWhileLoop(whileStmtCtx, functionProto, func, info,
+                                           variableToTensor, nodeCounter, loopCounter,
+                                           stmt.sourceFile, stmt.sourceLine);
                 continue;
             }
         }
