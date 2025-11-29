@@ -1,0 +1,25 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2025 Joris Gillis, YACODA
+
+//! base 0.1.0
+package 'AlgorithmIfStatementSimple'
+  // Function that returns the absolute value using if-statement
+  pure function 'myAbs' "Absolute value using if-statement"
+    input Real 'x';
+    output Real 'result';
+  algorithm
+    if 'x' >= 0 then
+      'result' := 'x';
+    else
+      'result' := -'x';
+    end if;
+  end 'myAbs';
+
+  model 'AlgorithmIfStatementSimple' "Model using function with if-statement"
+    Real 'x'(start = 1.0);
+    Real 'absX';
+  equation
+    der('x') = -0.5;
+    'absX' = 'myAbs'('x');
+  end 'AlgorithmIfStatementSimple';
+end 'AlgorithmIfStatementSimple';

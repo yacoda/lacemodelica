@@ -42,20 +42,21 @@ public:
     RuleModification = 27, RuleClassModification = 28, RuleArgumentList = 29, 
     RuleArgument = 30, RuleElementModificationOrReplaceable = 31, RuleElementModification = 32, 
     RuleEquation = 33, RuleInitialEquation = 34, RuleStatement = 35, RuleIfEquation = 36, 
-    RuleIfStatement = 37, RuleForEquation = 38, RuleForStatement = 39, RuleForIndex = 40, 
-    RuleWhileStatement = 41, RuleWhenEquation = 42, RuleWhenStatement = 43, 
-    RulePrioritizeEquation = 44, RulePrioritizeExpression = 45, RulePriority = 46, 
-    RuleDecoration = 47, RuleExpression = 48, RuleExpressionNoDecoration = 49, 
-    RuleIfExpression = 50, RuleSimpleExpression = 51, RuleLogicalExpression = 52, 
-    RuleLogicalTerm = 53, RuleLogicalFactor = 54, RuleRelation = 55, RuleRelationalOperator = 56, 
-    RuleArithmeticExpression = 57, RuleAddOperator = 58, RuleTerm = 59, 
-    RuleMulOperator = 60, RuleFactor = 61, RulePrimary = 62, RuleTypeSpecifier = 63, 
-    RuleName = 64, RuleComponentReference = 65, RuleFunctionCallArgs = 66, 
-    RuleFunctionArguments = 67, RuleFunctionArgumentsNonFirst = 68, RuleArrayArguments = 69, 
-    RuleNamedArguments = 70, RuleNamedArgument = 71, RuleFunctionArgument = 72, 
-    RuleFunctionPartialApplication = 73, RuleOutputExpressionList = 74, 
-    RuleExpressionList = 75, RuleArraySubscripts = 76, RuleSubscript = 77, 
-    RuleComment = 78, RuleStringComment = 79, RuleAnnotationComment = 80
+    RuleEquationBlock = 37, RuleIfStatement = 38, RuleStatementBlock = 39, 
+    RuleForEquation = 40, RuleForStatement = 41, RuleForIndex = 42, RuleWhileStatement = 43, 
+    RuleWhenEquation = 44, RuleWhenStatement = 45, RulePrioritizeEquation = 46, 
+    RulePrioritizeExpression = 47, RulePriority = 48, RuleDecoration = 49, 
+    RuleExpression = 50, RuleExpressionNoDecoration = 51, RuleIfExpression = 52, 
+    RuleSimpleExpression = 53, RuleLogicalExpression = 54, RuleLogicalTerm = 55, 
+    RuleLogicalFactor = 56, RuleRelation = 57, RuleRelationalOperator = 58, 
+    RuleArithmeticExpression = 59, RuleAddOperator = 60, RuleTerm = 61, 
+    RuleMulOperator = 62, RuleFactor = 63, RulePrimary = 64, RuleTypeSpecifier = 65, 
+    RuleName = 66, RuleComponentReference = 67, RuleFunctionCallArgs = 68, 
+    RuleFunctionArguments = 69, RuleFunctionArgumentsNonFirst = 70, RuleArrayArguments = 71, 
+    RuleNamedArguments = 72, RuleNamedArgument = 73, RuleFunctionArgument = 74, 
+    RuleFunctionPartialApplication = 75, RuleOutputExpressionList = 76, 
+    RuleExpressionList = 77, RuleArraySubscripts = 78, RuleSubscript = 79, 
+    RuleComment = 80, RuleStringComment = 81, RuleAnnotationComment = 82
   };
 
   explicit BaseModelicaParser(antlr4::TokenStream *input);
@@ -112,7 +113,9 @@ public:
   class InitialEquationContext;
   class StatementContext;
   class IfEquationContext;
+  class EquationBlockContext;
   class IfStatementContext;
+  class StatementBlockContext;
   class ForEquationContext;
   class ForStatementContext;
   class ForIndexContext;
@@ -648,13 +651,25 @@ public:
     virtual size_t getRuleIndex() const override;
     std::vector<ExpressionContext *> expression();
     ExpressionContext* expression(size_t i);
+    std::vector<EquationBlockContext *> equationBlock();
+    EquationBlockContext* equationBlock(size_t i);
+
+   
+  };
+
+  IfEquationContext* ifEquation();
+
+  class  EquationBlockContext : public antlr4::ParserRuleContext {
+  public:
+    EquationBlockContext(antlr4::ParserRuleContext *parent, size_t invokingState);
+    virtual size_t getRuleIndex() const override;
     std::vector<EquationContext *> equation();
     EquationContext* equation(size_t i);
 
    
   };
 
-  IfEquationContext* ifEquation();
+  EquationBlockContext* equationBlock();
 
   class  IfStatementContext : public antlr4::ParserRuleContext {
   public:
@@ -662,13 +677,25 @@ public:
     virtual size_t getRuleIndex() const override;
     std::vector<ExpressionContext *> expression();
     ExpressionContext* expression(size_t i);
+    std::vector<StatementBlockContext *> statementBlock();
+    StatementBlockContext* statementBlock(size_t i);
+
+   
+  };
+
+  IfStatementContext* ifStatement();
+
+  class  StatementBlockContext : public antlr4::ParserRuleContext {
+  public:
+    StatementBlockContext(antlr4::ParserRuleContext *parent, size_t invokingState);
+    virtual size_t getRuleIndex() const override;
     std::vector<StatementContext *> statement();
     StatementContext* statement(size_t i);
 
    
   };
 
-  IfStatementContext* ifStatement();
+  StatementBlockContext* statementBlock();
 
   class  ForEquationContext : public antlr4::ParserRuleContext {
   public:

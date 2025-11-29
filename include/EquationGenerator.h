@@ -81,7 +81,7 @@ private:
     // Build nested If structure for if-equation RHS
     static std::string buildIfEquationRhs(
         const std::vector<basemodelica::BaseModelicaParser::ExpressionContext*>& conditions,
-        const std::vector<basemodelica::BaseModelicaParser::EquationContext*>& equations,
+        const std::vector<basemodelica::BaseModelicaParser::EquationBlockContext*>& blocks,
         size_t branchIndex,
         const ConversionContext& ctx);
 };

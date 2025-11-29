@@ -98,7 +98,7 @@ static ForLoopRange parseAlgorithmForLoopRange(
     return parseForLoopRangeFromIndex(forStmtCtx->forIndex());
 }
 
-// Recursively identify written variables in statements, including nested for-loops
+// Recursively identify written variables in statements, including nested control flow
 static void identifyWrittenVariables(
     const std::vector<basemodelica::BaseModelicaParser::StatementContext*>& statements,
     std::set<std::string>& writtenVars) {
@@ -110,9 +110,16 @@ static void identifyWrittenVariables(
             writtenVars.insert(varName);
         } else if (stmt->forStatement()) {
             // Nested for-loop - recurse into its body
-            auto* nestedFor = stmt->forStatement();
-            auto nestedStatements = nestedFor->statement();
-            identifyWrittenVariables(nestedStatements, writtenVars);
+            identifyWrittenVariables(stmt->forStatement()->statement(), writtenVars);
+        } else if (stmt->whileStatement()) {
+            // Nested while-loop - recurse into its body
+            identifyWrittenVariables(stmt->whileStatement()->statement(), writtenVars);
+        } else if (stmt->ifStatement()) {
+            // Nested if-statement - recurse into all branches
+            auto* ifStmt = stmt->ifStatement();
+            for (auto* block : ifStmt->statementBlock()) {
+                identifyWrittenVariables(block->statement(), writtenVars);
+            }
         }
     }
 }
@@ -1204,6 +1211,358 @@ static void generateAlgorithmWhileLoop(
 }
 
 // -----------------------------------------------------------------------------
+// If Statement Generation
+// -----------------------------------------------------------------------------
+
+// Forward declaration for recursive processing
+static void processAlgorithmStatements(
+    const std::vector<basemodelica::BaseModelicaParser::StatementContext*>& statements,
+    onnx::GraphProto* graph,
+    const Function& func,
+    const ModelInfo& info,
+    std::map<std::string, std::string>& variableToTensor,
+    int& nodeCounter,
+    int& loopCounter,
+    const std::string& sourceFile,
+    size_t sourceLine,
+    const std::string& prefix);
+
+// Generate ONNX If node for an algorithm if-statement
+// Handles unbalanced branches by adding identity nodes for unchanged variables
+// The prefix parameter ensures unique tensor names across nested subgraphs
+static void generateAlgorithmIfStatement(
+    basemodelica::BaseModelicaParser::IfStatementContext* ifStmtCtx,
+    onnx::GraphProto* graph,
+    const Function& func,
+    const ModelInfo& info,
+    std::map<std::string, std::string>& variableToTensor,
+    int& nodeCounter,
+    int& loopCounter,
+    const std::string& sourceFile,
+    size_t sourceLine,
+    const std::string& prefix = "") {
+
+    auto conditions = ifStmtCtx->expression();
+    auto blocks = ifStmtCtx->statementBlock();
+
+    if (conditions.empty() || blocks.empty()) {
+        throw std::runtime_error("Invalid if-statement structure");
+    }
+
+    // Snapshot current variable state
+    std::map<std::string, std::string> varMapBefore = variableToTensor;
+
+    // Process true branch (first block) with unique prefix
+    std::map<std::string, std::string> varMapTrue = varMapBefore;
+    int trueNodeCounter = nodeCounter;
+    int trueLoopCounter = loopCounter;
+    onnx::GraphProto thenGraph;
+    thenGraph.set_name("then_branch_" + std::to_string(nodeCounter));
+    std::string thenPrefix = prefix + "then" + std::to_string(nodeCounter) + "_";
+
+    processAlgorithmStatements(
+        blocks[0]->statement(), &thenGraph, func, info,
+        varMapTrue, trueNodeCounter, trueLoopCounter, sourceFile, sourceLine, thenPrefix);
+
+    // Determine false branch content
+    // If there are elseif clauses or else, process them; otherwise empty
+    std::map<std::string, std::string> varMapFalse = varMapBefore;
+    int falseNodeCounter = nodeCounter;
+    int falseLoopCounter = loopCounter;
+    onnx::GraphProto elseGraph;
+    elseGraph.set_name("else_branch_" + std::to_string(nodeCounter));
+
+    std::string elsePrefix = prefix + "else" + std::to_string(nodeCounter) + "_";
+
+    if (conditions.size() == 1 && blocks.size() >= 2) {
+        // Simple if-else (one condition, two blocks)
+        processAlgorithmStatements(
+            blocks[1]->statement(), &elseGraph, func, info,
+            varMapFalse, falseNodeCounter, falseLoopCounter, sourceFile, sourceLine, elsePrefix);
+    } else if (conditions.size() > 1) {
+        // Has elseif clauses - build nested If structure in the else branch
+        // if cond1 then block1 elseif cond2 then block2 else block3 end if
+        // becomes: If(cond1, block1, If(cond2, block2, block3))
+
+        std::function<void(size_t, onnx::GraphProto*, std::map<std::string, std::string>&, int&, int&, const std::string&)> buildNestedIf;
+
+        buildNestedIf = [&](size_t condIdx, onnx::GraphProto* targetGraph,
+                            std::map<std::string, std::string>& varMap, int& nc, int& lc,
+                            const std::string& nestedPrefix) {
+            if (condIdx >= conditions.size()) {
+                // No more conditions - check if there's a final else block
+                if (blocks.size() > conditions.size()) {
+                    std::string finalElsePrefix = nestedPrefix + "finalelse_";
+                    processAlgorithmStatements(
+                        blocks[conditions.size()]->statement(), targetGraph, func, info,
+                        varMap, nc, lc, sourceFile, sourceLine, finalElsePrefix);
+                }
+                return;
+            }
+
+            // Snapshot before this level
+            std::map<std::string, std::string> varMapBeforeLevel = varMap;
+
+            // Convert condition with unique prefix for tensor names
+            std::string condPrefix = nestedPrefix + "cond" + std::to_string(condIdx) + "_";
+            std::map<std::string, std::vector<std::string>> derivInputs;
+            ConversionContext condCtx(info, targetGraph, nc, &varMap, &derivInputs, condPrefix);
+            std::string condTensor = ExpressionConverter::convert(conditions[condIdx], condCtx);
+
+            // Build then branch with unique prefix
+            std::map<std::string, std::string> thenVarMap = varMapBeforeLevel;
+            onnx::GraphProto innerThenGraph;
+            innerThenGraph.set_name("nested_then_" + std::to_string(condIdx));
+            int thenNc = nc;
+            int thenLc = lc;
+            std::string innerThenPrefix = nestedPrefix + "nthen" + std::to_string(condIdx) + "_";
+            processAlgorithmStatements(
+                blocks[condIdx]->statement(), &innerThenGraph, func, info,
+                thenVarMap, thenNc, thenLc, sourceFile, sourceLine, innerThenPrefix);
+
+            // Build else branch (recursively) with different prefix
+            std::map<std::string, std::string> elseVarMap = varMapBeforeLevel;
+            onnx::GraphProto innerElseGraph;
+            innerElseGraph.set_name("nested_else_" + std::to_string(condIdx));
+            int elseNc = nc;
+            int elseLc = lc;
+            std::string innerElsePrefix = nestedPrefix + "nelse" + std::to_string(condIdx) + "_";
+            buildNestedIf(condIdx + 1, &innerElseGraph, elseVarMap, elseNc, elseLc, innerElsePrefix);
+
+            // Find union of updated variables at this level
+            std::set<std::string> updatedVars;
+            for (const auto& [var, tensor] : thenVarMap) {
+                if (varMapBeforeLevel.find(var) == varMapBeforeLevel.end() ||
+                    varMapBeforeLevel[var] != tensor) {
+                    updatedVars.insert(var);
+                }
+            }
+            for (const auto& [var, tensor] : elseVarMap) {
+                if (varMapBeforeLevel.find(var) == varMapBeforeLevel.end() ||
+                    varMapBeforeLevel[var] != tensor) {
+                    updatedVars.insert(var);
+                }
+            }
+
+            if (updatedVars.empty()) {
+                // Nothing changed, no If node needed
+                nc = std::max({nc, thenNc, elseNc});
+                lc = std::max({lc, thenLc, elseLc});
+                return;
+            }
+
+            // Add outputs to both branches
+            std::vector<std::string> outputOrder(updatedVars.begin(), updatedVars.end());
+            int outputIdx = nc;
+
+            for (const auto& var : outputOrder) {
+                std::string thenOutput = "nested_then_out_" + var + "_" + std::to_string(outputIdx);
+                std::string elseOutput = "nested_else_out_" + var + "_" + std::to_string(outputIdx);
+
+                // Then branch output
+                std::string thenTensor = (thenVarMap.find(var) != thenVarMap.end() &&
+                                          thenVarMap[var] != varMapBeforeLevel[var])
+                    ? thenVarMap[var] : varMapBeforeLevel[var];
+                auto* thenId = innerThenGraph.add_node();
+                thenId->set_op_type("Identity");
+                thenId->set_name("nested_then_id_" + var + "_" + std::to_string(outputIdx));
+                thenId->add_input(thenTensor);
+                thenId->add_output(thenOutput);
+
+                auto* thenOutSpec = innerThenGraph.add_output();
+                thenOutSpec->set_name(thenOutput);
+                thenOutSpec->mutable_type()->mutable_tensor_type()->set_elem_type(onnx::TensorProto::DOUBLE);
+
+                // Else branch output
+                std::string elseTensor = (elseVarMap.find(var) != elseVarMap.end() &&
+                                          elseVarMap[var] != varMapBeforeLevel[var])
+                    ? elseVarMap[var] : varMapBeforeLevel[var];
+                auto* elseId = innerElseGraph.add_node();
+                elseId->set_op_type("Identity");
+                elseId->set_name("nested_else_id_" + var + "_" + std::to_string(outputIdx));
+                elseId->add_input(elseTensor);
+                elseId->add_output(elseOutput);
+
+                auto* elseOutSpec = innerElseGraph.add_output();
+                elseOutSpec->set_name(elseOutput);
+                elseOutSpec->mutable_type()->mutable_tensor_type()->set_elem_type(onnx::TensorProto::DOUBLE);
+
+                outputIdx++;
+            }
+
+            // Create If node in targetGraph
+            auto* ifNode = targetGraph->add_node();
+            ifNode->set_op_type("If");
+            ifNode->set_name("nested_if_" + std::to_string(condIdx) + "_" + std::to_string(nc));
+            ifNode->add_input(condTensor);
+
+            auto* thenAttr = ifNode->add_attribute();
+            thenAttr->set_name("then_branch");
+            thenAttr->set_type(onnx::AttributeProto::GRAPH);
+            thenAttr->mutable_g()->CopyFrom(innerThenGraph);
+
+            auto* elseAttr = ifNode->add_attribute();
+            elseAttr->set_name("else_branch");
+            elseAttr->set_type(onnx::AttributeProto::GRAPH);
+            elseAttr->mutable_g()->CopyFrom(innerElseGraph);
+
+            // Add outputs and update varMap
+            outputIdx = nc;
+            for (const auto& var : outputOrder) {
+                std::string outputTensor = "nested_if_out_" + var + "_" + std::to_string(outputIdx++);
+                ifNode->add_output(outputTensor);
+                varMap[var] = outputTensor;
+            }
+
+            nc = std::max({outputIdx, thenNc, elseNc});
+            lc = std::max({lc, thenLc, elseLc});
+        };
+
+        // Start building nested ifs from condition[1] (condition[0] is handled at the outer level)
+        buildNestedIf(1, &elseGraph, varMapFalse, falseNodeCounter, falseLoopCounter, elsePrefix);
+    }
+    // else: blocks.size() == 1, no else branch, varMapFalse stays unchanged
+
+    // Find union of updated variables
+    std::set<std::string> updatedVars;
+    for (const auto& [var, tensor] : varMapTrue) {
+        if (varMapBefore.find(var) == varMapBefore.end() || varMapBefore[var] != tensor) {
+            updatedVars.insert(var);
+        }
+    }
+    for (const auto& [var, tensor] : varMapFalse) {
+        if (varMapBefore.find(var) == varMapBefore.end() || varMapBefore[var] != tensor) {
+            updatedVars.insert(var);
+        }
+    }
+
+    if (updatedVars.empty()) {
+        // No variables were modified - nothing to do
+        nodeCounter = std::max({nodeCounter, trueNodeCounter, falseNodeCounter});
+        loopCounter = std::max({loopCounter, trueLoopCounter, falseLoopCounter});
+        return;
+    }
+
+    // Convert the condition with prefix
+    std::map<std::string, std::vector<std::string>> derivInputs;
+    std::string mainCondPrefix = prefix + "maincond_";
+    ConversionContext condCtx(info, graph, nodeCounter, &variableToTensor, &derivInputs, mainCondPrefix);
+    std::string condTensor = ExpressionConverter::convert(conditions[0], condCtx);
+
+    // Add outputs to both branches for all updated variables
+    std::vector<std::string> outputOrder(updatedVars.begin(), updatedVars.end());
+
+    for (const auto& var : outputOrder) {
+        std::string thenOutput = "then_out_" + var + "_" + std::to_string(nodeCounter);
+        std::string elseOutput = "else_out_" + var + "_" + std::to_string(nodeCounter);
+
+        // Then branch: use updated tensor or identity from before
+        std::string thenTensor = (varMapTrue.find(var) != varMapTrue.end() && varMapTrue[var] != varMapBefore[var])
+            ? varMapTrue[var] : varMapBefore[var];
+        auto* thenId = thenGraph.add_node();
+        thenId->set_op_type("Identity");
+        thenId->set_name("then_id_" + var + "_" + std::to_string(nodeCounter));
+        thenId->add_input(thenTensor);
+        thenId->add_output(thenOutput);
+
+        auto* thenOutSpec = thenGraph.add_output();
+        thenOutSpec->set_name(thenOutput);
+        auto* thenOutType = thenOutSpec->mutable_type()->mutable_tensor_type();
+        thenOutType->set_elem_type(onnx::TensorProto::DOUBLE);
+
+        // Else branch: use updated tensor or identity from before
+        std::string elseTensor = (varMapFalse.find(var) != varMapFalse.end() && varMapFalse[var] != varMapBefore[var])
+            ? varMapFalse[var] : varMapBefore[var];
+        auto* elseId = elseGraph.add_node();
+        elseId->set_op_type("Identity");
+        elseId->set_name("else_id_" + var + "_" + std::to_string(nodeCounter));
+        elseId->add_input(elseTensor);
+        elseId->add_output(elseOutput);
+
+        auto* elseOutSpec = elseGraph.add_output();
+        elseOutSpec->set_name(elseOutput);
+        auto* elseOutType = elseOutSpec->mutable_type()->mutable_tensor_type();
+        elseOutType->set_elem_type(onnx::TensorProto::DOUBLE);
+    }
+
+    // Create the If node
+    auto* ifNode = graph->add_node();
+    ifNode->set_op_type("If");
+    ifNode->set_name("if_stmt_" + std::to_string(nodeCounter));
+    ifNode->add_input(condTensor);
+
+    auto* thenAttr = ifNode->add_attribute();
+    thenAttr->set_name("then_branch");
+    thenAttr->set_type(onnx::AttributeProto::GRAPH);
+    thenAttr->mutable_g()->CopyFrom(thenGraph);
+
+    auto* elseAttr = ifNode->add_attribute();
+    elseAttr->set_name("else_branch");
+    elseAttr->set_type(onnx::AttributeProto::GRAPH);
+    elseAttr->mutable_g()->CopyFrom(elseGraph);
+
+    // Add outputs and update variableToTensor
+    for (const auto& var : outputOrder) {
+        std::string outputTensor = "if_out_" + var + "_" + std::to_string(nodeCounter);
+        ifNode->add_output(outputTensor);
+        variableToTensor[var] = outputTensor;
+    }
+
+    nodeCounter = std::max({nodeCounter + 1, trueNodeCounter, falseNodeCounter});
+    loopCounter = std::max({loopCounter, trueLoopCounter, falseLoopCounter});
+}
+
+// Process statements within an if-statement branch (adds nodes to GraphProto)
+// The prefix parameter ensures unique tensor names across different subgraphs
+static void processAlgorithmStatements(
+    const std::vector<basemodelica::BaseModelicaParser::StatementContext*>& statements,
+    onnx::GraphProto* graph,
+    const Function& func,
+    const ModelInfo& info,
+    std::map<std::string, std::string>& variableToTensor,
+    int& nodeCounter,
+    int& loopCounter,
+    const std::string& sourceFile,
+    size_t sourceLine,
+    const std::string& prefix = "") {
+
+    for (auto* stmt : statements) {
+        // Handle if-statement (recursive)
+        if (stmt->ifStatement()) {
+            generateAlgorithmIfStatement(
+                stmt->ifStatement(), graph, func, info,
+                variableToTensor, nodeCounter, loopCounter,
+                sourceFile, sourceLine, prefix);
+            continue;
+        }
+
+        // Handle simple assignment: var := expr
+        if (stmt->componentReference() && stmt->expression()) {
+            auto* compRef = stmt->componentReference();
+            std::string varName = stripQuotes(compRef->IDENT(0)->getText());
+
+            // Convert RHS expression with prefix for unique tensor names
+            std::map<std::string, std::vector<std::string>> derivInputs;
+            ConversionContext ctx(info, graph, nodeCounter, &variableToTensor, &derivInputs, prefix);
+            std::string rhsTensor = ExpressionConverter::convert(stmt->expression(), ctx);
+
+            // Update variable mapping
+            variableToTensor[varName] = rhsTensor;
+            continue;
+        }
+
+        // For now, skip for-loops and while-loops inside if-branches
+        // (these would need GraphProto versions of the generators)
+        if (stmt->forStatement()) {
+            throw std::runtime_error("For-loops inside if-statements not yet supported");
+        }
+        if (stmt->whileStatement()) {
+            throw std::runtime_error("While-loops inside if-statements not yet supported");
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
 // Function Proto Generation
 // -----------------------------------------------------------------------------
 
@@ -1276,6 +1635,43 @@ void ONNXGenerator::createFunctionProto(
                 generateAlgorithmWhileLoop(whileStmtCtx, functionProto, func, info,
                                            variableToTensor, nodeCounter, loopCounter,
                                            stmt.sourceFile, stmt.sourceLine);
+                continue;
+            }
+        }
+
+        // Check if this is an if-statement
+        if (stmt.isIfStatement()) {
+            auto* ifStmtCtx = dynamic_cast<basemodelica::BaseModelicaParser::IfStatementContext*>(stmt.ifStatementContext);
+            if (ifStmtCtx) {
+                // Use a temporary graph, then copy nodes to functionProto
+                onnx::GraphProto tempGraph;
+                generateAlgorithmIfStatement(ifStmtCtx, &tempGraph, func, info,
+                                             variableToTensor, nodeCounter, loopCounter,
+                                             stmt.sourceFile, stmt.sourceLine);
+
+                // Copy initializers as Constant nodes
+                for (int i = 0; i < tempGraph.initializer_size(); i++) {
+                    const auto& init = tempGraph.initializer(i);
+                    auto* constNode = functionProto->add_node();
+                    constNode->set_op_type("Constant");
+                    constNode->set_name(init.name());
+                    constNode->add_output(init.name());
+
+                    auto* attr = constNode->add_attribute();
+                    attr->set_name("value");
+                    attr->set_type(onnx::AttributeProto::TENSOR);
+                    attr->mutable_t()->CopyFrom(init);
+
+                    addSourceLocationMetadata(constNode, stmt.sourceFile, stmt.sourceLine);
+                }
+
+                // Copy nodes to functionProto
+                for (int i = 0; i < tempGraph.node_size(); i++) {
+                    auto* node = functionProto->add_node();
+                    node->CopyFrom(tempGraph.node(i));
+                    addSourceLocationMetadata(node, stmt.sourceFile, stmt.sourceLine);
+                }
+
                 continue;
             }
         }

@@ -388,15 +388,16 @@ size_t EquationGenerator::generateIfEquation(
         throw std::runtime_error("Invalid if-equation context");
     }
 
-    auto expressions = ifEqCtx->expression();
-    auto allEquations = ifEqCtx->equation();
+    auto conditions = ifEqCtx->expression();
+    auto blocks = ifEqCtx->equationBlock();
 
-    if (allEquations.empty()) {
+    if (blocks.empty() || blocks[0]->equation().empty()) {
         std::cerr << "Warning: Empty if-equation" << std::endl;
         return 0;
     }
 
-    auto firstEq = allEquations[0];
+    // Get the first equation from the first block to extract LHS variable
+    auto firstEq = blocks[0]->equation()[0];
     auto firstSimpleExpr = firstEq->simpleExpression();
     if (!firstSimpleExpr) {
         throw std::runtime_error("If-equation branch must contain simple equation");
@@ -404,7 +405,7 @@ size_t EquationGenerator::generateIfEquation(
     std::string lhsVarName = stripQuotes(firstSimpleExpr->getText());
 
     ConversionContext ifCtx(info, graph, nodeCounter, nullptr, &derivativeInputs);
-    std::string rhsTensor = buildIfEquationRhs(expressions, allEquations, 0, ifCtx);
+    std::string rhsTensor = buildIfEquationRhs(conditions, blocks, 0, ifCtx);
 
     std::string eqOutputName = prefix + "[" + std::to_string(equationIndex) + "]";
 
@@ -428,15 +429,16 @@ size_t EquationGenerator::generateIfEquation(
 
 std::string EquationGenerator::buildIfEquationRhs(
     const std::vector<basemodelica::BaseModelicaParser::ExpressionContext*>& conditions,
-    const std::vector<basemodelica::BaseModelicaParser::EquationContext*>& equations,
+    const std::vector<basemodelica::BaseModelicaParser::EquationBlockContext*>& blocks,
     size_t branchIndex,
     const ConversionContext& ctx) {
 
     auto builder = ctx.builder();
 
+    // If we've passed all conditions, we're at the else block (if it exists)
     if (branchIndex >= conditions.size()) {
-        if (branchIndex < equations.size()) {
-            auto* eqCtx = equations[branchIndex];
+        if (branchIndex < blocks.size() && !blocks[branchIndex]->equation().empty()) {
+            auto* eqCtx = blocks[branchIndex]->equation()[0];
             auto* rhsExpr = eqCtx->expression();
             if (rhsExpr) {
                 return ExpressionConverter::convert(rhsExpr, ctx);
@@ -452,8 +454,8 @@ std::string EquationGenerator::buildIfEquationRhs(
     auto thenBuilder = builder.forSubgraph(&thenBranch);
 
     std::string thenResult;
-    if (branchIndex < equations.size()) {
-        auto* eqCtx = equations[branchIndex];
+    if (branchIndex < blocks.size() && !blocks[branchIndex]->equation().empty()) {
+        auto* eqCtx = blocks[branchIndex]->equation()[0];
         auto* rhsExpr = eqCtx->expression();
         if (rhsExpr) {
             thenResult = ExpressionConverter::convert(rhsExpr, ctx.withGraph(&thenBranch));
@@ -466,7 +468,7 @@ std::string EquationGenerator::buildIfEquationRhs(
 
     onnx::GraphProto elseBranch;
     elseBranch.set_name("else_branch_" + std::to_string(branchIndex));
-    std::string elseResult = buildIfEquationRhs(conditions, equations, branchIndex + 1, ctx.withGraph(&elseBranch));
+    std::string elseResult = buildIfEquationRhs(conditions, blocks, branchIndex + 1, ctx.withGraph(&elseBranch));
     builder.forSubgraph(&elseBranch).addScalarDoubleOutput(elseResult);
 
     return builder.addIfNode(condTensor, thenBranch, elseBranch, "If_eq");

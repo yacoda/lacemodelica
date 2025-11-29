@@ -1,0 +1,124 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2025 Joris Gillis, YACODA
+
+//! base 0.1.0
+package 'AlgorithmIfStatementNested'
+  // Function with nested if-statements (if inside if)
+  // Returns quadrant number: 1 (x>0,y>0), 2 (x<0,y>0), 3 (x<0,y<0), 4 (x>0,y<0), 0 (on axis)
+  pure function 'quadrant' "Determine quadrant of point (x,y)"
+    input Real 'x';
+    input Real 'y';
+    output Real 'result';
+  algorithm
+    if 'x' > 0 then
+      if 'y' > 0 then
+        'result' := 1;
+      elseif 'y' < 0 then
+        'result' := 4;
+      else
+        'result' := 0;  // on x-axis
+      end if;
+    elseif 'x' < 0 then
+      if 'y' > 0 then
+        'result' := 2;
+      elseif 'y' < 0 then
+        'result' := 3;
+      else
+        'result' := 0;  // on x-axis
+      end if;
+    else
+      'result' := 0;  // on y-axis
+    end if;
+  end 'quadrant';
+
+  model 'AlgorithmIfStatementNested' "Model using function with nested if-statements"
+    Real 'x'(start = 1.0);
+    Real 'y'(start = 1.0);
+    Real 'q';
+  equation
+    der('x') = -0.5;
+    der('y') = -0.3;
+    'q' = 'quadrant'('x', 'y');
+  end 'AlgorithmIfStatementNested';
+end 'AlgorithmIfStatementNested';
+
+// @onnx-test-case
+// # Test case 1: quadrant 1 (x>0, y>0)
+// import numpy as np
+// x = 2.0
+// y = 3.0
+// der_x = -0.5
+// der_y = -0.3
+// q = 1.0
+// {
+//   "x": np.array(x),
+//   "y": np.array(y),
+//   "der(x)": np.array(der_x),
+//   "der(y)": np.array(der_y),
+//   "q": np.array(q)
+// }
+//
+// @onnx-test-case
+// # Test case 2: quadrant 2 (x<0, y>0)
+// import numpy as np
+// x = -2.0
+// y = 3.0
+// der_x = -0.5
+// der_y = -0.3
+// q = 2.0
+// {
+//   "x": np.array(x),
+//   "y": np.array(y),
+//   "der(x)": np.array(der_x),
+//   "der(y)": np.array(der_y),
+//   "q": np.array(q)
+// }
+//
+// @onnx-test-case
+// # Test case 3: quadrant 3 (x<0, y<0)
+// import numpy as np
+// x = -2.0
+// y = -3.0
+// der_x = -0.5
+// der_y = -0.3
+// q = 3.0
+// {
+//   "x": np.array(x),
+//   "y": np.array(y),
+//   "der(x)": np.array(der_x),
+//   "der(y)": np.array(der_y),
+//   "q": np.array(q)
+// }
+//
+// @onnx-test-case
+// # Test case 4: quadrant 4 (x>0, y<0)
+// import numpy as np
+// x = 2.0
+// y = -3.0
+// der_x = -0.5
+// der_y = -0.3
+// q = 4.0
+// {
+//   "x": np.array(x),
+//   "y": np.array(y),
+//   "der(x)": np.array(der_x),
+//   "der(y)": np.array(der_y),
+//   "q": np.array(q)
+// }
+//
+// @onnx-test-case
+// # Test case 5: on y-axis (x=0)
+// import numpy as np
+// x = 0.0
+// y = 3.0
+// der_x = -0.5
+// der_y = -0.3
+// q = 0.0
+// {
+//   "x": np.array(x),
+//   "y": np.array(y),
+//   "der(x)": np.array(der_x),
+//   "der(y)": np.array(der_y),
+//   "q": np.array(q)
+// }
+//

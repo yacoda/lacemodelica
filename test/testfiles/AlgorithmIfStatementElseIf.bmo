@@ -1,0 +1,27 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2025 Joris Gillis, YACODA
+
+//! base 0.1.0
+package 'AlgorithmIfStatementElseIf'
+  // Function that returns sign of a number (-1, 0, or 1)
+  pure function 'mySign' "Sign function using if-elseif-else"
+    input Real 'x';
+    output Real 'result';
+  algorithm
+    if 'x' > 0 then
+      'result' := 1;
+    elseif 'x' < 0 then
+      'result' := -1;
+    else
+      'result' := 0;
+    end if;
+  end 'mySign';
+
+  model 'AlgorithmIfStatementElseIf' "Model using function with if-elseif-else"
+    Real 'x'(start = 1.0);
+    Real 'signX';
+  equation
+    der('x') = -0.5;
+    'signX' = 'mySign'('x');
+  end 'AlgorithmIfStatementElseIf';
+end 'AlgorithmIfStatementElseIf';

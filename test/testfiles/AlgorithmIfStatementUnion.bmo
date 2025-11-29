@@ -1,0 +1,128 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2025 Joris Gillis, YACODA
+
+//! base 0.1.0
+package 'AlgorithmIfStatementUnion'
+  // Function with different variable sets modified in each branch
+  // Tests: union of {x,y} and {y,z}, multiple statements, repeated updates
+  pure function 'complexBranches' "Different vars modified in each branch"
+    input Real 'a';
+    input Real 'b';
+    output Real 'x';
+    output Real 'y';
+    output Real 'z';
+  algorithm
+    // Initialize all outputs
+    'x' := 0;
+    'y' := 0;
+    'z' := 0;
+
+    if 'a' > 0 then
+      // True branch modifies {x, y} with multiple statements
+      'x' := 'a';
+      'y' := 'b';
+      'x' := 'x' + 1;      // repeated update of x
+      'y' := 'y' * 2;      // repeated update of y
+      'x' := 'x' + 'y';    // x depends on updated y
+    else
+      // False branch modifies {y, z} - different set!
+      'y' := 'a' + 'b';
+      'z' := 'b';
+      'y' := 'y' - 1;      // repeated update of y
+      'z' := 'z' * 3;      // repeated update of z
+      'z' := 'z' + 'y';    // z depends on updated y
+    end if;
+    // After if: union is {x, y, z}
+    // x: updated in true, identity in false
+    // y: updated in both
+    // z: identity in true, updated in false
+  end 'complexBranches';
+
+  // Function with if-only (no else) modifying multiple vars
+  pure function 'conditionalUpdate' "Conditional multi-var update"
+    input Real 'cond';
+    input Real 'val';
+    output Real 'p';
+    output Real 'q';
+  algorithm
+    'p' := 1;
+    'q' := 2;
+
+    if 'cond' > 0 then
+      'p' := 'val';
+      'q' := 'val' * 2;
+      'p' := 'p' + 'q';  // p depends on q
+    end if;
+    // No else: p and q get identity in implicit else branch
+  end 'conditionalUpdate';
+
+  model 'AlgorithmIfStatementUnion' "Test union of modified variable sets"
+    Real 'a'(start = 1.0);
+    Real 'b'(start = 2.0);
+    Real 'x';
+    Real 'y';
+    Real 'z';
+    Real 'p';
+    Real 'q';
+  equation
+    der('a') = -0.5;
+    der('b') = 0.1;
+    ('x', 'y', 'z') = 'complexBranches'('a', 'b');
+    ('p', 'q') = 'conditionalUpdate'('a', 'b');
+  end 'AlgorithmIfStatementUnion';
+end 'AlgorithmIfStatementUnion';
+
+// @onnx-test-case
+// # Test case 1: a > 0, true branch executes
+// # x = a + 1 + (b*2) = 1 + 1 + 4 = 6
+// # y = b * 2 = 4
+// # z = 0 (unchanged)
+// # p = val + val*2 = 2 + 4 = 6
+// # q = val * 2 = 4
+// import numpy as np
+// a = 1.0
+// b = 2.0
+// x = 6.0
+// y = 4.0
+// z = 0.0
+// p = 6.0
+// q = 4.0
+// {
+//   "a": np.array(a),
+//   "b": np.array(b),
+//   "der(a)": np.array(-0.5),
+//   "der(b)": np.array(0.1),
+//   "x": np.array(x),
+//   "y": np.array(y),
+//   "z": np.array(z),
+//   "p": np.array(p),
+//   "q": np.array(q)
+// }
+//
+// @onnx-test-case
+// # Test case 2: a <= 0, false branch executes
+// # x = 0 (unchanged)
+// # y = (a + b) - 1 = (-1 + 2) - 1 = 0
+// # z = b*3 + y = 6 + 0 = 6
+// # p = 1 (unchanged, cond <= 0)
+// # q = 2 (unchanged, cond <= 0)
+// import numpy as np
+// a = -1.0
+// b = 2.0
+// x = 0.0
+// y = 0.0
+// z = 6.0
+// p = 1.0
+// q = 2.0
+// {
+//   "a": np.array(a),
+//   "b": np.array(b),
+//   "der(a)": np.array(-0.5),
+//   "der(b)": np.array(0.1),
+//   "x": np.array(x),
+//   "y": np.array(y),
+//   "z": np.array(z),
+//   "p": np.array(p),
+//   "q": np.array(q)
+// }
+//

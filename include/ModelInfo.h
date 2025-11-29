@@ -58,11 +58,13 @@ struct Statement {
     antlr4::ParserRuleContext* rhsContext = nullptr;  // expression on right of :=
     antlr4::ParserRuleContext* forStatementContext = nullptr;  // AST node for for-statement
     antlr4::ParserRuleContext* whileStatementContext = nullptr;  // AST node for while-statement
+    antlr4::ParserRuleContext* ifStatementContext = nullptr;  // AST node for if-statement
     std::string sourceFile;
     size_t sourceLine = 0;
 
     bool isForStatement() const { return forStatementContext != nullptr; }
     bool isWhileStatement() const { return whileStatementContext != nullptr; }
+    bool isIfStatement() const { return ifStatementContext != nullptr; }
 };
 
 struct Function {

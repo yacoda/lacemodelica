@@ -192,17 +192,25 @@ statement
     ;
 
 ifEquation
-    : 'if' expression 'then' (equation ';')*
-      ('elseif' expression 'then' (equation ';')*)*
-      ('else' (equation ';')*)?
+    : 'if' expression 'then' equationBlock
+      ('elseif' expression 'then' equationBlock)*
+      ('else' equationBlock)?
       'end' 'if'
     ;
 
+equationBlock
+    : (equation ';')*
+    ;
+
 ifStatement
-    : 'if' expression 'then' (statement ';')*
-      ('elseif' expression 'then' (statement ';')*)*
-      ('else' (statement ';')*)?
+    : 'if' expression 'then' statementBlock
+      ('elseif' expression 'then' statementBlock)*
+      ('else' statementBlock)?
       'end' 'if'
+    ;
+
+statementBlock
+    : (statement ';')*
     ;
 
 forEquation
