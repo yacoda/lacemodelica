@@ -1,0 +1,47 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2025 Joris Gillis, YACODA
+
+// Test for standalone function call statements in algorithms
+
+//! base 0.1.0
+package 'AlgorithmFunctionCall'
+  // Function with multiple outputs
+  pure function 'compute'
+    input Real 'x';
+    output Real 'a';
+    output Real 'b';
+  algorithm
+    'a' := sin('x');
+    'b' := cos('x');
+  end 'compute';
+
+  // Function that uses standalone function call (outputs ignored)
+  pure function 'caller'
+    input Real 'in';
+    output Real 'result';
+  algorithm
+    // Standalone function call - outputs are computed but ignored
+    'compute'('in');
+    // Then do the actual computation
+    'result' := 'in' * 2.0;
+  end 'caller';
+
+  // Function that uses partial output capture via multi-output
+  pure function 'partialCapture'
+    input Real 'in';
+    output Real 'result';
+    Real 'temp';
+  algorithm
+    // Capture only first output, ignore second
+    ('temp', ) := 'compute'('in');
+    'result' := 'temp' + 1.0;
+  end 'partialCapture';
+
+  model 'AlgorithmFunctionCall'
+    Real 'x'(start = 1.0);
+    Real 'y'(start = 0.0);
+  equation
+    der('x') = -'x';
+    der('y') = 'caller'('x');
+  end 'AlgorithmFunctionCall';
+end 'AlgorithmFunctionCall';

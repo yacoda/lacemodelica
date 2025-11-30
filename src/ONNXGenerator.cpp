@@ -1676,6 +1676,96 @@ void ONNXGenerator::createFunctionProto(
             }
         }
 
+        // Check if this is a standalone function call statement: func(args)
+        if (stmt.isFunctionCallStatement()) {
+            auto* stmtCtx = dynamic_cast<basemodelica::BaseModelicaParser::StatementContext*>(stmt.functionCallContext);
+            if (stmtCtx) {
+                auto* funcCompRef = stmtCtx->componentReference();
+                auto* funcCallArgs = stmtCtx->functionCallArgs();
+                if (!funcCompRef || !funcCallArgs) {
+                    throw std::runtime_error("Function call statement missing function reference or arguments");
+                }
+
+                std::string funcName = stripQuotes(funcCompRef->IDENT(0)->getText());
+
+                // Look up the function to get its output count
+                const Function* calledFunc = info.findFunction(funcName);
+                size_t outputCount = calledFunc ? calledFunc->outputs.size() : 1;
+
+                try {
+                    onnx::GraphProto tempGraph;
+                    std::map<std::string, std::vector<std::string>> localDerivativeInputs;
+                    ConversionContext funcCtx(info, &tempGraph, nodeCounter, &variableToTensor, &localDerivativeInputs);
+
+                    // Convert function arguments
+                    auto* funcArgs = funcCallArgs->functionArguments();
+                    std::vector<std::string> argTensors;
+                    if (funcArgs) {
+                        if (auto firstExpr = funcArgs->expression()) {
+                            argTensors.push_back(ExpressionConverter::convert(firstExpr, funcCtx));
+                        }
+                        auto nonFirst = funcArgs->functionArgumentsNonFirst();
+                        while (nonFirst) {
+                            if (auto funcArg = nonFirst->functionArgument()) {
+                                if (auto argExpr = funcArg->expression()) {
+                                    argTensors.push_back(ExpressionConverter::convert(argExpr, funcCtx));
+                                }
+                            }
+                            nonFirst = nonFirst->functionArgumentsNonFirst();
+                        }
+                    }
+
+                    // Create function call node (outputs are ignored)
+                    auto* callNode = tempGraph.add_node();
+                    callNode->set_op_type(funcName);
+                    callNode->set_domain("lacemodelica");
+                    callNode->set_name(funcName + "_call_" + std::to_string(nodeCounter++));
+
+                    for (const auto& argTensor : argTensors) {
+                        callNode->add_input(argTensor);
+                    }
+
+                    // Add outputs even though they're ignored (ONNX requires outputs)
+                    for (size_t i = 0; i < outputCount; i++) {
+                        std::string outputTensor = "unused_" + std::to_string(nodeCounter++);
+                        callNode->add_output(outputTensor);
+                    }
+
+                    // Copy initializers and nodes to functionProto
+                    for (int i = 0; i < tempGraph.initializer_size(); i++) {
+                        const auto& init = tempGraph.initializer(i);
+                        auto* constNode = functionProto->add_node();
+                        constNode->set_op_type("Constant");
+                        constNode->set_name(init.name());
+                        constNode->add_output(init.name());
+
+                        auto* attr = constNode->add_attribute();
+                        attr->set_name("value");
+                        attr->set_type(onnx::AttributeProto::TENSOR);
+                        attr->mutable_t()->CopyFrom(init);
+
+                        addSourceLocationMetadata(constNode, stmt.sourceFile, stmt.sourceLine);
+                    }
+
+                    for (int i = 0; i < tempGraph.node_size(); i++) {
+                        auto* node = functionProto->add_node();
+                        node->CopyFrom(tempGraph.node(i));
+                        addSourceLocationMetadata(node, stmt.sourceFile, stmt.sourceLine);
+                    }
+
+                } catch (const std::exception& e) {
+                    std::cerr << "Warning: Failed to convert function call statement";
+                    if (!stmt.sourceFile.empty()) {
+                        std::cerr << " (" << stmt.sourceFile << ":" << stmt.sourceLine << ")";
+                    }
+                    std::cerr << ": " << e.what() << std::endl;
+                    throw;
+                }
+
+                continue;
+            }
+        }
+
         // Check if this is a multi-output assignment: (a, b) := func(x)
         auto* lhsOutputList = dynamic_cast<basemodelica::BaseModelicaParser::OutputExpressionListContext*>(stmt.lhsContext);
         if (lhsOutputList) {
@@ -1694,10 +1784,41 @@ void ONNXGenerator::createFunctionProto(
 
             std::string funcName = stripQuotes(funcCompRef->IDENT(0)->getText());
 
-            // Extract LHS variable names
+            // Look up the function to get its actual output count
+            const Function* calledFunc = info.findFunction(funcName);
+            size_t actualOutputCount = calledFunc ? calledFunc->outputs.size() : 1;
+
+            // Extract LHS variable names, preserving empty slots for partial capture
+            // The outputExpressionList grammar is: expression? (',' expression?)*
+            // So we need to count commas + 1 to get the intended slot count
             std::vector<std::string> outputVarNames;
+            size_t slotCount = 1;  // At least one slot
+            for (auto* child : lhsOutputList->children) {
+                if (auto* terminal = dynamic_cast<antlr4::tree::TerminalNode*>(child)) {
+                    if (terminal->getText() == ",") {
+                        slotCount++;
+                    }
+                }
+            }
+
+            // Populate outputVarNames with empty strings for ignored outputs
+            outputVarNames.resize(std::max(slotCount, actualOutputCount), "");
+            size_t slotIndex = 0;
             for (auto* expr : lhsOutputList->expression()) {
-                outputVarNames.push_back(stripQuotes(expr->getText()));
+                // Find the slot position for this expression
+                // We need to count commas before this expression
+                size_t exprPos = 0;
+                for (auto* child : lhsOutputList->children) {
+                    if (child == expr) break;
+                    if (auto* terminal = dynamic_cast<antlr4::tree::TerminalNode*>(child)) {
+                        if (terminal->getText() == ",") {
+                            exprPos++;
+                        }
+                    }
+                }
+                if (exprPos < outputVarNames.size()) {
+                    outputVarNames[exprPos] = stripQuotes(expr->getText());
+                }
             }
 
             try {
@@ -1762,9 +1883,11 @@ void ONNXGenerator::createFunctionProto(
                     addSourceLocationMetadata(node, stmt.sourceFile, stmt.sourceLine);
                 }
 
-                // Map each output to its variable
+                // Map each output to its variable (skip empty slots for partial capture)
                 for (size_t i = 0; i < outputVarNames.size(); i++) {
-                    variableToTensor[outputVarNames[i]] = outputTensors[i];
+                    if (!outputVarNames[i].empty()) {
+                        variableToTensor[outputVarNames[i]] = outputTensors[i];
+                    }
                 }
 
             } catch (const std::exception& e) {
@@ -2187,6 +2310,46 @@ void ONNXGenerator::generateONNXModel(const ModelInfo& info, const std::string& 
         if (var.maxContext != nullptr && !isConstValue(var.maxValue)) {
             generateBoundOutput(boundCtx, i, var, var.maxContext, "max", "Maximum value");
         }
+    }
+
+    // Generate assertion outputs
+    for (size_t i = 0; i < info.assertions.size(); i++) {
+        const auto& assertion = info.assertions[i];
+
+        if (!assertion.conditionContext) {
+            std::cerr << "Warning: Assertion without condition at " << assertion.sourceFile
+                      << ":" << assertion.sourceLine << std::endl;
+            continue;
+        }
+
+        std::string conditionTensor;
+        try {
+            conditionTensor = ExpressionConverter::convert(assertion.conditionContext, ctx);
+        } catch (const std::exception& e) {
+            std::cerr << "Warning: Failed to convert assertion condition";
+            if (!assertion.sourceFile.empty()) {
+                std::cerr << " (" << assertion.sourceFile << ":" << assertion.sourceLine << ")";
+            }
+            std::cerr << ": " << e.what() << std::endl;
+            continue;
+        }
+
+        std::string outputName = "assert[" + std::to_string(i) + "]";
+        auto* output = graph->add_output();
+        output->set_name(outputName);
+        auto* output_type = output->mutable_type()->mutable_tensor_type();
+        output_type->set_elem_type(onnx::TensorProto::BOOL);
+
+        // Set doc_string with message and level metadata
+        std::string docString = assertion.message;
+        if (!assertion.level.empty()) {
+            docString += " [level=" + assertion.level + "]";
+        }
+        output->set_doc_string(docString);
+
+        // Rename the condition tensor to the output name
+        GraphBuilder builder(graph, nodeCounter);
+        builder.renameTensor(conditionTensor, outputName, "assert_" + std::to_string(i) + "_");
     }
 
     // Add derivative inputs

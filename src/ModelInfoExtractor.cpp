@@ -2,6 +2,7 @@
 // Copyright (c) 2025 Joris Gillis, YACODA
 
 #include "ModelInfoExtractor.h"
+#include "ParseTreeNavigator.h"
 #include "Utils.hpp"
 #include <iostream>
 
@@ -395,6 +396,56 @@ void ModelInfoExtractor::processEquation(basemodelica::BaseModelicaParser::Equat
         return;
     }
 
+    // Handle assert statements: assert(condition, message, level)
+    if (simpleExpr && !fullExpr) {
+        auto primary = ParseTreeNavigator::findPrimary(simpleExpr);
+        if (primary && primary->componentReference() && primary->functionCallArgs()) {
+            std::string funcName = stripQuotes(primary->componentReference()->IDENT(0)->getText());
+            if (funcName == "assert") {
+                Assertion assertion;
+                assertion.sourceFile = sourceFile;
+                assertion.sourceLine = equation->getStart()->getLine();
+
+                auto funcArgs = primary->functionCallArgs()->functionArguments();
+                if (funcArgs) {
+                    // First argument: condition
+                    if (funcArgs->expression()) {
+                        assertion.conditionContext = funcArgs->expression();
+                    }
+
+                    // Second and third arguments
+                    auto nonFirst = funcArgs->functionArgumentsNonFirst();
+                    if (nonFirst && nonFirst->functionArgument()) {
+                        // Second argument: message string
+                        auto msgExpr = nonFirst->functionArgument()->expression();
+                        if (msgExpr) {
+                            assertion.message = stripQuotes(msgExpr->getText());
+                        }
+
+                        // Third argument: assertion level
+                        nonFirst = nonFirst->functionArgumentsNonFirst();
+                        if (nonFirst && nonFirst->functionArgument()) {
+                            auto levelExpr = nonFirst->functionArgument()->expression();
+                            if (levelExpr) {
+                                std::string levelText = levelExpr->getText();
+                                // Extract level from "AssertionLevel.error" or "AssertionLevel.warning"
+                                size_t dotPos = levelText.find('.');
+                                if (dotPos != std::string::npos) {
+                                    assertion.level = levelText.substr(dotPos + 1);
+                                } else {
+                                    assertion.level = levelText;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                info.assertions.push_back(assertion);
+                return;
+            }
+        }
+    }
+
     throw std::runtime_error("Unsupported equation type (" + sourceFile + ":" +
                              std::to_string(equation->getStart()->getLine()) + ")");
 }
@@ -693,7 +744,11 @@ void ModelInfoExtractor::extractFunctions(basemodelica::BaseModelicaParser::Base
                 stmt.ifStatementContext = statement->ifStatement();
                 func.algorithmStatements.push_back(stmt);
             }
-            // Note: We're skipping other statement types (function calls, etc.)
+            // Check if this is a standalone function call: funcName(args) without assignment
+            else if (statement->componentReference() && statement->functionCallArgs() && !statement->expression()) {
+                stmt.functionCallContext = statement;
+                func.algorithmStatements.push_back(stmt);
+            }
         }
 
         info.addFunction(func);

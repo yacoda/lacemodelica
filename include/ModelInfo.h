@@ -59,12 +59,14 @@ struct Statement {
     antlr4::ParserRuleContext* forStatementContext = nullptr;  // AST node for for-statement
     antlr4::ParserRuleContext* whileStatementContext = nullptr;  // AST node for while-statement
     antlr4::ParserRuleContext* ifStatementContext = nullptr;  // AST node for if-statement
+    antlr4::ParserRuleContext* functionCallContext = nullptr;  // AST node for standalone function call (no assignment)
     std::string sourceFile;
     size_t sourceLine = 0;
 
     bool isForStatement() const { return forStatementContext != nullptr; }
     bool isWhileStatement() const { return whileStatementContext != nullptr; }
     bool isIfStatement() const { return ifStatementContext != nullptr; }
+    bool isFunctionCallStatement() const { return functionCallContext != nullptr; }
 };
 
 struct Function {
@@ -73,6 +75,14 @@ struct Function {
     std::vector<Variable> inputs;
     std::vector<Variable> outputs;
     std::vector<Statement> algorithmStatements;
+    std::string sourceFile;
+    size_t sourceLine = 0;
+};
+
+struct Assertion {
+    antlr4::ParserRuleContext* conditionContext = nullptr;  // The condition expression
+    std::string message;  // The error/warning message
+    std::string level = "error";  // "error" or "warning" (from AssertionLevel)
     std::string sourceFile;
     size_t sourceLine = 0;
 };
@@ -109,6 +119,7 @@ public:
     std::map<std::string, int> variableIndex;  // name -> index in variables
     std::vector<Equation> equations;
     std::vector<Equation> initialEquations;
+    std::vector<Assertion> assertions;
     std::vector<Function> functions;
     std::map<std::string, int> functionIndex;  // name -> index in functions
     std::vector<EnumType> enumTypes;

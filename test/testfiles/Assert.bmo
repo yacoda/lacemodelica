@@ -1,0 +1,15 @@
+// SPDX-License-Identifier: MIT
+// Minimal test for assert statements
+
+//! base 0.1.0
+package 'Assert'
+  model 'Assert' "Test model for assert statements"
+    Real 'x'(start = 1.0);
+    Real 'y'(start = 2.0);
+  equation
+    der('x') = -'x';
+    der('y') = -'y';
+    assert('x' >= 0.0, "x must be non-negative", AssertionLevel.error);
+    assert('y' > 'x', "y must be greater than x", AssertionLevel.warning);
+  end 'Assert';
+end 'Assert';
