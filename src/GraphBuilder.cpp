@@ -142,6 +142,29 @@ std::string GraphBuilder::addInt64ArrayConstant(const std::vector<int64_t>& valu
     return name;
 }
 
+std::string GraphBuilder::addDoubleArrayConstant(const std::vector<double>& values) {
+    std::string name = prefix_.empty()
+        ? ("f64_arr_" + std::to_string(nodeCounter_++))
+        : (prefix_ + "_f64_arr_" + std::to_string(nodeCounter_++));
+
+    auto* node = graph_->add_node();
+    node->set_op_type("Constant");
+    node->set_name(name);
+    node->add_output(name);
+
+    auto* attr = node->add_attribute();
+    attr->set_name("value");
+    attr->set_type(onnx::AttributeProto::TENSOR);
+    auto* tensor = attr->mutable_t();
+    tensor->set_data_type(onnx::TensorProto::DOUBLE);
+    tensor->add_dims(values.size());
+    for (double val : values) {
+        tensor->add_double_data(val);
+    }
+
+    return name;
+}
+
 std::string GraphBuilder::addDoubleZerosConstant(const std::vector<int64_t>& shape) {
     std::string name = prefix_.empty()
         ? ("zeros_" + std::to_string(nodeCounter_++))

@@ -64,6 +64,7 @@ public:
     std::string addDoubleConstant(double value);
     std::string addBoolConstant(bool value);
     std::string addInt64ArrayConstant(const std::vector<int64_t>& values);
+    std::string addDoubleArrayConstant(const std::vector<double>& values);
     std::string addDoubleZerosConstant(const std::vector<int64_t>& shape);
 
     // --- Operation nodes ---

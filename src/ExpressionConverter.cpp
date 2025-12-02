@@ -922,20 +922,25 @@ std::string ExpressionConverter::convertArrayLiteral(
         throw std::runtime_error("Empty array literal");
     }
 
-    // Check if all elements are pure constant values (numbers/booleans).
-    // If so, throw an exception - constant array literals are handled elsewhere
-    // (as ONNX initializers) and shouldn't generate bound outputs.
+    // Check if all elements are pure constant values (numbers).
+    // If so, create a constant tensor directly - more efficient than concat.
     bool allConstant = true;
+    std::vector<double> constantValues;
     for (auto* expr : expressions) {
         std::string exprText = expr->getText();
         if (!isConstValue(exprText)) {
             allConstant = false;
             break;
         }
+        try {
+            constantValues.push_back(std::stod(exprText));
+        } catch (...) {
+            allConstant = false;
+            break;
+        }
     }
     if (allConstant) {
-        throw std::runtime_error("Constant array literal should be handled as initializer: " +
-                                 arrayArgs->getText());
+        return builder.addDoubleArrayConstant(constantValues);
     }
 
     // Convert and unsqueeze each element/row, then concat along axis 0
