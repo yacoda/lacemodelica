@@ -24,12 +24,23 @@ FetchContent_Declare(
     SOURCE_SUBDIR runtime/Cpp
 )
 
-# TinyXML-2
-FetchContent_Declare(
-    tinyxml2
-    GIT_REPOSITORY https://github.com/leethomason/tinyxml2.git
-    GIT_TAG 10.0.0
-)
+# TinyXML-2 - prefer system, fallback to FetchContent
+# Use CONFIG mode to require modern CMake config (not FindTinyXML2.cmake modules)
+find_package(tinyxml2 CONFIG QUIET)
+if(tinyxml2_FOUND AND TARGET tinyxml2::tinyxml2)
+    message(STATUS "Found system TinyXML-2: ${tinyxml2_VERSION}")
+    set(USE_SYSTEM_TINYXML2 TRUE)
+    # Alias to match FetchContent target name
+    add_library(tinyxml2 ALIAS tinyxml2::tinyxml2)
+else()
+    message(STATUS "TinyXML-2 not found, building from source")
+    set(USE_SYSTEM_TINYXML2 FALSE)
+    FetchContent_Declare(
+        tinyxml2
+        GIT_REPOSITORY https://github.com/leethomason/tinyxml2.git
+        GIT_TAG 10.0.0
+    )
+endif()
 
 # Set policy defaults for FetchContent dependencies
 # This ensures dependencies like googletest (pulled by antlr4) work with newer CMake
@@ -38,7 +49,15 @@ if(POLICY CMP0135)
 endif()
 set(CMAKE_POLICY_DEFAULT_CMP0000 NEW)  # Allow dependencies with old cmake_minimum_required
 
-FetchContent_MakeAvailable(antlr4_runtime tinyxml2)
+# ANTLR build options - only build shared library, skip tests
+set(ANTLR_BUILD_STATIC OFF CACHE BOOL "" FORCE)
+set(ANTLR_BUILD_CPP_TESTS OFF CACHE BOOL "" FORCE)
+
+if(USE_SYSTEM_TINYXML2)
+    FetchContent_MakeAvailable(antlr4_runtime)
+else()
+    FetchContent_MakeAvailable(antlr4_runtime tinyxml2)
+endif()
 
 # Try to find system dependencies
 # Dependency chain: ONNX -> Protobuf -> (absl, utf8_range)
