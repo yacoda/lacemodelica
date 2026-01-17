@@ -40,69 +40,106 @@ set(CMAKE_POLICY_DEFAULT_CMP0000 NEW)  # Allow dependencies with old cmake_minim
 
 FetchContent_MakeAvailable(antlr4_runtime tinyxml2)
 
-# Protobuf (required for ONNX)
-ExternalProject_Add(protobuf-external
-    GIT_REPOSITORY https://github.com/protocolbuffers/protobuf
-    GIT_SHALLOW ON
-    GIT_TAG v31.1
-    PREFIX "${CMAKE_BINARY_DIR}/external_projects"
-    UPDATE_COMMAND ""
-    CMAKE_ARGS
-        -DCMAKE_CXX_STANDARD=17
-        -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
-        -DCMAKE_POSITION_INDEPENDENT_CODE=ON
-        -Dprotobuf_BUILD_TESTS=OFF
-        -Dprotobuf_ABSL_PROVIDER=module
-        -DCMAKE_POLICY_VERSION_MINIMUM=3.5
-)
+# Try to find system dependencies
+# Dependency chain: ONNX -> Protobuf -> (absl, utf8_range)
+find_package(absl QUIET)
+find_package(utf8_range QUIET)
+find_package(Protobuf QUIET)
+find_package(ONNX QUIET)
 
-add_library(protobuf::libprotobuf STATIC IMPORTED)
-add_dependencies(protobuf::libprotobuf protobuf-external)
+# Check what we can use from the system
+if(ONNX_FOUND AND Protobuf_FOUND AND absl_FOUND AND utf8_range_FOUND)
+    # Case 1: Use everything from system
+    message(STATUS "Found system ONNX: ${ONNX_VERSION}")
+    message(STATUS "Found system Protobuf: ${Protobuf_VERSION}")
+    set(USE_SYSTEM_ONNX TRUE)
+    set(USE_SYSTEM_PROTOBUF TRUE)
+elseif(Protobuf_FOUND AND absl_FOUND AND utf8_range_FOUND)
+    # Case 2: Use system Protobuf, build ONNX from source
+    message(STATUS "Found system Protobuf: ${Protobuf_VERSION}")
+    message(STATUS "ONNX not found, building from source")
+    set(USE_SYSTEM_ONNX FALSE)
+    set(USE_SYSTEM_PROTOBUF TRUE)
+    set(ONNX_PREFIX_PATH "${CMAKE_PREFIX_PATH}")
+else()
+    # Case 3: Build everything from source
+    message(STATUS "System ONNX and Protobuf not found, building from source")
+    set(USE_SYSTEM_ONNX FALSE)
+    set(USE_SYSTEM_PROTOBUF FALSE)
+    set(ONNX_PREFIX_PATH "${CMAKE_BINARY_DIR}/external_projects")
 
-# utf8_range (protobuf dependency)
-add_library(utf8_range::utf8_range STATIC IMPORTED)
-set_target_properties(utf8_range::utf8_range PROPERTIES
-    IMPORTED_LOCATION "${CMAKE_BINARY_DIR}/external_projects/lib/${CMAKE_STATIC_LIBRARY_PREFIX}utf8_range${CMAKE_STATIC_LIBRARY_SUFFIX}"
-    INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_BINARY_DIR}/external_projects/include")
-target_link_libraries(protobuf::libprotobuf INTERFACE utf8_range::utf8_range)
+    # Protobuf (required for ONNX)
+    ExternalProject_Add(protobuf-external
+        GIT_REPOSITORY https://github.com/protocolbuffers/protobuf
+        GIT_SHALLOW ON
+        GIT_TAG v31.1
+        PREFIX "${CMAKE_BINARY_DIR}/external_projects"
+        UPDATE_COMMAND ""
+        CMAKE_ARGS
+            -DCMAKE_CXX_STANDARD=17
+            -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
+            -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+            -Dprotobuf_BUILD_TESTS=OFF
+            -Dprotobuf_ABSL_PROVIDER=module
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+    )
 
-# Setup abseil library dependencies
-include(${CMAKE_SOURCE_DIR}/cmake/abseil_dependencies.cmake)
-setup_abseil_dependencies(protobuf::libprotobuf)
+    add_library(protobuf::libprotobuf STATIC IMPORTED)
+    add_dependencies(protobuf::libprotobuf protobuf-external)
 
-file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/external_projects/include")
-set_target_properties(protobuf::libprotobuf PROPERTIES
-    IMPORTED_LOCATION "${CMAKE_BINARY_DIR}/external_projects/lib/${CMAKE_STATIC_LIBRARY_PREFIX}protobuf${CMAKE_STATIC_LIBRARY_SUFFIX}"
-    INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_BINARY_DIR}/external_projects/include")
+    # utf8_range (protobuf dependency)
+    add_library(utf8_range::utf8_range STATIC IMPORTED)
+    set_target_properties(utf8_range::utf8_range PROPERTIES
+        IMPORTED_LOCATION "${CMAKE_BINARY_DIR}/external_projects/lib/${CMAKE_STATIC_LIBRARY_PREFIX}utf8_range${CMAKE_STATIC_LIBRARY_SUFFIX}"
+        INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_BINARY_DIR}/external_projects/include")
+    target_link_libraries(protobuf::libprotobuf INTERFACE utf8_range::utf8_range)
 
-# ONNX
-ExternalProject_Add(onnx-external
-    DEPENDS protobuf::libprotobuf
-    GIT_REPOSITORY https://github.com/onnx/onnx
-    GIT_SHALLOW ON
-    GIT_TAG v1.19.1
-    PREFIX "${CMAKE_BINARY_DIR}/external_projects"
-    UPDATE_COMMAND ""
-    CMAKE_ARGS
-        -DCMAKE_CXX_STANDARD=17
-        -DONNX_BUILD_TESTS=OFF
-        -DCMAKE_PREFIX_PATH=${CMAKE_BINARY_DIR}/external_projects
-        -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
-        -DCMAKE_POSITION_INDEPENDENT_CODE=ON
-        -DCMAKE_POLICY_VERSION_MINIMUM=3.5
-)
+    # Setup abseil library dependencies
+    include(${CMAKE_SOURCE_DIR}/cmake/abseil_dependencies.cmake)
+    setup_abseil_dependencies(protobuf::libprotobuf)
 
-add_library(ONNX::onnx STATIC IMPORTED)
-add_library(ONNX::onnx_proto STATIC IMPORTED)
-add_dependencies(ONNX::onnx onnx-external)
-add_dependencies(ONNX::onnx_proto onnx-external)
-target_link_libraries(ONNX::onnx INTERFACE protobuf::libprotobuf)
-set_target_properties(ONNX::onnx PROPERTIES
-    IMPORTED_LOCATION "${CMAKE_BINARY_DIR}/external_projects/lib/${CMAKE_STATIC_LIBRARY_PREFIX}onnx${CMAKE_STATIC_LIBRARY_SUFFIX}"
-    INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_BINARY_DIR}/external_projects/include")
-set_target_properties(ONNX::onnx_proto PROPERTIES
-    IMPORTED_LOCATION "${CMAKE_BINARY_DIR}/external_projects/lib/${CMAKE_STATIC_LIBRARY_PREFIX}onnx_proto${CMAKE_STATIC_LIBRARY_SUFFIX}"
-    INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_BINARY_DIR}/external_projects/include")
+    file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/external_projects/include")
+    set_target_properties(protobuf::libprotobuf PROPERTIES
+        IMPORTED_LOCATION "${CMAKE_BINARY_DIR}/external_projects/lib/${CMAKE_STATIC_LIBRARY_PREFIX}protobuf${CMAKE_STATIC_LIBRARY_SUFFIX}"
+        INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_BINARY_DIR}/external_projects/include")
+endif()
+
+# ONNX - built from source in Case 2 and Case 3
+if(NOT USE_SYSTEM_ONNX)
+    set(ONNX_EXTERNAL_DEPENDS "")
+    if(NOT USE_SYSTEM_PROTOBUF)
+        set(ONNX_EXTERNAL_DEPENDS DEPENDS protobuf::libprotobuf)
+    endif()
+
+    ExternalProject_Add(onnx-external
+        ${ONNX_EXTERNAL_DEPENDS}
+        GIT_REPOSITORY https://github.com/onnx/onnx
+        GIT_SHALLOW ON
+        GIT_TAG v1.19.1
+        PREFIX "${CMAKE_BINARY_DIR}/external_projects"
+        UPDATE_COMMAND ""
+        CMAKE_ARGS
+            -DCMAKE_CXX_STANDARD=17
+            -DONNX_BUILD_TESTS=OFF
+            -DCMAKE_PREFIX_PATH=${ONNX_PREFIX_PATH}
+            -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
+            -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+    )
+
+    add_library(ONNX::onnx STATIC IMPORTED)
+    add_library(ONNX::onnx_proto STATIC IMPORTED)
+    add_dependencies(ONNX::onnx onnx-external)
+    add_dependencies(ONNX::onnx_proto onnx-external)
+    target_link_libraries(ONNX::onnx INTERFACE protobuf::libprotobuf)
+    file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/external_projects/include")
+    set_target_properties(ONNX::onnx PROPERTIES
+        IMPORTED_LOCATION "${CMAKE_BINARY_DIR}/external_projects/lib/${CMAKE_STATIC_LIBRARY_PREFIX}onnx${CMAKE_STATIC_LIBRARY_SUFFIX}"
+        INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_BINARY_DIR}/external_projects/include")
+    set_target_properties(ONNX::onnx_proto PROPERTIES
+        IMPORTED_LOCATION "${CMAKE_BINARY_DIR}/external_projects/lib/${CMAKE_STATIC_LIBRARY_PREFIX}onnx_proto${CMAKE_STATIC_LIBRARY_SUFFIX}"
+        INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_BINARY_DIR}/external_projects/include")
+endif()
 
 # Generated parser location (in source tree so it can be committed)
 set(GENERATED_PARSER_DIR ${CMAKE_SOURCE_DIR}/generated)
@@ -141,7 +178,9 @@ endif()
 include_directories(${CMAKE_SOURCE_DIR}/include)
 include_directories(${ANTLR4_INCLUDE_DIRS})
 include_directories(${GENERATED_PARSER_DIR})
-include_directories(${CMAKE_BINARY_DIR}/external_projects/include)
+if(NOT USE_SYSTEM_ONNX)
+    include_directories(${CMAKE_BINARY_DIR}/external_projects/include)
+endif()
 
 # Executable
 add_executable(lacemodelica
@@ -157,8 +196,16 @@ add_executable(lacemodelica
     ${GENERATED_SOURCES}
 )
 
-# Make sure lacemodelica depends on external projects
-add_dependencies(lacemodelica protobuf-external onnx-external)
+# Make sure lacemodelica depends on external projects (only when building from source)
+if(NOT USE_SYSTEM_ONNX)
+    if(USE_SYSTEM_PROTOBUF)
+        # Only ONNX built from source
+        add_dependencies(lacemodelica onnx-external)
+    else()
+        # Both built from source
+        add_dependencies(lacemodelica protobuf-external onnx-external)
+    endif()
+endif()
 
 target_link_libraries(lacemodelica
     antlr4_shared
