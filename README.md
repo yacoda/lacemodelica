@@ -69,6 +69,65 @@ Parsing: test/testfiles/MinimalValid.bmo
 ✓ Success
 ```
 
+## ONNX Output Structure
+
+The generated ONNX model represents the mathematical equations of a Modelica model as a computational graph. The model has multiple outputs representing different aspects of the equation system.
+
+### Output Categories
+
+| Category | Format | Description |
+|----------|--------|-------------|
+| **Equation Residuals** | `eq[N]` | Residuals for equations in the `equation` section |
+| **Initial Equations** | `init_eq[N]` | Residuals for equations in the `initial equation` section |
+| **Start Values** | `start[N]` | Initial/default values for variables |
+| **Bounds** | `min[N]`, `max[N]` | Variable bounds (only for non-constant expressions) |
+
+### Equation Residuals (`eq[N]`, `init_eq[N]`)
+
+For each equation of the form `lhs = rhs`, the output computes the **residual**: `lhs - rhs`. At the solution, all residuals should equal zero.
+
+**Example** - Given this Modelica model:
+
+```modelica
+model 'NewtonCoolingBase'
+  parameter Real 'T_inf' = 25.0;
+  parameter Real 'T0' = 90.0;
+  parameter Real 'h' = 0.7;
+  parameter Real 'A' = 1.0;
+  parameter Real 'm' = 0.1;
+  parameter Real 'c_p' = 1.2;
+  Real 'T';
+initial equation
+  'T' = 'T0';
+equation
+  'm' * 'c_p' * der('T') = 'h' * 'A' * ('T_inf' - 'T');
+end 'NewtonCoolingBase';
+```
+
+The ONNX model will have these outputs:
+
+| Output | Represents | Computed As |
+|--------|------------|-------------|
+| `eq[0]` | Cooling equation residual | `m * c_p * der(T) - h * A * (T_inf - T)` |
+| `init_eq[0]` | Initial condition residual | `T - T0` |
+| `start[0]` | Initial value of T | `T0` |
+
+### Interpretation
+
+- **Inputs**: All model variables (states, derivatives, parameters) are inputs to the ONNX graph
+- **Outputs**: Equation residuals that should all be zero when the system is correctly solved
+- **Solver usage**: A numerical solver can use this representation to find values that make all residuals zero
+
+### Testing with ONNX Runtime
+
+You can validate the ONNX output using Python:
+
+```bash
+python test/test_onnx_runtime.py
+```
+
+This runs the generated ONNX models against reference Python implementations embedded in the `.bmo` test files.
+
 ## Project Structure
 
 ```
