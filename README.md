@@ -59,14 +59,15 @@ make -j4
 ### Example
 
 ```bash
-./build/lacemodelica test/testfiles/MinimalValid.bmo
+./build/lacemodelica_exe test/testfiles/MinimalValid.bmo --output-dir output/MinimalValid_fmu
 ```
 
 Output:
 ```
 lacemodelica - BaseModelica to FMU/ONNX converter
-Parsing: test/testfiles/MinimalValid.bmo
-✓ Success
+Processing: test/testfiles/MinimalValid.bmo -> output/MinimalValid_fmu
+Generated: output/MinimalValid_fmu/modelDescription.xml
+Done.
 ```
 
 ## C API
@@ -83,6 +84,7 @@ The shared library exposes a C API for easy integration from any language with C
 
 ```c
 // Process a BMO file and generate FMU with ONNX layered standard
+// output_dir is required and specifies where modelDescription.xml will be written
 lacemodelica_status_t lacemodelica_process_bmo(const char* input_file, const char* output_dir);
 
 // Parse a BMO file without generating output (validation only)
@@ -110,7 +112,7 @@ const char* lacemodelica_status_string(lacemodelica_status_t status);
 #include <lacemodelica.h>
 
 int main() {
-    lacemodelica_status_t status = lacemodelica_process_bmo("model.bmo", "output");
+    lacemodelica_status_t status = lacemodelica_process_bmo("model.bmo", "model_fmu");
     if (status != LACEMODELICA_SUCCESS) {
         fprintf(stderr, "Error: %s\n", lacemodelica_status_string(status));
         return 1;

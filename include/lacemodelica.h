@@ -30,7 +30,9 @@ typedef enum {
  * 4. ONNX layered standard generation
  *
  * @param input_file Path to the input .bmo file
- * @param output_dir Output directory for the generated FMU (can be NULL for auto-detection)
+ * @param output_dir Output directory where modelDescription.xml will be written.
+ *                   If NULL or empty, outputs to current directory.
+ *                   The directory will be created if it does not exist.
  * @return LACEMODELICA_SUCCESS on success, or an error code on failure
  */
 lacemodelica_status_t lacemodelica_process_bmo(const char* input_file, const char* output_dir);

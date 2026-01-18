@@ -9,7 +9,8 @@ int main(int argc, char* argv[]) {
     std::cout << "lacemodelica - BaseModelica to FMU/ONNX converter" << std::endl;
 
     if (argc < 2) {
-        std::cerr << "Usage: " << argv[0] << " <input.bmo> [--parse-only] [--output-dir <dir>]" << std::endl;
+        std::cerr << "Usage: " << argv[0] << " <input.bmo> [--output-dir <dir>]" << std::endl;
+        std::cerr << "       " << argv[0] << " <input.bmo> --parse-only" << std::endl;
         return 1;
     }
 
@@ -32,7 +33,7 @@ int main(int argc, char* argv[]) {
         std::cout << "Parsing: " << input_file << std::endl;
         status = lacemodelica_parse_bmo(input_file);
     } else {
-        std::cout << "Processing: " << input_file << std::endl;
+        std::cout << "Processing: " << input_file << " -> " << (output_dir ? output_dir : ".") << std::endl;
         status = lacemodelica_process_bmo(input_file, output_dir);
     }
 

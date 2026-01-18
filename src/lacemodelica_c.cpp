@@ -40,6 +40,7 @@ lacemodelica_status_t lacemodelica_process_bmo(const char* input_file, const cha
     }
 
     std::string filepath(input_file);
+    std::string outputPath = (output_dir && output_dir[0] != '\0') ? output_dir : ".";
 
     // Open and parse the file
     std::ifstream stream(filepath);
@@ -67,37 +68,12 @@ lacemodelica_status_t lacemodelica_process_bmo(const char* input_file, const cha
     lacemodelica::ModelInfoExtractor extractor;
     lacemodelica::ModelInfo info = extractor.extract(tree, filepath);
 
-    // Determine output path
-    std::string outputPath;
-    if (output_dir && output_dir[0] != '\0') {
-        // Use specified output directory
-        try {
-            fs::create_directories(output_dir);
-        } catch (const std::exception& e) {
-            std::cerr << "Failed to create output directory: " << e.what() << std::endl;
-            return LACEMODELICA_ERROR_OUTPUT_DIR_CREATION_FAILED;
-        }
-        outputPath = std::string(output_dir) + "/" + info.modelName + "_fmu";
-    } else {
-        // Auto-detect: if input is from testfiles, output to sibling output/ directory
-        fs::path inputPath(filepath);
-        fs::path absInputPath = fs::absolute(inputPath);
-
-        if (absInputPath.string().find("/testfiles/") != std::string::npos) {
-            // Replace /testfiles/ with /output/ in the path
-            fs::path inputDir = absInputPath.parent_path();
-            fs::path outputBaseDir = inputDir.parent_path() / "output";
-            try {
-                fs::create_directories(outputBaseDir);
-            } catch (const std::exception& e) {
-                std::cerr << "Failed to create output directory: " << e.what() << std::endl;
-                return LACEMODELICA_ERROR_OUTPUT_DIR_CREATION_FAILED;
-            }
-            outputPath = (outputBaseDir / (info.modelName + "_fmu")).string();
-        } else {
-            // Regular file: output to current directory
-            outputPath = info.modelName + "_fmu";
-        }
+    // Create output directory
+    try {
+        fs::create_directories(outputPath);
+    } catch (const std::exception& e) {
+        std::cerr << "Failed to create output directory: " << e.what() << std::endl;
+        return LACEMODELICA_ERROR_OUTPUT_DIR_CREATION_FAILED;
     }
 
     // Generate FMU

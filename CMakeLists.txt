@@ -295,7 +295,7 @@ foreach(TEST_FILE ${TEST_FILES})
     get_filename_component(TEST_NAME ${TEST_FILE} NAME_WE)
     add_test(
         NAME generate_${TEST_NAME}
-        COMMAND lacemodelica_exe ${TEST_FILE}
+        COMMAND lacemodelica_exe ${TEST_FILE} --output-dir ${CMAKE_SOURCE_DIR}/test/output/${TEST_NAME}_fmu
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
     )
     set_tests_properties(generate_${TEST_NAME} PROPERTIES LABELS "generate")
