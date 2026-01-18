@@ -9,6 +9,12 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# RPATH settings for proper install
+set(CMAKE_SKIP_BUILD_RPATH FALSE)
+set(CMAKE_BUILD_WITH_INSTALL_RPATH FALSE)
+set(CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib")
+set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
+
 # Dependencies
 include(FetchContent)
 include(ExternalProject)
@@ -247,6 +253,24 @@ target_include_directories(lacemodelica
 # Executable (links to shared library)
 add_executable(lacemodelica_exe src/main.cpp)
 target_link_libraries(lacemodelica_exe lacemodelica)
+
+# Install targets
+include(GNUInstallDirs)
+
+install(TARGETS lacemodelica
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
+
+install(TARGETS lacemodelica_exe
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
+
+install(DIRECTORY ${CMAKE_SOURCE_DIR}/include/
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/lacemodelica
+    FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp"
+)
 
 # Testing
 enable_testing()
