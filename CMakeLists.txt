@@ -26,8 +26,9 @@ FetchContent_Declare(
 
 # TinyXML-2 - prefer system, fallback to FetchContent
 # Use CONFIG mode to require modern CMake config (not FindTinyXML2.cmake modules)
-find_package(tinyxml2 CONFIG QUIET)
-if(tinyxml2_FOUND AND TARGET tinyxml2::tinyxml2)
+# Temporarily disabled: system tinyxml2 may not be built with -fPIC for shared library use
+#find_package(tinyxml2 CONFIG QUIET)
+if(FALSE AND tinyxml2_FOUND AND TARGET tinyxml2::tinyxml2)
     message(STATUS "Found system TinyXML-2: ${tinyxml2_VERSION}")
     set(USE_SYSTEM_TINYXML2 TRUE)
     # Alias to match FetchContent target name
@@ -52,6 +53,9 @@ set(CMAKE_POLICY_DEFAULT_CMP0000 NEW)  # Allow dependencies with old cmake_minim
 # ANTLR build options - only build shared library, skip tests
 set(ANTLR_BUILD_STATIC OFF CACHE BOOL "" FORCE)
 set(ANTLR_BUILD_CPP_TESTS OFF CACHE BOOL "" FORCE)
+
+# Enable position independent code for tinyxml2 (required for shared library linking)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 if(USE_SYSTEM_TINYXML2)
     FetchContent_MakeAvailable(antlr4_runtime)
@@ -201,9 +205,8 @@ if(NOT USE_SYSTEM_ONNX)
     include_directories(${CMAKE_BINARY_DIR}/external_projects/include)
 endif()
 
-# Executable
-add_executable(lacemodelica
-    src/main.cpp
+# Shared library (core functionality)
+add_library(lacemodelica SHARED
     src/ModelInfoExtractor.cpp
     src/FMUGenerator.cpp
     src/ONNXGenerator.cpp
@@ -215,7 +218,7 @@ add_executable(lacemodelica
     ${GENERATED_SOURCES}
 )
 
-# Make sure lacemodelica depends on external projects (only when building from source)
+# Make sure library depends on external projects (only when building from source)
 if(NOT USE_SYSTEM_ONNX)
     if(USE_SYSTEM_PROTOBUF)
         # Only ONNX built from source
@@ -227,12 +230,23 @@ if(NOT USE_SYSTEM_ONNX)
 endif()
 
 target_link_libraries(lacemodelica
-    antlr4_shared
-    tinyxml2
-    ONNX::onnx
-    ONNX::onnx_proto
-    protobuf::libprotobuf
+    PUBLIC
+        antlr4_shared
+        tinyxml2
+        ONNX::onnx
+        ONNX::onnx_proto
+        protobuf::libprotobuf
 )
+
+target_include_directories(lacemodelica
+    PUBLIC
+        ${CMAKE_SOURCE_DIR}/include
+        ${GENERATED_PARSER_DIR}
+)
+
+# Executable (links to shared library)
+add_executable(lacemodelica_exe src/main.cpp)
+target_link_libraries(lacemodelica_exe lacemodelica)
 
 # Testing
 enable_testing()
@@ -245,7 +259,7 @@ foreach(TEST_FILE ${TEST_FILES})
     get_filename_component(TEST_NAME ${TEST_FILE} NAME_WE)
     add_test(
         NAME parse_${TEST_NAME}
-        COMMAND lacemodelica ${TEST_FILE} --parse-only
+        COMMAND lacemodelica_exe ${TEST_FILE} --parse-only
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
     )
     set_tests_properties(parse_${TEST_NAME} PROPERTIES LABELS "parse")
@@ -256,7 +270,7 @@ foreach(TEST_FILE ${TEST_FILES})
     get_filename_component(TEST_NAME ${TEST_FILE} NAME_WE)
     add_test(
         NAME generate_${TEST_NAME}
-        COMMAND lacemodelica ${TEST_FILE}
+        COMMAND lacemodelica_exe ${TEST_FILE}
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
     )
     set_tests_properties(generate_${TEST_NAME} PROPERTIES LABELS "generate")
