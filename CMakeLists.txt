@@ -213,6 +213,7 @@ endif()
 
 # Shared library (core functionality)
 add_library(lacemodelica SHARED
+    src/lacemodelica_c.cpp
     src/ModelInfoExtractor.cpp
     src/FMUGenerator.cpp
     src/ONNXGenerator.cpp

@@ -69,6 +69,56 @@ Parsing: test/testfiles/MinimalValid.bmo
 ✓ Success
 ```
 
+## C API
+
+The shared library exposes a C API for easy integration from any language with C FFI support.
+
+### Header
+
+```c
+#include <lacemodelica.h>
+```
+
+### Functions
+
+```c
+// Process a BMO file and generate FMU with ONNX layered standard
+lacemodelica_status_t lacemodelica_process_bmo(const char* input_file, const char* output_dir);
+
+// Parse a BMO file without generating output (validation only)
+lacemodelica_status_t lacemodelica_parse_bmo(const char* input_file);
+
+// Get human-readable error message
+const char* lacemodelica_status_string(lacemodelica_status_t status);
+```
+
+### Status Codes
+
+| Code | Description |
+|------|-------------|
+| `LACEMODELICA_SUCCESS` | Operation completed successfully |
+| `LACEMODELICA_ERROR_FILE_NOT_FOUND` | Input file not found |
+| `LACEMODELICA_ERROR_PARSE_FAILED` | Parsing failed (syntax error) |
+| `LACEMODELICA_ERROR_FMU_GENERATION_FAILED` | FMU generation failed |
+| `LACEMODELICA_ERROR_ONNX_GENERATION_FAILED` | ONNX generation failed |
+| `LACEMODELICA_ERROR_OUTPUT_DIR_CREATION_FAILED` | Could not create output directory |
+
+### Example
+
+```c
+#include <stdio.h>
+#include <lacemodelica.h>
+
+int main() {
+    lacemodelica_status_t status = lacemodelica_process_bmo("model.bmo", "output");
+    if (status != LACEMODELICA_SUCCESS) {
+        fprintf(stderr, "Error: %s\n", lacemodelica_status_string(status));
+        return 1;
+    }
+    return 0;
+}
+```
+
 ## ONNX Output Structure
 
 The generated ONNX model represents the mathematical equations of a Modelica model as a computational graph. The model has multiple outputs representing different aspects of the equation system.
