@@ -258,9 +258,14 @@ target_include_directories(lacemodelica
         ${GENERATED_PARSER_DIR}
 )
 
-# Executable (links to shared library)
-add_executable(lacemodelica_exe src/main.cpp)
-target_link_libraries(lacemodelica_exe lacemodelica)
+# Option to build the executable
+option(LACEMODELICA_BUILD_EXE "Build the lacemodelica executable" ON)
+
+if(LACEMODELICA_BUILD_EXE)
+    # Executable (links to shared library)
+    add_executable(lacemodelica_exe src/main.cpp)
+    target_link_libraries(lacemodelica_exe lacemodelica)
+endif()
 
 # Install targets
 include(GNUInstallDirs)
@@ -271,9 +276,11 @@ install(TARGETS lacemodelica
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
-install(TARGETS lacemodelica_exe
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-)
+if(LACEMODELICA_BUILD_EXE)
+    install(TARGETS lacemodelica_exe
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    )
+endif()
 
 install(DIRECTORY ${CMAKE_SOURCE_DIR}/include/
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/lacemodelica
@@ -286,27 +293,29 @@ enable_testing()
 # Find all test files
 file(GLOB TEST_FILES "${CMAKE_SOURCE_DIR}/test/testfiles/*.bmo")
 
-# Create parse-only tests for each .bmo file (tests parsing only)
-foreach(TEST_FILE ${TEST_FILES})
-    get_filename_component(TEST_NAME ${TEST_FILE} NAME_WE)
-    add_test(
-        NAME parse_${TEST_NAME}
-        COMMAND lacemodelica_exe ${TEST_FILE} --parse-only
-        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-    )
-    set_tests_properties(parse_${TEST_NAME} PROPERTIES LABELS "parse")
-endforeach()
+if(LACEMODELICA_BUILD_EXE)
+    # Create parse-only tests for each .bmo file (tests parsing only)
+    foreach(TEST_FILE ${TEST_FILES})
+        get_filename_component(TEST_NAME ${TEST_FILE} NAME_WE)
+        add_test(
+            NAME parse_${TEST_NAME}
+            COMMAND lacemodelica_exe ${TEST_FILE} --parse-only
+            WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+        )
+        set_tests_properties(parse_${TEST_NAME} PROPERTIES LABELS "parse")
+    endforeach()
 
-# Create full generation tests for each .bmo file (tests full pipeline including ONNX)
-foreach(TEST_FILE ${TEST_FILES})
-    get_filename_component(TEST_NAME ${TEST_FILE} NAME_WE)
-    add_test(
-        NAME generate_${TEST_NAME}
-        COMMAND lacemodelica_exe ${TEST_FILE} --output-dir ${CMAKE_SOURCE_DIR}/test/output/${TEST_NAME}_fmu
-        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-    )
-    set_tests_properties(generate_${TEST_NAME} PROPERTIES LABELS "generate")
-endforeach()
+    # Create full generation tests for each .bmo file (tests full pipeline including ONNX)
+    foreach(TEST_FILE ${TEST_FILES})
+        get_filename_component(TEST_NAME ${TEST_FILE} NAME_WE)
+        add_test(
+            NAME generate_${TEST_NAME}
+            COMMAND lacemodelica_exe ${TEST_FILE} --output-dir ${CMAKE_SOURCE_DIR}/test/output/${TEST_NAME}_fmu
+            WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+        )
+        set_tests_properties(generate_${TEST_NAME} PROPERTIES LABELS "generate")
+    endforeach()
+endif()
 
 # Add Python FMU import test (runs independently, expects FMUs to exist)
 find_package(Python3 COMPONENTS Interpreter)
