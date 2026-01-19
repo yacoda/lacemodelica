@@ -225,6 +225,13 @@ add_library(lacemodelica SHARED
     ${GENERATED_SOURCES}
 )
 
+# Export macro and visibility settings for shared library
+target_compile_definitions(lacemodelica PRIVATE LACEMODELICA_BUILDING)
+set_target_properties(lacemodelica PROPERTIES
+    CXX_VISIBILITY_PRESET hidden
+    VISIBILITY_INLINES_HIDDEN ON
+)
+
 # Make sure library depends on external projects (only when building from source)
 if(NOT USE_SYSTEM_ONNX)
     if(USE_SYSTEM_PROTOBUF)

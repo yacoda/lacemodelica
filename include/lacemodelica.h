@@ -4,6 +4,21 @@
 #ifndef LACEMODELICA_H
 #define LACEMODELICA_H
 
+/* Export macro for shared library */
+#ifdef _WIN32
+    #ifdef LACEMODELICA_BUILDING
+        #define LACEMODELICA_EXPORT __declspec(dllexport)
+    #else
+        #define LACEMODELICA_EXPORT __declspec(dllimport)
+    #endif
+#else
+    #if __GNUC__ >= 4 || defined(__clang__)
+        #define LACEMODELICA_EXPORT __attribute__((visibility("default")))
+    #else
+        #define LACEMODELICA_EXPORT
+    #endif
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -35,7 +50,7 @@ typedef enum {
  *                   The directory will be created if it does not exist.
  * @return LACEMODELICA_SUCCESS on success, or an error code on failure
  */
-lacemodelica_status_t lacemodelica_process_bmo(const char* input_file, const char* output_dir);
+LACEMODELICA_EXPORT lacemodelica_status_t lacemodelica_process_bmo(const char* input_file, const char* output_dir);
 
 /**
  * @brief Parse a BaseModelica file without generating output
@@ -45,7 +60,7 @@ lacemodelica_status_t lacemodelica_process_bmo(const char* input_file, const cha
  * @param input_file Path to the input .bmo file
  * @return LACEMODELICA_SUCCESS if parsing succeeds, LACEMODELICA_ERROR_PARSE_FAILED otherwise
  */
-lacemodelica_status_t lacemodelica_parse_bmo(const char* input_file);
+LACEMODELICA_EXPORT lacemodelica_status_t lacemodelica_parse_bmo(const char* input_file);
 
 /**
  * @brief Get a human-readable error message for a status code
@@ -53,7 +68,7 @@ lacemodelica_status_t lacemodelica_parse_bmo(const char* input_file);
  * @param status The status code
  * @return A string describing the error (static storage, do not free)
  */
-const char* lacemodelica_status_string(lacemodelica_status_t status);
+LACEMODELICA_EXPORT const char* lacemodelica_status_string(lacemodelica_status_t status);
 
 #ifdef __cplusplus
 }
