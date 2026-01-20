@@ -1,3 +1,5 @@
+![lacemodelica logo](docs/logo.svg)
+
 # lacemodelica
 
 A C++17 parser and compiler for BaseModelica that generates Model-Exchange Functional Mock-up Units (FMU v3.0) with symbolic representations in ONNX format.
