@@ -30,6 +30,15 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
+    - name: Cache build directory
+      uses: actions/cache@v4
+      with:
+        path: build
+        key: ${{ runner.os }}-build-${{ matrix.build_type }}-${{ hashFiles('CMakeLists.txt', 'cmake/**') }}
+        restore-keys: |
+          ${{ runner.os }}-build-${{ matrix.build_type }}-
+          ${{ runner.os }}-build-
+
     - name: Configure CMake (Unix)
       if: runner.os != 'Windows'
       run: |
