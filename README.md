@@ -268,6 +268,16 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 6. Push to the branch (`git push origin feature/amazing-feature`)
 7. Open a Pull Request
 
+## Integrations
+
+### CasADi
+
+LaceModelica can be used as a plugin for [CasADi](https://web.casadi.org/)'s DaeBuilder to load BaseModelica models directly:
+
+- **Nightly builds**: [nightly-lacemodelica](https://github.com/casadi/casadi/releases/tag/nightly-lacemodelica)
+- **Source branch**: [casadi/casadi:lacemodelica](https://github.com/casadi/casadi/tree/lacemodelica)
+- **Unit tests**: [test_basemodelica](https://github.com/casadi/casadi/blob/c94f17e74f048fba5c2470a6fdff6ee3a0410b7b/test/python/daebuilder.py#L1408-L1432)
+
 ## Acknowledgments
 
 - [BaseModelica.jl](https://github.com/SciML/BaseModelica.jl) - Grammar and test files
