@@ -30,6 +30,9 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
+    - name: Install Python dependencies
+      run: pip install numpy onnx onnxruntime
+
     - name: Cache build directory
       uses: actions/cache@v4
       with:
