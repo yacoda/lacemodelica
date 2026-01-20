@@ -49,7 +49,7 @@ jobs:
     - name: Configure CMake (Windows)
       if: runner.os == 'Windows'
       run: |
-        mkdir build
+        if (!(Test-Path build)) { mkdir build }
         cd build
         cmake .. -DCMAKE_BUILD_TYPE=Release
 
