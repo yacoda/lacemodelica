@@ -9,11 +9,15 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# RPATH settings for proper install
+# RPATH settings for relocatable install
 set(CMAKE_SKIP_BUILD_RPATH FALSE)
 set(CMAKE_BUILD_WITH_INSTALL_RPATH FALSE)
-set(CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib")
-set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
+set(CMAKE_INSTALL_RPATH_USE_LINK_PATH FALSE)
+if(APPLE)
+    set(CMAKE_INSTALL_RPATH "@executable_path/../lib")
+else()
+    set(CMAKE_INSTALL_RPATH "$ORIGIN/../lib")
+endif()
 
 # Dependencies
 include(FetchContent)
@@ -281,6 +285,13 @@ install(TARGETS lacemodelica
 if(LACEMODELICA_BUILD_EXE)
     install(TARGETS lacemodelica_exe
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    )
+endif()
+
+# On Windows, copy DLLs to bin directory for the executable to find them
+if(WIN32)
+    install(FILES $<TARGET_FILE:antlr4_shared>
+        DESTINATION ${CMAKE_INSTALL_BINDIR}
     )
 endif()
 
