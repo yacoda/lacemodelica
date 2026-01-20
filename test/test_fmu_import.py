@@ -10,7 +10,12 @@ Loads each generated FMU from test/output/ and validates it.
 import os
 import sys
 from pathlib import Path
-from casadi import *
+
+try:
+    from casadi import *
+except ImportError:
+    print("CasADi not found, skipping FMU import tests")
+    sys.exit(0)
 
 def test_fmu(fmu_path):
     """Test loading a single FMU with CasADi DaeBuilder."""
