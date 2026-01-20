@@ -51,7 +51,8 @@ jobs:
       run: |
         mkdir -p build
         cd build
-        cmake .. -DCMAKE_BUILD_TYPE=Release
+        rm -f CMakeCache.txt
+        cmake .. -DCMAKE_BUILD_TYPE=Release -DPython3_ROOT_DIR=${{ env.pythonLocation }}
       env:
         CXX: ${{ matrix.compiler }}
 
@@ -60,7 +61,8 @@ jobs:
       run: |
         if (!(Test-Path build)) { mkdir build }
         cd build
-        cmake .. -DCMAKE_BUILD_TYPE=Release
+        Remove-Item -Force CMakeCache.txt -ErrorAction SilentlyContinue
+        cmake .. -DCMAKE_BUILD_TYPE=Release -DPython3_ROOT_DIR=${{ env.pythonLocation }}
 
     - name: Build (Unix)
       if: runner.os != 'Windows'
