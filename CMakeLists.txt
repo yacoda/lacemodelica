@@ -22,6 +22,7 @@ include(ExternalProject)
 # ANTLR4 runtime
 set(ANTLR_VERSION 4.13.2)
 set(ANTLR_TAG ${ANTLR_VERSION})
+set(ANTLR4_INSTALL ON)
 
 FetchContent_Declare(
     antlr4_runtime
