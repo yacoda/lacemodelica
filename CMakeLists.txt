@@ -268,6 +268,7 @@ option(LACEMODELICA_BUILD_EXE "Build the lacemodelica executable" ON)
 if(LACEMODELICA_BUILD_EXE)
     # Executable (links to shared library)
     add_executable(lacemodelica_exe src/main.cpp)
+    set_target_properties(lacemodelica_exe PROPERTIES OUTPUT_NAME lacemodelica)
     target_link_libraries(lacemodelica_exe lacemodelica)
 endif()
 
