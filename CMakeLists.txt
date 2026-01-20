@@ -24,6 +24,9 @@ set(ANTLR_VERSION 4.13.2)
 set(ANTLR_TAG ${ANTLR_VERSION})
 set(ANTLR4_INSTALL ON)
 
+# Install targets
+include(GNUInstallDirs)
+
 FetchContent_Declare(
     antlr4_runtime
     GIT_REPOSITORY https://github.com/antlr/antlr4.git
@@ -267,9 +270,6 @@ if(LACEMODELICA_BUILD_EXE)
     add_executable(lacemodelica_exe src/main.cpp)
     target_link_libraries(lacemodelica_exe lacemodelica)
 endif()
-
-# Install targets
-include(GNUInstallDirs)
 
 install(TARGETS lacemodelica
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
