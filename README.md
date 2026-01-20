@@ -6,6 +6,10 @@ A C++17 parser and compiler for BaseModelica that generates Model-Exchange Funct
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
+![Slide 1 - BaseModelica to FMU/ONNX conversion](docs/slide-1.png)
+
+![Slide 2 - Advanced features with functions and loops](docs/slide-2.png)
+
 ## Features
 
 - **BaseModelica Parser**: Full ANTLR4-based parser for BaseModelica language
