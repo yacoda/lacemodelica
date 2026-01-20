@@ -65,31 +65,20 @@ jobs:
         cd build
         cmake --build . --config Release -j
 
-    - name: Run tests (Unix)
+    - name: Demo (Unix)
       if: runner.os != 'Windows'
       run: |
         cd build
-        ./lacemodelica
+        ./lacemodelica ../test/testfiles/MinimalValid.bmo --parse-only
 
-    - name: Run tests (Windows)
+    - name: Demo (Windows)
       if: runner.os == 'Windows'
       run: |
         cd build
-        Release\lacemodelica.exe
+        Release\lacemodelica.exe ..\test\testfiles\MinimalValid.bmo --parse-only
 
-    - name: Test specific file (Unix)
-      if: runner.os != 'Windows'
-      run: |
-        cd build
-        ./lacemodelica ../test/testfiles/MinimalValid.bmo
-        ./lacemodelica ../test/testfiles/NegativeVariable.bmo
-
-    - name: Test specific file (Windows)
-      if: runner.os == 'Windows'
-      run: |
-        cd build
-        Release\lacemodelica.exe ..\test\testfiles\MinimalValid.bmo
-        Release\lacemodelica.exe ..\test\testfiles\NegativeVariable.bmo
+    - name: Run tests
+      run: ctest --test-dir build --output-on-failure
 
     - name: Upload build artifacts (Linux)
       if: matrix.os == 'ubuntu-latest'
