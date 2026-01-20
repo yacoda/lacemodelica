@@ -1,0 +1,74 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2025 Joris Gillis, YACODA
+
+//! base 0.1.0
+package 'ForLoopMatrix'
+  model 'ForLoopMatrix' "Test for loop with matrix indexed by loop var and outer parameter"
+    parameter Integer 'k' = 2 "Column selector from outer scope";
+    parameter Real 'alpha' = 0.5 "Decay coefficient";
+
+    Real 'A'[3, 4](fixed = true, start = 0.0) "2D state matrix";
+    Real 'y'[3] "Output: column k of A";
+
+  equation
+    // Single for loop: i is loop variable, k is from outer scope
+    for i in 1:3 loop
+      'y'[i] = 'alpha' * 'A'[i, 'k'];
+    end for;
+
+  end 'ForLoopMatrix';
+end 'ForLoopMatrix';
+
+// @onnx-test-reference
+// Python reference implementation for ONNX runtime testing
+// def reference_implementation(inputs):
+//     import numpy as np
+//     outputs = {}
+//
+//     # Extract inputs
+//     A = inputs['A']  # shape (3, 4)
+//     y = inputs['y']  # shape (3,)
+//     alpha = inputs['alpha']
+//     k = int(inputs['k'])  # 1-based index
+//
+//     # For loop: y[i] = alpha * A[i, k] for i in 1:3
+//     # Residuals: y[i] - alpha * A[i, k-1] (convert k to 0-based)
+//     outputs['eq[0]'] = np.array([y[i] - alpha * A[i, k-1] for i in range(3)])
+//
+//     # Initial equations for A (12 elements)
+//     idx = 0
+//     for i in range(3):
+//         for j in range(4):
+//             outputs[f'init_eq[{idx}]'] = A[i, j] - 0.0
+//             idx += 1
+//
+//     return outputs
+//
+// @onnx-test-case
+// # Test case 1: k=2, select column 2
+// import numpy as np
+// A = np.array([[1.0, 2.0, 3.0, 4.0], [5.0, 6.0, 7.0, 8.0], [9.0, 10.0, 11.0, 12.0]])
+// k = 2
+// alpha = 0.5
+// y = alpha * A[:, k-1]  # column 1 (0-based): [2, 6, 10] * 0.5 = [1, 3, 5]
+// {
+//   "A": A,
+//   "y": y,
+//   "alpha": np.array(alpha),
+//   "k": np.array(k)
+// }
+//
+// @onnx-test-case
+// # Test case 2: k=4, select last column
+// import numpy as np
+// A = np.array([[1.0, 2.0, 3.0, 4.0], [5.0, 6.0, 7.0, 8.0], [9.0, 10.0, 11.0, 12.0]])
+// k = 4
+// alpha = 1.0
+// y = alpha * A[:, k-1]  # column 3 (0-based): [4, 8, 12]
+// {
+//   "A": A,
+//   "y": y,
+//   "alpha": np.array(alpha),
+//   "k": np.array(k)
+// }
+//
