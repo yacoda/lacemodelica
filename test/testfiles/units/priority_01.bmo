@@ -1,0 +1,28 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Joris Gillis, YACODA
+
+//! base 0.1.0
+package 'priority_01'
+  model 'M'
+    Real 'x';
+  initial equation
+    prioritize('x', 1);
+  equation
+    der('x') = 1.0;
+  end 'M';
+end 'priority_01';
+
+// @onnx-test-reference
+// def reference_implementation(inputs):
+//     import numpy as np
+//     outputs = {}
+//     der_x = inputs['der(x)']
+//     outputs['eq[0]'] = np.array(der_x - 1.0)
+//     return outputs
+//
+// @onnx-test-case
+// import numpy as np
+// {
+//   "x": np.array(0.0),
+//   "der(x)": np.array(1.0)
+// }

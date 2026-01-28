@@ -1,0 +1,27 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Joris Gillis, YACODA
+
+//! base 0.1.0
+package 'classDefinition01'
+  type 'MyReal' = Real;
+  model 'M'
+    'MyReal' 'x';
+  equation
+    der('x') = 1.0;
+  end 'M';
+end 'classDefinition01';
+
+// @onnx-test-reference
+// def reference_implementation(inputs):
+//     import numpy as np
+//     outputs = {}
+//     der_x = inputs["der(x)"]
+//     outputs['eq[0]'] = np.array(der_x - 1.0)
+//     return outputs
+//
+// @onnx-test-case
+// import numpy as np
+// {
+//   "x": np.array(0.0),
+//   "der(x)": np.array(1.0)
+// }

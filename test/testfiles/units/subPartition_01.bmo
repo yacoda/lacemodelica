@@ -1,0 +1,30 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Joris Gillis, YACODA
+
+//! base 0.1.0
+package 'subPartition_01'
+  model 'M'
+    Real 'x';
+  equation
+    'x' = 1.0;
+  partition "main"
+    Clock 'clk' = 0.1;
+    subpartition(solver = ImplicitEuler)
+    equation
+      'x' = 2.0;
+  end 'M';
+end 'subPartition_01';
+
+// @onnx-test-reference
+// def reference_implementation(inputs):
+//     import numpy as np
+//     outputs = {}
+//     x = inputs['x']
+//     outputs['eq[0]'] = np.array(x - 1.0)
+//     return outputs
+//
+// @onnx-test-case
+// import numpy as np
+// {
+//   "x": np.array(1.0)
+// }

@@ -1,0 +1,36 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Joris Gillis, YACODA
+// @onnx-test-known-failure(validate)
+
+//! base 0.1.0
+package 'languageSpecification_01'
+  function 'ext_func'
+    input Real 'x';
+    output Real 'y';
+  external "C";
+  end 'ext_func';
+  model 'M'
+    Real 'x';
+    Real 'y';
+  equation
+    'x' = 1.0;
+    'y' = 'ext_func'('x');
+  end 'M';
+end 'languageSpecification_01';
+
+// @onnx-test-reference
+// def reference_implementation(inputs):
+//     import numpy as np
+//     outputs = {}
+//     x = inputs['x']
+//     y = inputs['y']
+//     outputs['eq[0]'] = np.array(x - 1.0)
+//     outputs['eq[1]'] = np.array(y - x)  # ext_func(x) should return x (identity)
+//     return outputs
+//
+// @onnx-test-case
+// import numpy as np
+// {
+//   "x": np.array(1.0),
+//   "y": np.array(1.0)
+// }

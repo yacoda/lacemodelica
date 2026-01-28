@@ -1,0 +1,30 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Joris Gillis, YACODA
+
+//! base 0.1.0
+package 'typePrefix_02'
+  model 'M'
+    discrete Real 'd';
+    Real 'x';
+  equation
+    'd' = 1.0;
+    'x' = 'd';
+  end 'M';
+end 'typePrefix_02';
+
+// @onnx-test-reference
+// def reference_implementation(inputs):
+//     import numpy as np
+//     outputs = {}
+//     d = inputs['d']
+//     x = inputs['x']
+//     outputs['eq[0]'] = np.array(d - 1.0)
+//     outputs['eq[1]'] = np.array(x - d)
+//     return outputs
+//
+// @onnx-test-case
+// import numpy as np
+// {
+//   "d": np.array(1.0),
+//   "x": np.array(1.0)
+// }

@@ -1,0 +1,36 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Joris Gillis, YACODA
+// @onnx-test-known-failure(validate)
+
+//! base 0.1.0
+package 'whenStatement_01'
+  function 'trigger_action'
+    input Real 'cond';
+    output Real 'y';
+  algorithm
+    'y' := 0.0;
+    when 'cond' > 0.5 then
+      'y' := 1.0;
+    end when;
+  end 'trigger_action';
+  model 'M'
+    Real 'x';
+  equation
+    'x' = 'trigger_action'(0.7);
+  end 'M';
+end 'whenStatement_01';
+
+// @onnx-test-reference
+// def reference_implementation(inputs):
+//     import numpy as np
+//     outputs = {}
+//     x = inputs['x']
+//     # 0.7 > 0.5 so when triggers, y = 1.0
+//     outputs['eq[0]'] = np.array(x - 1.0)
+//     return outputs
+//
+// @onnx-test-case
+// import numpy as np
+// {
+//   "x": np.array(1.0)
+// }

@@ -1,0 +1,33 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Joris Gillis, YACODA
+// @onnx-test-known-failure(validate)
+
+//! base 0.1.0
+package 'basePrefix_02'
+  type 'OutputReal' = output Real;
+  function 'triple'
+    input Real 'u';
+    'OutputReal' 'y';
+  algorithm
+    'y' := 'u' * 3.0;
+  end 'triple';
+  model 'M'
+    Real 'x';
+  equation
+    'x' = 'triple'(2.0);
+  end 'M';
+end 'basePrefix_02';
+
+// @onnx-test-reference
+// def reference_implementation(inputs):
+//     import numpy as np
+//     outputs = {}
+//     x = inputs['x']
+//     outputs['eq[0]'] = np.array(x - 6.0)
+//     return outputs
+//
+// @onnx-test-case
+// import numpy as np
+// {
+//   "x": np.array(6.0)
+// }

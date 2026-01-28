@@ -1,0 +1,31 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Joris Gillis, YACODA
+
+//! base 0.1.0
+package 'ifExpression_01'
+  model 'M'
+    Real 'x';
+    Real 'y';
+  equation
+    'x' = 5.0;
+    'y' = if 'x' > 0.0 then 1.0 else -1.0;
+  end 'M';
+end 'ifExpression_01';
+
+// @onnx-test-reference
+// def reference_implementation(inputs):
+//     import numpy as np
+//     outputs = {}
+//     x = inputs['x']
+//     y = inputs['y']
+//     outputs['eq[0]'] = np.array(x - 5.0)
+//     y_expected = 1.0 if x > 0.0 else -1.0
+//     outputs['eq[1]'] = np.array(y - y_expected)
+//     return outputs
+//
+// @onnx-test-case
+// import numpy as np
+// {
+//   "x": np.array(5.0),
+//   "y": np.array(1.0)
+// }

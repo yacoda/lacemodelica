@@ -1,0 +1,25 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Joris Gillis, YACODA
+
+//! base 0.1.0
+package 'comment_01'
+  model 'M' "A model with a comment"
+    Real 'x' "A variable with a comment";
+  equation
+    'x' = 1.0 "An equation with a comment";
+  end 'M';
+end 'comment_01';
+
+// @onnx-test-reference
+// def reference_implementation(inputs):
+//     import numpy as np
+//     outputs = {}
+//     x = inputs['x']
+//     outputs['eq[0]'] = np.array(x - 1.0)
+//     return outputs
+//
+// @onnx-test-case
+// import numpy as np
+// {
+//   "x": np.array(1.0)
+// }

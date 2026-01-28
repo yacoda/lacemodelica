@@ -1,0 +1,31 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Joris Gillis, YACODA
+// @onnx-test-known-failure(validate)
+
+//! base 0.1.0
+package 'typeSpecifier_01'
+  model 'M'
+    Real 'x';
+    Integer 'n';
+  equation
+    'x' = 1.0;
+    'n' = 5;
+  end 'M';
+end 'typeSpecifier_01';
+
+// @onnx-test-reference
+// def reference_implementation(inputs):
+//     import numpy as np
+//     outputs = {}
+//     x = inputs['x']
+//     n = inputs['n']
+//     outputs['eq[0]'] = np.array(x - 1.0)
+//     outputs['eq[1]'] = np.array(n - 5.0)
+//     return outputs
+//
+// @onnx-test-case
+// import numpy as np
+// {
+//   "x": np.array(1.0),
+//   "n": np.array(5.0)
+// }

@@ -1,0 +1,29 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Joris Gillis, YACODA
+// @onnx-test-known-failure(validate)
+
+//! base 0.1.0
+package 'expressionList_01'
+  model 'M'
+    Real 'mat'[2, 2];
+  equation
+    'mat' = [1.0, 2.0; 3.0, 4.0];
+  end 'M';
+end 'expressionList_01';
+
+// @onnx-test-reference
+// def reference_implementation(inputs):
+//     import numpy as np
+//     outputs = {}
+//     mat = inputs['mat']
+//     outputs['eq[0]'] = np.array(mat[0, 0] - 1.0)
+//     outputs['eq[1]'] = np.array(mat[0, 1] - 2.0)
+//     outputs['eq[2]'] = np.array(mat[1, 0] - 3.0)
+//     outputs['eq[3]'] = np.array(mat[1, 1] - 4.0)
+//     return outputs
+//
+// @onnx-test-case
+// import numpy as np
+// {
+//   "mat": np.array([[1.0, 2.0], [3.0, 4.0]])
+// }

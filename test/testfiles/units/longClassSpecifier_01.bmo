@@ -1,0 +1,34 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Joris Gillis, YACODA
+// @onnx-test-known-failure(validate)
+
+//! base 0.1.0
+package 'longClassSpecifier_01'
+  record 'Foo' "a record with description"
+    Real 'x';
+  end 'Foo';
+  model 'M'
+    'Foo' 'f';
+    Real 'y';
+  equation
+    'f'.'x' = 5.0;
+    'y' = 'f'.'x' * 2.0;
+  end 'M';
+end 'longClassSpecifier_01';
+
+// @onnx-test-reference
+// def reference_implementation(inputs):
+//     import numpy as np
+//     outputs = {}
+//     f_x = inputs['f.x']
+//     y = inputs['y']
+//     outputs['eq[0]'] = np.array(f_x - 5.0)
+//     outputs['eq[1]'] = np.array(y - f_x * 2.0)
+//     return outputs
+//
+// @onnx-test-case
+// import numpy as np
+// {
+//   "f.x": np.array(5.0),
+//   "y": np.array(10.0)
+// }

@@ -1,0 +1,27 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Joris Gillis, YACODA
+
+//! base 0.1.0
+package 'componentDeclaration_01'
+  model 'M'
+    Real 'pos' = 0.0 "position variable";
+  equation
+    der('pos') = 1.0;
+  end 'M';
+end 'componentDeclaration_01';
+
+// @onnx-test-reference
+// def reference_implementation(inputs):
+//     import numpy as np
+//     outputs = {}
+//     der_pos = inputs['der(pos)']
+//     outputs['eq[0]'] = np.array(der_pos - 1.0)
+//     outputs['start[0]'] = np.array(0.0)
+//     return outputs
+//
+// @onnx-test-case
+// import numpy as np
+// {
+//   "pos": np.array(0.0),
+//   "der(pos)": np.array(1.0)
+// }

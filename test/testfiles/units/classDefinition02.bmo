@@ -1,0 +1,31 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Joris Gillis, YACODA
+
+//! base 0.1.0
+package 'classDefinition02'
+  function 'foo'
+    input Real 'u';
+    output Real 'y';
+  algorithm
+    'y' := 'u' * 2.0;
+  end 'foo';
+  model 'M'
+    Real 'x';
+  equation
+    'x' = 'foo'(1.5);
+  end 'M';
+end 'classDefinition02';
+
+// @onnx-test-reference
+// def reference_implementation(inputs):
+//     import numpy as np
+//     outputs = {}
+//     x = inputs["x"]
+//     outputs['eq[0]'] = np.array(x - 3.0)
+//     return outputs
+//
+// @onnx-test-case
+// import numpy as np
+// {
+//   "x": np.array(3.0)
+// }

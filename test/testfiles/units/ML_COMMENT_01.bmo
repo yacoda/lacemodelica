@@ -1,0 +1,27 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Joris Gillis, YACODA
+
+//! base 0.1.0
+package 'ML_COMMENT_01'
+  /* This is a
+     multi-line comment */
+  model 'M'
+    Real 'x' /* inline multi-line */;
+  equation
+    /* Comment before */ 'x' = 1.0 /* comment after */;
+  end 'M';
+end 'ML_COMMENT_01';
+
+// @onnx-test-reference
+// def reference_implementation(inputs):
+//     import numpy as np
+//     outputs = {}
+//     x = inputs['x']
+//     outputs['eq[0]'] = np.array(x - 1.0)
+//     return outputs
+//
+// @onnx-test-case
+// import numpy as np
+// {
+//   "x": np.array(1.0)
+// }

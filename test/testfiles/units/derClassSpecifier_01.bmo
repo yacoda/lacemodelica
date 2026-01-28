@@ -1,0 +1,40 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Joris Gillis, YACODA
+// @onnx-test-known-failure(validate)
+
+//! base 0.1.0
+package 'derClassSpecifier_01'
+  function 'f'
+    input Real 'x';
+    output Real 'y';
+  algorithm
+    'y' := 'x' * 'x';
+  end 'f';
+  function 'df' = der('f', 'x');
+  model 'M'
+    Real 'x';
+    Real 'y';
+  equation
+    'x' = 'f'(3.0);
+    'y' = 'df'(3.0);
+  end 'M';
+end 'derClassSpecifier_01';
+
+// @onnx-test-reference
+// def reference_implementation(inputs):
+//     import numpy as np
+//     outputs = {}
+//     x = inputs['x']
+//     y = inputs['y']
+//     # f(3) = 3*3 = 9
+//     # df/dx at x=3 = 2*x = 6
+//     outputs['eq[0]'] = np.array(x - 9.0)
+//     outputs['eq[1]'] = np.array(y - 6.0)
+//     return outputs
+//
+// @onnx-test-case
+// import numpy as np
+// {
+//   "x": np.array(9.0),
+//   "y": np.array(6.0)
+// }

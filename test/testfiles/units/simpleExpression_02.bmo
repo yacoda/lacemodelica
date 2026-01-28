@@ -1,0 +1,35 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Joris Gillis, YACODA
+// @onnx-test-known-failure(validate)
+
+//! base 0.1.0
+package 'simpleExpression_02'
+  function 'sum_range'
+    input Integer 'n';
+    output Real 'y';
+  algorithm
+    'y' := 0.0;
+    for 'i' in 1:'n' loop
+      'y' := 'y' + 'i';
+    end for;
+  end 'sum_range';
+  model 'M'
+    Real 'x';
+  equation
+    'x' = 'sum_range'(5);
+  end 'M';
+end 'simpleExpression_02';
+
+// @onnx-test-reference
+// def reference_implementation(inputs):
+//     import numpy as np
+//     outputs = {}
+//     x = inputs['x']
+//     outputs['eq[0]'] = np.array(x - 15.0)
+//     return outputs
+//
+// @onnx-test-case
+// import numpy as np
+// {
+//   "x": np.array(15.0)
+// }

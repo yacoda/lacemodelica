@@ -1,0 +1,32 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Joris Gillis, YACODA
+
+//! base 0.1.0
+package 'namedArgument_01'
+  function 'add'
+    input Real 'a';
+    input Real 'b';
+    output Real 'c';
+  algorithm
+    'c' := 'a' + 'b';
+  end 'add';
+  model 'M'
+    Real 'x';
+  equation
+    'x' = 'add'(a = 1.0, b = 2.0);
+  end 'M';
+end 'namedArgument_01';
+
+// @onnx-test-reference
+// def reference_implementation(inputs):
+//     import numpy as np
+//     outputs = {}
+//     x = inputs['x']
+//     outputs['eq[0]'] = np.array(x - 3.0)
+//     return outputs
+//
+// @onnx-test-case
+// import numpy as np
+// {
+//   "x": np.array(3.0)
+// }

@@ -1,0 +1,40 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Joris Gillis, YACODA
+
+//! base 0.1.0
+package 'IDENT_01'
+  model 'M'
+    Real 'x';
+    Real 'myVar';
+    Real '_temp';
+    Real 'CamelCase123';
+  equation
+    'x' = 1.0;
+    'myVar' = 2.0;
+    '_temp' = 3.0;
+    'CamelCase123' = 4.0;
+  end 'M';
+end 'IDENT_01';
+
+// @onnx-test-reference
+// def reference_implementation(inputs):
+//     import numpy as np
+//     outputs = {}
+//     x = inputs['x']
+//     myVar = inputs['myVar']
+//     _temp = inputs['_temp']
+//     camel = inputs['CamelCase123']
+//     outputs['eq[0]'] = np.array(x - 1.0)
+//     outputs['eq[1]'] = np.array(myVar - 2.0)
+//     outputs['eq[2]'] = np.array(_temp - 3.0)
+//     outputs['eq[3]'] = np.array(camel - 4.0)
+//     return outputs
+//
+// @onnx-test-case
+// import numpy as np
+// {
+//   "x": np.array(1.0),
+//   "myVar": np.array(2.0),
+//   "_temp": np.array(3.0),
+//   "CamelCase123": np.array(4.0)
+// }

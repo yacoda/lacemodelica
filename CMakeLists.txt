@@ -304,7 +304,7 @@ install(DIRECTORY ${CMAKE_SOURCE_DIR}/include/
 enable_testing()
 
 # Find all test files
-file(GLOB TEST_FILES "${CMAKE_SOURCE_DIR}/test/testfiles/*.bmo")
+file(GLOB_RECURSE TEST_FILES "${CMAKE_SOURCE_DIR}/test/testfiles/*.bmo")
 
 if(LACEMODELICA_BUILD_EXE)
     # Create parse-only tests for each .bmo file (tests parsing only)
@@ -323,7 +323,7 @@ if(LACEMODELICA_BUILD_EXE)
         get_filename_component(TEST_NAME ${TEST_FILE} NAME_WE)
         add_test(
             NAME generate_${TEST_NAME}
-            COMMAND lacemodelica_exe ${TEST_FILE} --output-dir ${CMAKE_SOURCE_DIR}/test/output/${TEST_NAME}_fmu
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/test/run_generate_test.py $<TARGET_FILE:lacemodelica_exe> ${TEST_FILE} --output-dir ${CMAKE_SOURCE_DIR}/test/output/${TEST_NAME}_fmu
             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
         )
         set_tests_properties(generate_${TEST_NAME} PROPERTIES LABELS "generate")

@@ -1,0 +1,41 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Joris Gillis, YACODA
+// @onnx-test-known-failure(validate)
+
+//! base 0.1.0
+package 'UNSIGNED_NUMBER_01'
+  model 'M'
+    Real 'a';
+    Real 'b';
+    Real 'c';
+    Real 'd';
+  equation
+    'a' = 42;
+    'b' = 3.14159;
+    'c' = 1e-5;
+    'd' = 2.5E10;
+  end 'M';
+end 'UNSIGNED_NUMBER_01';
+
+// @onnx-test-reference
+// def reference_implementation(inputs):
+//     import numpy as np
+//     outputs = {}
+//     a = inputs['a']
+//     b = inputs['b']
+//     c = inputs['c']
+//     d = inputs['d']
+//     outputs['eq[0]'] = np.array(a - 42.0)
+//     outputs['eq[1]'] = np.array(b - 3.14159)
+//     outputs['eq[2]'] = np.array(c - 1e-5)
+//     outputs['eq[3]'] = np.array(d - 2.5e10)
+//     return outputs
+//
+// @onnx-test-case
+// import numpy as np
+// {
+//   "a": np.array(42.0),
+//   "b": np.array(3.14159),
+//   "c": np.array(1e-5),
+//   "d": np.array(2.5e10)
+// }

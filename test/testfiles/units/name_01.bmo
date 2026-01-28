@@ -1,0 +1,28 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Joris Gillis, YACODA
+// @onnx-test-known-failure(validate)
+
+//! base 0.1.0
+package 'name_01'
+  constant Real 'pi' = 3.14159;
+  model 'M'
+    Real 'x';
+  equation
+    'x' = 'name_01'.'pi';
+  end 'M';
+end 'name_01';
+
+// @onnx-test-reference
+// def reference_implementation(inputs):
+//     import numpy as np
+//     outputs = {}
+//     x = inputs['x']
+//     # Using qualified name name_01.pi
+//     outputs['eq[0]'] = np.array(x - 3.14159)
+//     return outputs
+//
+// @onnx-test-case
+// import numpy as np
+// {
+//   "x": np.array(3.14159)
+// }

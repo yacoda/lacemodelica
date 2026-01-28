@@ -1,0 +1,26 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Joris Gillis, YACODA
+
+//! base 0.1.0
+package 'shortClassSpecifier_01'
+  type 'Voltage' = Real;
+  model 'M'
+    'Voltage' 'v';
+  equation
+    'v' = 1.0;
+  end 'M';
+end 'shortClassSpecifier_01';
+
+// @onnx-test-reference
+// def reference_implementation(inputs):
+//     import numpy as np
+//     outputs = {}
+//     v = inputs['v']
+//     outputs['eq[0]'] = np.array(v - 1.0)
+//     return outputs
+//
+// @onnx-test-case
+// import numpy as np
+// {
+//   "v": np.array(1.0)
+// }

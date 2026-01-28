@@ -1,0 +1,42 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Joris Gillis, YACODA
+
+//! base 0.1.0
+package 'ifEquation_01'
+  model 'M'
+    Real 'x';
+  equation
+    if time < 0.5 then
+      'x' = 1.0;
+    else
+      'x' = 2.0;
+    end if;
+  end 'M';
+end 'ifEquation_01';
+
+// @onnx-test-reference
+// def reference_implementation(inputs):
+//     import numpy as np
+//     outputs = {}
+//     time = inputs['time']
+//     x = inputs['x']
+//     if time < 0.5:
+//         x_expected = 1.0
+//     else:
+//         x_expected = 2.0
+//     outputs['eq[0]'] = np.array(x - x_expected)
+//     return outputs
+//
+// @onnx-test-case
+// import numpy as np
+// {
+//   "time": np.array(0.3),
+//   "x": np.array(1.0)
+// }
+//
+// @onnx-test-case
+// import numpy as np
+// {
+//   "time": np.array(0.7),
+//   "x": np.array(2.0)
+// }

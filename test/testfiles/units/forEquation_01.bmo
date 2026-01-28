@@ -1,0 +1,30 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Joris Gillis, YACODA
+// @onnx-test-known-failure(validate)
+
+//! base 0.1.0
+package 'forEquation_01'
+  model 'M'
+    Real 'x'[3];
+  equation
+    for 'i' in 1:3 loop
+      'x'['i'] = 'i';
+    end for;
+  end 'M';
+end 'forEquation_01';
+
+// @onnx-test-reference
+// def reference_implementation(inputs):
+//     import numpy as np
+//     outputs = {}
+//     x = inputs['x']
+//     outputs['eq[0]'] = np.array(x[0] - 1.0)
+//     outputs['eq[1]'] = np.array(x[1] - 2.0)
+//     outputs['eq[2]'] = np.array(x[2] - 3.0)
+//     return outputs
+//
+// @onnx-test-case
+// import numpy as np
+// {
+//   "x": np.array([1.0, 2.0, 3.0])
+// }

@@ -1,0 +1,36 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Joris Gillis, YACODA
+// @onnx-test-known-failure(validate)
+
+//! base 0.1.0
+package 'whileStatement_01'
+  function 'count_down'
+    input Real 'start';
+    output Real 'y';
+    input Real 'dummy' = 0.0;
+  algorithm
+    'y' := 'start';
+    while 'y' > 1.0 loop
+      'y' := 'y' - 1.0;
+    end while;
+  end 'count_down';
+  model 'M'
+    Real 'x';
+  equation
+    'x' = 'count_down'(3.0);
+  end 'M';
+end 'whileStatement_01';
+
+// @onnx-test-reference
+// def reference_implementation(inputs):
+//     import numpy as np
+//     outputs = {}
+//     x = inputs['x']
+//     outputs['eq[0]'] = np.array(x - 1.0)
+//     return outputs
+//
+// @onnx-test-case
+// import numpy as np
+// {
+//   "x": np.array(1.0)
+// }

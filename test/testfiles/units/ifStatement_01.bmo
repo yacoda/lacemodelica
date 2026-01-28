@@ -1,0 +1,35 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Joris Gillis, YACODA
+
+//! base 0.1.0
+package 'ifStatement_01'
+  function 'abs_val'
+    input Real 'u';
+    output Real 'y';
+  algorithm
+    if 'u' < 0.0 then
+      'y' := -'u';
+    else
+      'y' := 'u';
+    end if;
+  end 'abs_val';
+  model 'M'
+    Real 'x';
+  equation
+    'x' = 'abs_val'(-3.0);
+  end 'M';
+end 'ifStatement_01';
+
+// @onnx-test-reference
+// def reference_implementation(inputs):
+//     import numpy as np
+//     outputs = {}
+//     x = inputs['x']
+//     outputs['eq[0]'] = np.array(x - 3.0)
+//     return outputs
+//
+// @onnx-test-case
+// import numpy as np
+// {
+//   "x": np.array(3.0)
+// }

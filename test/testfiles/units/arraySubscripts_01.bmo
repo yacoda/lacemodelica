@@ -1,0 +1,34 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Joris Gillis, YACODA
+
+//! base 0.1.0
+package 'arraySubscripts_01'
+  model 'M'
+    Real 'arr'[3];
+    Real 'x';
+  equation
+    'arr'[1] = 1.0;
+    'arr'[2] = 2.0;
+    'arr'[3] = 3.0;
+    'x' = 'arr'[2];
+  end 'M';
+end 'arraySubscripts_01';
+
+// @onnx-test-reference
+// def reference_implementation(inputs):
+//     import numpy as np
+//     outputs = {}
+//     arr = inputs['arr']
+//     x = inputs['x']
+//     outputs['eq[0]'] = np.array(arr[0] - 1.0)
+//     outputs['eq[1]'] = np.array(arr[1] - 2.0)
+//     outputs['eq[2]'] = np.array(arr[2] - 3.0)
+//     outputs['eq[3]'] = np.array(x - arr[1])
+//     return outputs
+//
+// @onnx-test-case
+// import numpy as np
+// {
+//   "arr": np.array([1.0, 2.0, 3.0]),
+//   "x": np.array(2.0)
+// }

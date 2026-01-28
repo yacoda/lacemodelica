@@ -1,0 +1,37 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Joris Gillis, YACODA
+// @onnx-test-known-failure(validate)
+
+//! base 0.1.0
+package 'externalFunctionCall_01'
+  function 'ext_sin'
+    input Real 'x';
+    output Real 'y';
+  external "C" 'y' = sin('x');
+  end 'ext_sin';
+  model 'M'
+    Real 'x';
+    Real 'y';
+  equation
+    'x' = 0.0;
+    'y' = 'ext_sin'('x');
+  end 'M';
+end 'externalFunctionCall_01';
+
+// @onnx-test-reference
+// def reference_implementation(inputs):
+//     import numpy as np
+//     outputs = {}
+//     x = inputs['x']
+//     y = inputs['y']
+//     # ext_sin(0) = sin(0) = 0
+//     outputs['eq[0]'] = np.array(x - 0.0)
+//     outputs['eq[1]'] = np.array(y - 0.0)
+//     return outputs
+//
+// @onnx-test-case
+// import numpy as np
+// {
+//   "x": np.array(0.0),
+//   "y": np.array(0.0)
+// }

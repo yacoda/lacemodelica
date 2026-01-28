@@ -1,0 +1,27 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Joris Gillis, YACODA
+
+//! base 0.1.0
+package 'equation_02'
+  model 'M'
+    Real 'x';
+  equation
+    der('x') = -'x';
+  end 'M';
+end 'equation_02';
+
+// @onnx-test-reference
+// def reference_implementation(inputs):
+//     import numpy as np
+//     outputs = {}
+//     x = inputs['x']
+//     der_x = inputs['der(x)']
+//     outputs['eq[0]'] = np.array(der_x - (-x))
+//     return outputs
+//
+// @onnx-test-case
+// import numpy as np
+// {
+//   "x": np.array(1.0),
+//   "der(x)": np.array(-1.0)
+// }

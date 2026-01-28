@@ -1,0 +1,32 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Joris Gillis, YACODA
+
+//! base 0.1.0
+package 'functionArgument_01'
+  function 'f'
+    input Real 'a';
+    input Real 'b';
+    output Real 'y';
+  algorithm
+    'y' := 'a' + 'b';
+  end 'f';
+  model 'M'
+    Real 'x';
+  equation
+    'x' = 'f'(1.0, 2.0 + 1.0);
+  end 'M';
+end 'functionArgument_01';
+
+// @onnx-test-reference
+// def reference_implementation(inputs):
+//     import numpy as np
+//     outputs = {}
+//     x = inputs['x']
+//     outputs['eq[0]'] = np.array(x - 4.0)
+//     return outputs
+//
+// @onnx-test-case
+// import numpy as np
+// {
+//   "x": np.array(4.0)
+// }

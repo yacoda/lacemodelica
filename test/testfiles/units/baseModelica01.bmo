@@ -1,0 +1,36 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Joris Gillis, YACODA
+
+//! base 0.1.0
+package 'baseModelica01'
+  model 'M'
+    Real 'x';
+  equation
+    der('x') = 1.0;
+  end 'M';
+end 'baseModelica01';
+
+// @onnx-test-reference
+// Python reference implementation for ONNX runtime testing
+// def reference_implementation(inputs):
+//     import numpy as np
+//     outputs = {}
+//
+//     # Extract inputs
+//     x = inputs['x']
+//     der_x = inputs["der(x)"]
+//
+//     # Equation 0: der(x) = 1.0
+//     # Residual: der(x) - 1.0 = 0
+//     eq_0 = der_x - 1.0
+//     outputs['eq[0]'] = np.array(eq_0)
+//
+//     return outputs
+//
+// @onnx-test-case
+// # Test case 1: Basic evaluation
+// import numpy as np
+// {
+//   "x": np.array(0.0),
+//   "der(x)": np.array(1.0)
+// }

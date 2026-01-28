@@ -1,0 +1,41 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Joris Gillis, YACODA
+// @onnx-test-known-failure(validate)
+
+//! base 0.1.0
+package 'factor_03'
+  model 'M'
+    Real 'a'[2];
+    Real 'b'[2];
+    Real 'c'[2];
+  equation
+    'a'[1] = 2.0;
+    'a'[2] = 3.0;
+    'b'[1] = 2.0;
+    'b'[2] = 2.0;
+    'c' = 'a' .^ 'b';
+  end 'M';
+end 'factor_03';
+
+// @onnx-test-reference
+// def reference_implementation(inputs):
+//     import numpy as np
+//     outputs = {}
+//     a = inputs['a']
+//     b = inputs['b']
+//     c = inputs['c']
+//     outputs['eq[0]'] = np.array(a[0] - 2.0)
+//     outputs['eq[1]'] = np.array(a[1] - 3.0)
+//     outputs['eq[2]'] = np.array(b[0] - 2.0)
+//     outputs['eq[3]'] = np.array(b[1] - 2.0)
+//     outputs['eq[4]'] = np.array(c[0] - 4.0)
+//     outputs['eq[5]'] = np.array(c[1] - 9.0)
+//     return outputs
+//
+// @onnx-test-case
+// import numpy as np
+// {
+//   "a": np.array([2.0, 3.0]),
+//   "b": np.array([2.0, 2.0]),
+//   "c": np.array([4.0, 9.0])
+// }

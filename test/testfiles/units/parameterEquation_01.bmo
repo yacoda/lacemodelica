@@ -1,0 +1,28 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Joris Gillis, YACODA
+
+//! base 0.1.0
+package 'parameterEquation_01'
+  model 'M'
+    Real 'x';
+    parameter equation guess('x') = 5.0;
+  equation
+    'x' * 'x' = 25.0;
+  end 'M';
+end 'parameterEquation_01';
+
+// @onnx-test-reference
+// def reference_implementation(inputs):
+//     import numpy as np
+//     outputs = {}
+//     x = inputs['x']
+//     # x^2 = 25, so x = 5 (using guess)
+//     outputs['eq[0]'] = np.array(x * x - 25.0)
+//     outputs['guess[0]'] = np.array(5.0)
+//     return outputs
+//
+// @onnx-test-case
+// import numpy as np
+// {
+//   "x": np.array(5.0)
+// }

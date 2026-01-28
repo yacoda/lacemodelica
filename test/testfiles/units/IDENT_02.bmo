@@ -1,0 +1,35 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Joris Gillis, YACODA
+
+//! base 0.1.0
+package 'IDENT_02'
+  model 'M'
+    Real 'special name';
+    Real 'has spaces';
+    Real 'with-dash';
+  equation
+    'special name' = 1.0;
+    'has spaces' = 2.0;
+    'with-dash' = 3.0;
+  end 'M';
+end 'IDENT_02';
+
+// @onnx-test-reference
+// def reference_implementation(inputs):
+//     import numpy as np
+//     outputs = {}
+//     special = inputs['special name']
+//     spaces = inputs['has spaces']
+//     dash = inputs['with-dash']
+//     outputs['eq[0]'] = np.array(special - 1.0)
+//     outputs['eq[1]'] = np.array(spaces - 2.0)
+//     outputs['eq[2]'] = np.array(dash - 3.0)
+//     return outputs
+//
+// @onnx-test-case
+// import numpy as np
+// {
+//   "special name": np.array(1.0),
+//   "has spaces": np.array(2.0),
+//   "with-dash": np.array(3.0)
+// }

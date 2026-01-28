@@ -1,0 +1,38 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Joris Gillis, YACODA
+
+//! base 0.1.0
+package 'outputExpressionList_01'
+  function 'swap'
+    input Real 'a';
+    input Real 'b';
+    output Real 'x';
+    output Real 'y';
+  algorithm
+    'x' := 'b';
+    'y' := 'a';
+  end 'swap';
+  model 'M'
+    Real 'p';
+    Real 'q';
+  equation
+    ('p', 'q') = 'swap'(1.0, 2.0);
+  end 'M';
+end 'outputExpressionList_01';
+
+// @onnx-test-reference
+// def reference_implementation(inputs):
+//     import numpy as np
+//     outputs = {}
+//     p = inputs['p']
+//     q = inputs['q']
+//     outputs['eq[0]'] = np.array(p - 2.0)
+//     outputs['eq[1]'] = np.array(q - 1.0)
+//     return outputs
+//
+// @onnx-test-case
+// import numpy as np
+// {
+//   "p": np.array(2.0),
+//   "q": np.array(1.0)
+// }

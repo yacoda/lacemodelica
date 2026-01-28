@@ -1,0 +1,34 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Joris Gillis, YACODA
+// @onnx-test-known-failure(validate)
+
+//! base 0.1.0
+package 'longClassSpecifier_02'
+  record 'Bar'
+    Real 'val';
+  end 'Bar';
+  model 'M'
+    'Bar' 'b';
+    Real 'x';
+  equation
+    'b'.'val' = 3.0;
+    'x' = 'b'.'val';
+  end 'M';
+end 'longClassSpecifier_02';
+
+// @onnx-test-reference
+// def reference_implementation(inputs):
+//     import numpy as np
+//     outputs = {}
+//     b_val = inputs['b.val']
+//     x = inputs['x']
+//     outputs['eq[0]'] = np.array(b_val - 3.0)
+//     outputs['eq[1]'] = np.array(x - b_val)
+//     return outputs
+//
+// @onnx-test-case
+// import numpy as np
+// {
+//   "b.val": np.array(3.0),
+//   "x": np.array(3.0)
+// }

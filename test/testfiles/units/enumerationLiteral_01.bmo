@@ -1,0 +1,33 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Joris Gillis, YACODA
+// @onnx-test-known-failure(validate)
+
+//! base 0.1.0
+package 'enumerationLiteral_01'
+  type 'Color' = enumeration('Red' "primary", 'Green', 'Blue');
+  model 'M'
+    'Color' 'c';
+    Real 'x';
+  equation
+    'c' = 'Color'.'Red';
+    'x' = Integer('c');
+  end 'M';
+end 'enumerationLiteral_01';
+
+// @onnx-test-reference
+// def reference_implementation(inputs):
+//     import numpy as np
+//     outputs = {}
+//     c = inputs['c']
+//     x = inputs['x']
+//     # Red is first value with comment "primary", Integer value is 1
+//     outputs['eq[0]'] = np.array(c - 1.0)
+//     outputs['eq[1]'] = np.array(x - 1.0)
+//     return outputs
+//
+// @onnx-test-case
+// import numpy as np
+// {
+//   "c": np.array(1.0),
+//   "x": np.array(1.0)
+// }

@@ -1,0 +1,35 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Joris Gillis, YACODA
+
+//! base 0.1.0
+package 'composition_01'
+  model 'M'
+    Real 'x';
+    Real 'y';
+  initial equation
+    'y' = 0.0;
+  equation
+    'x' = 1.0;
+    der('y') = 'x';
+  end 'M';
+end 'composition_01';
+
+// @onnx-test-reference
+// def reference_implementation(inputs):
+//     import numpy as np
+//     outputs = {}
+//     x = inputs['x']
+//     y = inputs['y']
+//     der_y = inputs['der(y)']
+//     outputs['eq[0]'] = np.array(x - 1.0)
+//     outputs['eq[1]'] = np.array(der_y - x)
+//     outputs['init_eq[0]'] = np.array(y - 0.0)
+//     return outputs
+//
+// @onnx-test-case
+// import numpy as np
+// {
+//   "x": np.array(1.0),
+//   "y": np.array(0.0),
+//   "der(y)": np.array(1.0)
+// }

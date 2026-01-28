@@ -1,0 +1,33 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Joris Gillis, YACODA
+// @onnx-test-known-failure(validate)
+
+//! base 0.1.0
+package 'enumList_01'
+  type 'Color' = enumeration('Red', 'Green', 'Blue');
+  model 'M'
+    'Color' 'c';
+    Real 'x';
+  equation
+    'c' = 'Color'.'Green';
+    'x' = Integer('c');
+  end 'M';
+end 'enumList_01';
+
+// @onnx-test-reference
+// def reference_implementation(inputs):
+//     import numpy as np
+//     outputs = {}
+//     c = inputs['c']
+//     x = inputs['x']
+//     # Green is second value, so Integer value is 2
+//     outputs['eq[0]'] = np.array(c - 2.0)
+//     outputs['eq[1]'] = np.array(x - 2.0)
+//     return outputs
+//
+// @onnx-test-case
+// import numpy as np
+// {
+//   "c": np.array(2.0),
+//   "x": np.array(2.0)
+// }

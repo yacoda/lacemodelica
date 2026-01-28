@@ -1,0 +1,32 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Joris Gillis, YACODA
+// @onnx-test-known-failure(validate)
+// @onnx-test-known-failure(generate)
+
+//! base 0.1.0
+package 'whenEquation_01'
+  model 'M'
+    discrete Real 'd';
+    Real 'x';
+  equation
+    'x' = 1.0;
+    when time > 0.5 then
+      'd' = 1.0;
+    end when;
+  end 'M';
+end 'whenEquation_01';
+
+// @onnx-test-reference
+// def reference_implementation(inputs):
+//     import numpy as np
+//     outputs = {}
+//     x = inputs['x']
+//     outputs['eq[0]'] = np.array(x - 1.0)
+//     return outputs
+//
+// @onnx-test-case
+// import numpy as np
+// {
+//   "x": np.array(1.0),
+//   "d": np.array(0.0)
+// }

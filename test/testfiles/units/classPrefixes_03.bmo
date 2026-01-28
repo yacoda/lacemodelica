@@ -1,0 +1,39 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Joris Gillis, YACODA
+// @onnx-test-known-failure(validate)
+
+//! base 0.1.0
+package 'classPrefixes_03'
+  operator record 'Complex'
+    Real 're';
+    Real 'im';
+  end 'Complex';
+  model 'M'
+    'Complex' 'c';
+    Real 'x';
+  equation
+    'c'.'re' = 3.0;
+    'c'.'im' = 4.0;
+    'x' = 'c'.'re' + 'c'.'im';
+  end 'M';
+end 'classPrefixes_03';
+
+// @onnx-test-reference
+// def reference_implementation(inputs):
+//     import numpy as np
+//     outputs = {}
+//     c_re = inputs["c.re"]
+//     c_im = inputs["c.im"]
+//     x = inputs["x"]
+//     outputs['eq[0]'] = np.array(c_re - 3.0)
+//     outputs['eq[1]'] = np.array(c_im - 4.0)
+//     outputs['eq[2]'] = np.array(x - (c_re + c_im))
+//     return outputs
+//
+// @onnx-test-case
+// import numpy as np
+// {
+//   "c.re": np.array(3.0),
+//   "c.im": np.array(4.0),
+//   "x": np.array(7.0)
+// }
