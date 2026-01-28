@@ -122,6 +122,47 @@ def parse_onnx_test_from_bmo(bmo_path):
     return reference_implementation, test_cases
 
 
+def parse_onnx_structure_assertions(bmo_path):
+    """
+    Parse ONNX structure assertions from .bmo file.
+
+    Annotations:
+        // @onnx-test-structure
+        // assert_no_nodes: Loop, If
+        // assert_has_nodes: Scan
+
+    Returns:
+        dict: {'assert_no_nodes': [...], 'assert_has_nodes': [...]}
+    """
+    with open(bmo_path, 'r') as f:
+        content = f.read()
+
+    result = {
+        'assert_no_nodes': [],
+        'assert_has_nodes': []
+    }
+
+    # Find @onnx-test-structure block
+    pattern = r'// @onnx-test-structure\n((?:// .*\n)+)'
+    match = re.search(pattern, content)
+
+    if not match:
+        return result
+
+    # Parse the assertions
+    for line in match.group(1).split('\n'):
+        if line.startswith('// '):
+            line = line[3:].strip()
+            if line.startswith('assert_no_nodes:'):
+                nodes = line[len('assert_no_nodes:'):].strip()
+                result['assert_no_nodes'] = [n.strip() for n in nodes.split(',') if n.strip()]
+            elif line.startswith('assert_has_nodes:'):
+                nodes = line[len('assert_has_nodes:'):].strip()
+                result['assert_has_nodes'] = [n.strip() for n in nodes.split(',') if n.strip()]
+
+    return result
+
+
 def convert_float64_to_float32(model):
     """
     Convert all DOUBLE (float64) types in ONNX model to FLOAT (float32).

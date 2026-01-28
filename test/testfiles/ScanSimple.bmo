@@ -1,0 +1,62 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2025 Joris Gillis, YACODA
+
+//! base 0.1.0
+package 'ScanSimple'
+  model 'ScanSimple' "Test model with simple for-loop suitable for ONNX Scan"
+    parameter Real 'x'[4] "Input array";
+    Real 'y'[4] "Output array: y[i] = sin(x[i])";
+    Real 'z'[4] "Output array: z[i] = x[i] * 2";
+
+  equation
+    for i in 1:4 loop
+      'y'[i] = sin('x'[i]);
+      'z'[i] = 'x'[i] * 2;
+    end for;
+
+  end 'ScanSimple';
+end 'ScanSimple';
+
+// @onnx-test-reference
+// Python reference implementation for ONNX runtime testing
+// def reference_implementation(inputs):
+//     import numpy as np
+//     outputs = {}
+//
+//     # Extract inputs
+//     x = inputs['x']
+//     y = inputs['y']
+//     z = inputs['z']
+//
+//     # Using ONNX Scan, the for-loop outputs array residuals:
+//     # eq[0] = y - sin(x) (array of 4 elements)
+//     # eq[1] = z - (x * 2) (array of 4 elements)
+//     outputs['eq[0]'] = y - np.sin(x)
+//     outputs['eq[1]'] = z - (x * 2)
+//
+//     return outputs
+//
+// @onnx-test-case
+// # Test case 1: Basic inputs
+// import numpy as np
+// x = np.array([0.0, 1.0, 2.0, 3.0])
+// y = np.sin(x)
+// z = x * 2
+// {
+//   "x": x,
+//   "y": y,
+//   "z": z
+// }
+//
+// @onnx-test-case
+// # Test case 2: Negative inputs
+// import numpy as np
+// x = np.array([-1.0, 0.0, 1.0, 2.0])
+// y = np.sin(x)
+// z = x * 2
+// {
+//   "x": x,
+//   "y": y,
+//   "z": z
+// }
+//

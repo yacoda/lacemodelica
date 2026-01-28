@@ -6,6 +6,7 @@
 #include "EquationGenerator.h"
 #include "GraphBuilder.h"
 #include "ONNXHelpers.hpp"
+#include "ONNXOptimizer.h"
 #include "ParseTreeNavigator.h"
 #include "Utils.hpp"
 
@@ -2376,6 +2377,9 @@ void ONNXGenerator::generateONNXModel(const ModelInfo& info, const std::string& 
     } catch (const std::exception& e) {
         std::cerr << "Warning: Shape inference failed: " << e.what() << std::endl;
     }
+
+    // Optimization: convert eligible Loop nodes to Scan
+    ONNXOptimizer::optimize(model);
 
     // Validation
     try {

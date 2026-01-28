@@ -20,6 +20,10 @@ package 'ForLoop'
   end 'ForLoop';
 end 'ForLoop';
 
+// @onnx-test-structure
+// assert_no_nodes: Loop
+// assert_has_nodes: Scan
+
 // @onnx-test-reference
 // Python reference implementation for ONNX runtime testing
 // def reference_implementation(inputs):

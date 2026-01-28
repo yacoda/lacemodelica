@@ -226,6 +226,7 @@ add_library(lacemodelica SHARED
     src/FMUGenerator.cpp
     src/ONNXGenerator.cpp
     src/ONNXHelpers.cpp
+    src/ONNXOptimizer.cpp
     src/GraphBuilder.cpp
     src/ParseTreeNavigator.cpp
     src/ExpressionConverter.cpp

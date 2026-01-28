@@ -18,7 +18,7 @@ import onnxruntime as ort
 
 # Import test utilities
 sys.path.insert(0, str(Path(__file__).parent))
-from test_onnx_runtime import parse_onnx_test_from_bmo, convert_float64_to_float32
+from test_onnx_runtime import parse_onnx_test_from_bmo, convert_float64_to_float32, parse_onnx_structure_assertions
 
 
 def validate_onnx_model(test_name: str, verbose: bool = False) -> bool:
@@ -83,6 +83,20 @@ def validate_onnx_model(test_name: str, verbose: bool = False) -> bool:
             print(f'      inputs: {list(node.input)}')
             print(f'      outputs: {list(node.output)}')
         print()
+
+    # Check structure assertions (node presence/absence)
+    structure_assertions = parse_onnx_structure_assertions(bmo_path)
+    node_types = {node.op_type for node in model.graph.node}
+
+    for forbidden_type in structure_assertions['assert_no_nodes']:
+        if forbidden_type in node_types:
+            print(f'Structure assertion FAILED: Found forbidden node type "{forbidden_type}" in graph')
+            return False
+
+    for required_type in structure_assertions['assert_has_nodes']:
+        if required_type not in node_types:
+            print(f'Structure assertion FAILED: Required node type "{required_type}" not found in graph')
+            return False
 
     # Run all test cases
     passed = True
