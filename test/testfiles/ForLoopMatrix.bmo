@@ -19,6 +19,11 @@ package 'ForLoopMatrix'
   end 'ForLoopMatrix';
 end 'ForLoopMatrix';
 
+// @onnx-test-structure
+// TODO: Should be Scan once optimizer handles outer-scope indices
+// assert_has_nodes: Loop
+// assert_no_nodes: Scan
+
 // @onnx-test-reference
 // Python reference implementation for ONNX runtime testing
 // def reference_implementation(inputs):

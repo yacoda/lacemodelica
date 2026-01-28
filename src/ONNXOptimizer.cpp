@@ -129,6 +129,37 @@ std::map<std::string, std::vector<std::string>> findGatheredArrays(
     return result;
 }
 
+// Check if body has any Gather nodes with non-loop-variable indices
+// Returns true if there are problematic Gathers that would break conversion
+bool hasNonLoopVariableGathers(
+    const onnx::GraphProto& bodyGraph,
+    const std::string& loopVarName,
+    const std::map<std::string, std::vector<std::string>>& gatheredArrays) {
+
+    // Collect all Gather outputs that use loop variable
+    std::set<std::string> loopVarGatherOutputs;
+    for (const auto& [_, outputs] : gatheredArrays) {
+        for (const auto& out : outputs) {
+            loopVarGatherOutputs.insert(out);
+        }
+    }
+
+    // Check if any Gather uses a non-loop-variable index
+    for (const auto& node : bodyGraph.node()) {
+        if (node.op_type() == "Gather" && node.input_size() >= 2) {
+            const std::string& indexName = node.input(1);
+
+            // If this Gather's output is not in the loop-variable set,
+            // it means it uses a different index (e.g., outer scope parameter)
+            if (!isSimpleLoopIndex(bodyGraph, indexName, loopVarName)) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
 // Get names of scan outputs from body (outputs that contain "scan" in name)
 std::vector<std::string> findScanOutputs(const onnx::GraphProto& bodyGraph) {
     std::vector<std::string> scanOutputs;
@@ -259,6 +290,11 @@ bool ONNXOptimizer::loopToScan(const onnx::NodeProto& loopNode, onnx::GraphProto
     // Find arrays gathered using loop variable
     auto gatheredArrays = findGatheredArrays(*bodyGraph, loopVarName);
     if (gatheredArrays.empty()) {
+        return false;
+    }
+
+    // Check for Gathers with non-loop-variable indices (e.g., outer scope params)
+    if (hasNonLoopVariableGathers(*bodyGraph, loopVarName, gatheredArrays)) {
         return false;
     }
 
