@@ -475,9 +475,11 @@ std::string ExpressionConverter::convertPrimary(
 
     auto builder = ctx.builder();
 
-    // 1. Number literal
-    if (expr->UNSIGNED_NUMBER()) {
-        std::string value = expr->UNSIGNED_NUMBER()->getText();
+    // 1. Number literal (UNSIGNED_NUMBER for floats, UNSIGNED_INTEGER for ints)
+    if (expr->UNSIGNED_NUMBER() || expr->UNSIGNED_INTEGER()) {
+        std::string value = expr->UNSIGNED_NUMBER()
+            ? expr->UNSIGNED_NUMBER()->getText()
+            : expr->UNSIGNED_INTEGER()->getText();
         auto* constant = ctx.graph->add_initializer();
         std::string constName = "const_" + std::to_string(ctx.nodeCounter++);
         constant->set_name(constName);

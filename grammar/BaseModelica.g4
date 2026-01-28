@@ -319,6 +319,7 @@ factor
 
 primary
     : UNSIGNED_NUMBER
+    | UNSIGNED_INTEGER
     | STRING
     | 'false'
     | 'true'
@@ -440,13 +441,15 @@ fragment Q_CHAR
     | [!#$%&()*+,\-./:;<>=?@[\\\]^{}|~ ]
     ;
 
-// Numbers
-UNSIGNED_NUMBER
-    : DIGIT+ ('.' DIGIT*)? EXPONENT?
-    ;
-
+// Numbers - UNSIGNED_INTEGER must come first so plain digits are INTEGER
+// (ANTLR lexer: first matching rule wins for same-length matches)
 UNSIGNED_INTEGER
     : DIGIT+
+    ;
+
+UNSIGNED_NUMBER
+    : DIGIT+ '.' DIGIT* EXPONENT?
+    | DIGIT+ EXPONENT
     ;
 
 fragment EXPONENT

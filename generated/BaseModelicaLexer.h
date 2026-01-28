@@ -25,7 +25,7 @@ public:
     T__56 = 57, T__57 = 58, T__58 = 59, T__59 = 60, T__60 = 61, T__61 = 62, 
     T__62 = 63, T__63 = 64, T__64 = 65, T__65 = 66, T__66 = 67, T__67 = 68, 
     T__68 = 69, T__69 = 70, T__70 = 71, T__71 = 72, VERSION_HEADER = 73, 
-    IDENT = 74, UNSIGNED_NUMBER = 75, UNSIGNED_INTEGER = 76, STRING = 77, 
+    IDENT = 74, UNSIGNED_INTEGER = 75, UNSIGNED_NUMBER = 76, STRING = 77, 
     WS = 78, LINE_COMMENT = 79, ML_COMMENT = 80
   };
 
