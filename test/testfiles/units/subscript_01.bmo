@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Joris Gillis, YACODA
-// @onnx-test-known-failure(validate)
 
 //! base 0.1.0
 package 'subscript_01'
