@@ -209,26 +209,12 @@ lacemodelica/
     └── testfiles/         # Test suite from BaseModelica.jl
 ```
 
-## Development Status
-
-🚧 **Early Development** - Currently implements:
-
-- ✅ BaseModelica parsing (12/12 test files passing)
-- ✅ ANTLR4 integration with C++ runtime
-- ✅ Error reporting and validation
-- 🚧 FMU generation (planned)
-- 🚧 ONNX symbolic output (planned)
-
 ## Testing
-
-The project includes 12 test files from the [BaseModelica.jl](https://github.com/SciML/BaseModelica.jl) repository:
 
 ```bash
 cd build
-./lacemodelica
+ctest
 ```
-
-All tests currently pass with successful parsing.
 
 ## Dependencies
 
