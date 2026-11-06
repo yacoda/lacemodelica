@@ -1613,6 +1613,33 @@ void ONNXGenerator::createFunctionProto(
     int nodeCounter = 0;
     int loopCounter = 0;
 
+    // Function locals start with their binding
+    for (const auto& local : func.locals) {
+        if (!local.bindingContext) continue;
+        onnx::GraphProto tempGraph;
+        std::map<std::string, std::vector<std::string>> localDerivativeInputs;
+        ConversionContext funcCtx(info, &tempGraph, nodeCounter, &variableToTensor, &localDerivativeInputs);
+        std::string tensor = ExpressionConverter::convert(local.bindingContext, funcCtx);
+
+        // FunctionProto doesn't support initializers, so we need to create Constant nodes
+        for (const auto& init : tempGraph.initializer()) {
+            auto* constNode = functionProto->add_node();
+            constNode->set_op_type("Constant");
+            constNode->set_name(init.name());
+            constNode->add_output(init.name());
+            auto* attr = constNode->add_attribute();
+            attr->set_name("value");
+            attr->set_type(onnx::AttributeProto::TENSOR);
+            attr->mutable_t()->CopyFrom(init);
+        }
+        for (const auto& node : tempGraph.node()) {
+            auto* copy = functionProto->add_node();
+            copy->CopyFrom(node);
+            addSourceLocationMetadata(copy, local.sourceFile, local.sourceLine);
+        }
+        variableToTensor[local.name] = tensor;
+    }
+
     for (size_t stmtIndex = 0; stmtIndex < func.algorithmStatements.size(); stmtIndex++) {
         const auto& stmt = func.algorithmStatements[stmtIndex];
 

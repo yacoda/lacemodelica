@@ -77,6 +77,7 @@ struct Function {
     std::string description;
     std::vector<Variable> inputs;
     std::vector<Variable> outputs;
+    std::vector<Variable> locals;  // Other components; bindingContext has the value they start with
     std::vector<Statement> algorithmStatements;
     std::string sourceFile;
     size_t sourceLine = 0;

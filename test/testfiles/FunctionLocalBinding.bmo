@@ -1,0 +1,29 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Joris Gillis, YACODA
+
+//! base 0.1.0
+package 'FunctionLocalBinding'
+  function 'f' "A local with a value, as OpenModelica exports it, also depending on an input"
+    input Real 'x';
+    output Real 'y';
+    Real 'k' = 50.0;
+    Real 'm' = 2.0 * 'x';
+  algorithm
+    'y' := 'k' * 'x' + 'm';
+  end 'f';
+  model 'FunctionLocalBinding'
+    Real 'a';
+    Real 'b';
+  equation
+    'a' = 'f'('b');
+  end 'FunctionLocalBinding';
+end 'FunctionLocalBinding';
+
+// @onnx-test-reference
+// def reference_implementation(inputs):
+//     import numpy as np
+//     return {'eq[0]': np.array(inputs['a'] - 52.0 * inputs['b'])}
+//
+// @onnx-test-case
+// import numpy as np
+// {"a": np.array(1.0), "b": np.array(3.0)}

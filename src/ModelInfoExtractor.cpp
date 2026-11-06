@@ -712,6 +712,11 @@ void ModelInfoExtractor::extractFunctions(basemodelica::BaseModelicaParser::Base
                             func.inputs.push_back(var);
                         } else if (typePrefix.find("output") != std::string::npos) {
                             func.outputs.push_back(var);
+                        } else {
+                            if (auto mod = compDecl->declaration()->modification()) {
+                                var.bindingContext = extractBindingContext(mod);
+                            }
+                            func.locals.push_back(var);
                         }
                     }
                 }
