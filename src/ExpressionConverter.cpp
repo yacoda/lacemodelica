@@ -707,7 +707,18 @@ std::string ExpressionConverter::convertPrimary(
             throw std::runtime_error("Tuple used as an expression: " + expr->getText());
         }
         if (!expressions.empty()) {
-            return convert(expressions[0], ctx);
+            std::string tensor = convert(expressions[0], ctx);
+            if (expr->arraySubscripts()) {
+                for (auto* subscript : expr->arraySubscripts()->subscript()) {
+                    if (!isConstValue(subscript->getText())) {
+                        throw std::runtime_error("Only constant subscripts are supported on a parenthesized expression: " +
+                                                 expr->getText());
+                    }
+                    int64_t index = std::stoll(subscript->getText()) - 1;
+                    tensor = builder.addGather(tensor, builder.addInt64Constant(index), 0);
+                }
+            }
+            return tensor;
         }
     }
 

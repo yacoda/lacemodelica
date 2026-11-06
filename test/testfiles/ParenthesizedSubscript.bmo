@@ -1,0 +1,26 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Joris Gillis, YACODA
+
+//! base 0.1.0
+package 'ParenthesizedSubscript'
+  model 'ParenthesizedSubscript' "A subscript on a parenthesized array, as OpenModelica exports a comprehension"
+    parameter Real 'a' = 2.0;
+    Real 'x';
+    Real 'y';
+  equation
+    'x' = (3.0 * {'a' * 'i' for 'i' in 1:4})[2];
+    'y' = ({1.0, 'a', 5.0})[3];
+  end 'ParenthesizedSubscript';
+end 'ParenthesizedSubscript';
+
+// @onnx-test-reference
+// def reference_implementation(inputs):
+//     import numpy as np
+//     return {
+//         'eq[0]': np.array(inputs['x'] - 3.0 * inputs['a'] * 2.0),
+//         'eq[1]': np.array(inputs['y'] - 5.0),
+//     }
+//
+// @onnx-test-case
+// import numpy as np
+// {"a": np.array(2.0), "x": np.array(1.0), "y": np.array(2.0)}
