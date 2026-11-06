@@ -526,6 +526,17 @@ std::string ExpressionConverter::convertPrimary(
             // Fall through to handle sum/product on arrays without for-loop
         }
 
+        // min(a, b) and max(a, b); the reductions over an array are not supported
+        if (funcName == "min" || funcName == "max") {
+            auto allArgs = collectAllFunctionArguments(expr->functionCallArgs()->functionArguments());
+            if (allArgs.positional.size() != 2 || !allArgs.named.empty()) {
+                throw std::runtime_error("Only " + funcName + "(a, b) is supported: " + text);
+            }
+            std::string a = convert(allArgs.positional[0], ctx);
+            std::string b = convert(allArgs.positional[1], ctx);
+            return builder.addBinaryOp(funcName == "min" ? "Min" : "Max", a, b);
+        }
+
         auto mathIt = kMathFunctionMap.find(funcName);
         if (mathIt != kMathFunctionMap.end()) {
             auto funcArgs = expr->functionCallArgs()->functionArguments();

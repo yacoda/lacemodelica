@@ -1,0 +1,28 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Joris Gillis, YACODA
+
+//! base 0.1.0
+package 'MinMaxBinary'
+  model 'MinMaxBinary' "min and max with two arguments, in equations and in attributes"
+    parameter Real 'p' = 1.0;
+    parameter Real 'q' = 2.0;
+    Real 'x'(min = max('p', 'q'), max = min('p', 'q') + 5.0);
+    Real 'y';
+    Real 'z';
+  equation
+    'y' = min('x', 'p');
+    'z' = max('x', 'q');
+  end 'MinMaxBinary';
+end 'MinMaxBinary';
+
+// @onnx-test-reference
+// def reference_implementation(inputs):
+//     import numpy as np
+//     return {
+//         'eq[0]': np.array(inputs['y'] - min(inputs['x'], inputs['p'])),
+//         'eq[1]': np.array(inputs['z'] - max(inputs['x'], inputs['q'])),
+//     }
+//
+// @onnx-test-case
+// import numpy as np
+// {"p": np.array(1.0), "q": np.array(2.0), "x": np.array(1.5), "y": np.array(0.0), "z": np.array(0.0)}
