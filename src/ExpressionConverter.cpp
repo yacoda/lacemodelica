@@ -537,6 +537,16 @@ std::string ExpressionConverter::convertPrimary(
             return builder.addBinaryOp(funcName == "min" ? "Min" : "Max", a, b);
         }
 
+        // delay() is an input of the graph, see ModelInfo::delays
+        if (funcName == "delay") {
+            for (const auto& delay : ctx.info.delays) {
+                if (delay.callContext == expr) {
+                    return delay.variableName;
+                }
+            }
+            throw std::runtime_error("delay() is only supported in equations outside for-loops: " + text);
+        }
+
         auto mathIt = kMathFunctionMap.find(funcName);
         if (mathIt != kMathFunctionMap.end()) {
             auto funcArgs = expr->functionCallArgs()->functionArguments();

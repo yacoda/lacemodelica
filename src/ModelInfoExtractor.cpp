@@ -18,6 +18,14 @@ ModelInfo ModelInfoExtractor::extract(basemodelica::BaseModelicaParser::BaseMode
     extractGlobalConstants(tree);
     extractVariables(tree);
     extractEquations(tree);
+    for (const auto* equations : {&info.equations, &info.initialEquations}) {
+        for (const auto& eq : *equations) {
+            // A delay in a for-equation depends on the index: not supported, conversion will say so
+            if (eq.lhsContext) extractDelays(eq.lhsContext);
+            if (eq.rhsContext) extractDelays(eq.rhsContext);
+            if (eq.ifEquationContext) extractDelays(eq.ifEquationContext);
+        }
+    }
     extractFunctions(tree);
     identifyDerivatives();
 
@@ -354,6 +362,44 @@ void ModelInfoExtractor::extractEquations(basemodelica::BaseModelicaParser::Base
         if (initialEq->equation()) {
             processEquation(initialEq->equation(), info.initialEquations);
         }
+    }
+}
+
+void ModelInfoExtractor::extractDelays(antlr4::tree::ParseTree* tree) {
+    if (auto* primary = dynamic_cast<basemodelica::BaseModelicaParser::PrimaryContext*>(tree)) {
+        if (primary->componentReference() && primary->functionCallArgs() &&
+            primary->componentReference()->getText() == "delay") {
+            auto* args = primary->functionCallArgs()->functionArguments();
+            auto* next = args ? args->functionArgumentsNonFirst() : nullptr;
+            if (!args || !args->expression() || !next || !next->functionArgument() ||
+                !next->functionArgument()->expression()) {
+                throw std::runtime_error("Unsupported arguments of delay: " + primary->getText());
+            }
+
+            Delay delay;
+            delay.callContext = primary;
+            delay.exprContext = args->expression();
+            delay.durationContext = next->functionArgument()->expression();
+            delay.variableName = "__delay_" + std::to_string(info.delays.size());
+            delay.sourceFile = sourceFile;
+            delay.sourceLine = primary->getStart()->getLine();
+            info.delays.push_back(delay);
+
+            Variable var;
+            var.name = delay.variableName;
+            var.type = "Real";
+            var.causality = "local";
+            var.variability = "continuous";
+            var.initial = "calculated";
+            var.description = primary->getText();
+            var.valueReference = info.nextValueReference++;
+            var.sourceFile = sourceFile;
+            var.sourceLine = delay.sourceLine;
+            info.addVariable(var);
+        }
+    }
+    for (auto* child : tree->children) {
+        extractDelays(child);
     }
 }
 

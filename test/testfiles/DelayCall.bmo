@@ -1,0 +1,28 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Joris Gillis, YACODA
+
+//! base 0.1.0
+package 'DelayCall'
+  model 'DelayCall' "delay() is an extra input, with outputs for its expression and duration"
+    parameter Real 'tau' = 3.0;
+    Real 'x';
+    Real 'y';
+  equation
+    'y' = delay(2.0 * 'x', 'tau', 'tau') / 4.0;
+    'x' = 1.0;
+  end 'DelayCall';
+end 'DelayCall';
+
+// @onnx-test-reference
+// def reference_implementation(inputs):
+//     import numpy as np
+//     return {
+//         'eq[0]': np.array(inputs['y'] - inputs['__delay_0'] / 4.0),
+//         'eq[1]': np.array(inputs['x'] - 1.0),
+//         'delay_expr[0]': np.array(2.0 * inputs['x']),
+//         'delay_time[0]': np.array(inputs['tau']),
+//     }
+//
+// @onnx-test-case
+// import numpy as np
+// {"tau": np.array(3.0), "x": np.array(5.0), "y": np.array(7.0), "__delay_0": np.array(11.0)}

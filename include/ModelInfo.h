@@ -91,6 +91,18 @@ struct Assertion {
     size_t sourceLine = 0;
 };
 
+// A delay(expr, duration[, delayMax]) in an equation. The call is an extra input of the graph, named
+// variableName, which the graph does not define: it is for the caller to give it the value of expr at
+// time - duration. The outputs delay_expr[i] and delay_time[i] have these expressions.
+struct Delay {
+    antlr4::ParserRuleContext* callContext = nullptr;  // The primary with the call
+    antlr4::ParserRuleContext* exprContext = nullptr;
+    antlr4::ParserRuleContext* durationContext = nullptr;
+    std::string variableName;
+    std::string sourceFile;
+    size_t sourceLine = 0;
+};
+
 struct EnumLiteral {
     std::string name;
     std::string description;
@@ -124,6 +136,7 @@ public:
     std::vector<Equation> equations;
     std::vector<Equation> initialEquations;
     std::vector<Assertion> assertions;
+    std::vector<Delay> delays;
     std::vector<Function> functions;
     std::map<std::string, int> functionIndex;  // name -> index in functions
     std::vector<EnumType> enumTypes;

@@ -2342,6 +2342,26 @@ void ONNXGenerator::generateONNXModel(const ModelInfo& info, const std::string& 
         }
     }
 
+    // Generate what the caller needs to give the delay inputs their values
+    for (size_t i = 0; i < info.delays.size(); i++) {
+        const auto& delay = info.delays[i];
+        const std::pair<const char*, antlr4::ParserRuleContext*> parts[] = {
+            {"delay_expr", delay.exprContext}, {"delay_time", delay.durationContext}};
+        for (const auto& [part, context] : parts) {
+            std::string outputName = std::string(part) + "[" + std::to_string(i) + "]";
+            ctx.builder().addIdentity(ExpressionConverter::convert(context, ctx), outputName, outputName + "_identity");
+            auto* output = graph->add_output();
+            output->set_name(outputName);
+            auto* outputType = output->mutable_type()->mutable_tensor_type();
+            outputType->set_elem_type(onnx::TensorProto::DOUBLE);
+            outputType->mutable_shape();
+            addSourceLocationMetadata(output, delay.sourceFile, delay.sourceLine);
+            auto* metaVariable = output->add_metadata_props();
+            metaVariable->set_key("variable_name");
+            metaVariable->set_value(delay.variableName);
+        }
+    }
+
     // Generate assertion outputs
     for (size_t i = 0; i < info.assertions.size(); i++) {
         const auto& assertion = info.assertions[i];
