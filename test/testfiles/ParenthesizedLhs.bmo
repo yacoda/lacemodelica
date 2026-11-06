@@ -1,0 +1,31 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Joris Gillis, YACODA
+
+//! base 0.1.0
+package 'ParenthesizedLhs'
+  model 'ParenthesizedLhs' "A parenthesized expression at the start of a left-hand side is not a tuple"
+    parameter Boolean 'p' = true;
+    Real 'x';
+    Real 'y';
+  equation
+    (if 'p' then 1.0 else 0.0) * 'x' + 'y' = 0.0;
+    ('x' + 'y') = 2.0;
+  end 'ParenthesizedLhs';
+end 'ParenthesizedLhs';
+
+// @onnx-test-reference
+// def reference_implementation(inputs):
+//     import numpy as np
+//     factor = 1.0 if bool(inputs['p']) else 0.0
+//     return {
+//         'eq[0]': np.array(factor * inputs['x'] + inputs['y']),
+//         'eq[1]': np.array(inputs['x'] + inputs['y'] - 2.0),
+//     }
+//
+// @onnx-test-case
+// import numpy as np
+// {"p": np.array(True), "x": np.array(3.0), "y": np.array(5.0)}
+//
+// @onnx-test-case
+// import numpy as np
+// {"p": np.array(False), "x": np.array(3.0), "y": np.array(5.0)}

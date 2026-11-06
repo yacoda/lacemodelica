@@ -292,7 +292,11 @@ void EquationGenerator::generateOutputs(
         bool isMultiOutput = false;
         std::vector<std::string> outputVarNames;
 
-        if (auto outExprList = ParseTreeNavigator::findOutputExpressionList(eq.lhsContext)) {
+        // The first primary of "(a + b) * c = d" is a parenthesized expression, not a tuple:
+        // a tuple is all of the left-hand side, and has more than one slot
+        auto outExprList = ParseTreeNavigator::findOutputExpressionList(eq.lhsContext);
+        if (outExprList && outExprList->children.size() > 1 &&
+            eq.lhsContext->getText() == "(" + outExprList->getText() + ")") {
             isMultiOutput = true;
             for (auto outExpr : outExprList->expression()) {
                 if (outExpr) {

@@ -693,6 +693,9 @@ std::string ExpressionConverter::convertPrimary(
     if (expr->outputExpressionList()) {
         auto outputList = expr->outputExpressionList();
         auto expressions = outputList->expression();
+        if (outputList->children.size() > 1) {
+            throw std::runtime_error("Tuple used as an expression: " + expr->getText());
+        }
         if (!expressions.empty()) {
             return convert(expressions[0], ctx);
         }
