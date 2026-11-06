@@ -5,6 +5,7 @@
 #include "ParseTreeNavigator.h"
 #include "Utils.hpp"
 #include <iostream>
+#include <stdexcept>
 
 namespace lacemodelica {
 
@@ -233,8 +234,12 @@ void ModelInfoExtractor::extractVariables(basemodelica::BaseModelicaParser::Base
                             var.variability = "tunable";
                         }
                         var.initial = "exact";
+                    } else if (typePrefix.find("input") != std::string::npos) {
+                        // FMI does not allow the initial attribute on an input
+                        var.causality = "input";
+                        var.variability = "continuous";
                     } else {
-                        var.causality = "local";
+                        var.causality = typePrefix.find("output") != std::string::npos ? "output" : "local";
                         var.variability = "continuous";
                         var.initial = "exact";
                     }
@@ -250,6 +255,17 @@ void ModelInfoExtractor::extractVariables(basemodelica::BaseModelicaParser::Base
                         var.minContext = extractMinContext(mod);
                         var.maxValue = extractMaxValue(mod);
                         var.maxContext = extractMaxContext(mod);
+                        if (auto nominal = findModificationAttribute(mod, "nominal")) {
+                            var.nominalValue = nominal->getText();
+                            var.nominalContext = dynamic_cast<antlr4::ParserRuleContext*>(nominal);
+                        }
+                        if (auto fixed = findModificationAttribute(mod, "fixed")) {
+                            var.fixedValue = fixed->getText();
+                            if (var.fixedValue != "true" && var.fixedValue != "false") {
+                                throw std::runtime_error("Only true or false are supported for the fixed attribute of " +
+                                                         var.name + ": " + var.fixedValue);
+                            }
+                        }
 
                         // If any variable has a non-const start/binding expression,
                         // it should have initial="calculated"

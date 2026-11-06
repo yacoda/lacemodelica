@@ -341,6 +341,14 @@ if(Python3_FOUND)
     )
     set_tests_properties(fmu_import_test PROPERTIES LABELS "integration")
 
+    # What modelDescription.xml says of causality, nominal and fixed
+    add_test(
+        NAME model_description_test
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/test/test_model_description.py
+                $<TARGET_FILE:lacemodelica_exe> ${CMAKE_SOURCE_DIR}/test/testfiles/ModelDescriptionAttributes.bmo
+    )
+    set_tests_properties(model_description_test PROPERTIES LABELS "integration")
+
     # Add ONNX runtime validation test
     add_test(
         NAME onnx_runtime_test

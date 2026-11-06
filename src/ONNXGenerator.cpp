@@ -2311,6 +2311,9 @@ void ONNXGenerator::generateONNXModel(const ModelInfo& info, const std::string& 
         if (var.maxContext != nullptr && !isConstValue(var.maxValue)) {
             generateBoundOutput(boundCtx, i, var, var.maxContext, "max", "Maximum value");
         }
+        if (var.nominalContext != nullptr && !isConstValue(var.nominalValue)) {
+            generateBoundOutput(boundCtx, i, var, var.nominalContext, "nominal", "Nominal value");
+        }
     }
 
     // Generate assertion outputs

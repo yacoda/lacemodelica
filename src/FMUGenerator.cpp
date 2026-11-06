@@ -2,6 +2,7 @@
 // Copyright (c) 2025 Joris Gillis, YACODA
 
 #include "FMUGenerator.h"
+#include "Utils.hpp"
 #include "tinyxml2.h"
 #include <filesystem>
 #include <iostream>
@@ -85,30 +86,37 @@ bool FMUGenerator::generateModelDescription(const ModelInfo& info, const std::st
 
         // Only set min attribute if it's a constant value
         // Non-const min values are provided via ONNX outputs
-        if (!var.minValue.empty()) {
-            try {
-                std::stod(var.minValue);
-                // It's a constant, write to modelDescription.xml
-                varElem->SetAttribute("min", var.minValue.c_str());
-            } catch (...) {
-                // Non-const, will be provided via ONNX min[i] output
-            }
+        if (isConstValue(var.minValue)) {
+            varElem->SetAttribute("min", var.minValue.c_str());
         }
 
         // Only set max attribute if it's a constant value
         // Non-const max values are provided via ONNX outputs
-        if (!var.maxValue.empty()) {
-            try {
-                std::stod(var.maxValue);
-                // It's a constant, write to modelDescription.xml
-                varElem->SetAttribute("max", var.maxValue.c_str());
-            } catch (...) {
-                // Non-const, will be provided via ONNX max[i] output
-            }
+        if (isConstValue(var.maxValue)) {
+            varElem->SetAttribute("max", var.maxValue.c_str());
+        }
+
+        // Only set nominal attribute if it's a constant value
+        // Non-const nominal values are provided via ONNX outputs
+        if (isConstValue(var.nominalValue)) {
+            varElem->SetAttribute("nominal", var.nominalValue.c_str());
         }
 
         if (var.isDerivative && var.derivativeOf >= 0) {
             varElem->SetAttribute("derivative", var.derivativeOf);
+        }
+
+        // FMI has no counterpart of the Modelica fixed attribute: keep it in an annotation, which
+        // FMI 3.0 wants before the dimensions
+        if (!var.fixedValue.empty()) {
+            XMLElement* annotations = doc.NewElement("Annotations");
+            XMLElement* annotation = doc.NewElement("Annotation");
+            annotation->SetAttribute("type", "org.lacemodelica.modelica");
+            XMLElement* attributes = doc.NewElement("Attributes");
+            attributes->SetAttribute("fixed", var.fixedValue.c_str());
+            annotation->InsertEndChild(attributes);
+            annotations->InsertEndChild(annotation);
+            varElem->InsertEndChild(annotations);
         }
 
         // Handle array dimensions as child elements (FMI 3.0)

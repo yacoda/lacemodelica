@@ -34,12 +34,14 @@ struct Equation {
 struct Variable {
     std::string name;
     std::string type;  // "Real", "Integer", "Boolean"
-    std::string causality;  // "parameter", "structuralParameter", "local", "output"
+    std::string causality;  // "parameter", "structuralParameter", "local", "input", "output"
     std::string variability;  // "fixed", "tunable", "continuous"
     std::string initial;  // "exact", "approx", "calculated"
     std::string startValue;
     std::string minValue;
     std::string maxValue;
+    std::string nominalValue;
+    std::string fixedValue;  // Modelica fixed attribute: "true", "false" or empty when not given
     std::string description;  // Variable description from comment
     int valueReference;
     int derivativeOf = -1;  // valueReference of state if this is a derivative
@@ -51,6 +53,7 @@ struct Variable {
     antlr4::ParserRuleContext* bindingContext = nullptr;  // AST node for binding expression
     antlr4::ParserRuleContext* minContext = nullptr;  // AST node for min expression
     antlr4::ParserRuleContext* maxContext = nullptr;  // AST node for max expression
+    antlr4::ParserRuleContext* nominalContext = nullptr;  // AST node for nominal expression
 };
 
 struct Statement {

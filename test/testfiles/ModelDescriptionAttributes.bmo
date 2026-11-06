@@ -1,0 +1,16 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Joris Gillis, YACODA
+
+//! base 0.1.0
+package 'ModelDescriptionAttributes'
+  model 'ModelDescriptionAttributes' "Causality, nominal and fixed; see test_model_description.py"
+    parameter Real 'scale' = 2.0;
+    input Real 'u'(fixed = true, nominal = 5.0);
+    input Real 'v'(fixed = false);
+    output Real 'y'(nominal = 'scale' * 3.0);
+    Real 'x'(min = 2.0 * 'scale');
+  equation
+    der('x') = 'u' + 'v';
+    'y' = 'x';
+  end 'ModelDescriptionAttributes';
+end 'ModelDescriptionAttributes';
