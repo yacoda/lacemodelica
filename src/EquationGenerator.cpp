@@ -22,7 +22,7 @@ namespace lacemodelica {
 
 ForLoopRange parseForLoopRangeFromIndex(basemodelica::BaseModelicaParser::ForIndexContext* forIndex) {
     ForLoopRange range;
-    range.loopVar = forIndex->IDENT()->getText();
+    range.loopVar = stripQuotes(forIndex->IDENT()->getText());
     std::string rangeText = forIndex->expression()->getText();
 
     size_t colonPos = rangeText.find(':');

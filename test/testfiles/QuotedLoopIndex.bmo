@@ -1,0 +1,38 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Joris Gillis, YACODA
+
+//! base 0.1.0
+package 'QuotedLoopIndex'
+  function 'f' "A quoted index in a for-statement"
+    output Real 'y';
+  algorithm
+    'y' := 0.0;
+    for 'k' in 1:3 loop
+      'y' := 'y' + 'k';
+    end for;
+  end 'f';
+  model 'QuotedLoopIndex' "A quoted index, as OpenModelica exports it, counts from the start of its range"
+    Real 'x'[3];
+    Real 'y';
+    Real 'z';
+  equation
+    for 'i' in 1:3 loop
+      'x'['i'] = 'i';
+    end for;
+    'y' = sum('i' * 2.0 for 'i' in 1:3);
+    'z' = 'f'();
+  end 'QuotedLoopIndex';
+end 'QuotedLoopIndex';
+
+// @onnx-test-reference
+// def reference_implementation(inputs):
+//     import numpy as np
+//     return {
+//         'eq[0]': np.array(inputs['x'] - np.array([1.0, 2.0, 3.0])),
+//         'eq[1]': np.array(inputs['y'] - 12.0),
+//         'eq[2]': np.array(inputs['z'] - 6.0),
+//     }
+//
+// @onnx-test-case
+// import numpy as np
+// {"x": np.array([1.0, 2.0, 3.0]), "y": np.array(0.0), "z": np.array(0.0)}
