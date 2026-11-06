@@ -54,12 +54,10 @@ static void generateBoundOutput(
     try {
         exprTensor = ExpressionConverter::convert(exprContext, ctx.convCtx);
     } catch (const std::exception& e) {
-        std::cerr << "Warning: Failed to convert " << boundType << " expression for " << var.name;
-        if (!var.sourceFile.empty()) {
-            std::cerr << " (" << var.sourceFile << ":" << var.sourceLine << ")";
-        }
-        std::cerr << ": " << e.what() << std::endl;
-        return;
+        std::string location = var.sourceFile.empty() ? "" :
+            " (" + var.sourceFile + ":" + std::to_string(var.sourceLine) + ")";
+        throw std::runtime_error("Cannot convert " + boundType + " expression for " + var.name + location +
+                                 ": " + e.what());
     }
 
     std::string outputName = boundType + "[" + std::to_string(inputIdx) + "]";
@@ -2251,11 +2249,13 @@ void ONNXGenerator::generateONNXModel(const ModelInfo& info, const std::string& 
             }
 
             try {
-                initializer->add_double_data(std::stod(var.startValue));
+                if (var.startValue == "true" || var.startValue == "false") {
+                    initializer->add_double_data(var.startValue == "true" ? 1.0 : 0.0);
+                } else {
+                    initializer->add_double_data(std::stod(var.startValue));
+                }
             } catch (...) {
-                std::cerr << "Warning: Could not parse constant value for " << var.name
-                          << ": " << var.startValue << std::endl;
-                initializer->add_double_data(0.0);
+                throw std::runtime_error("Could not parse constant value for " + var.name + ": " + var.startValue);
             }
             continue;
         }
@@ -2281,8 +2281,7 @@ void ONNXGenerator::generateONNXModel(const ModelInfo& info, const std::string& 
             try {
                 createFunctionProto(func, info, &model);
             } catch (const std::exception& e) {
-                std::cerr << "Warning: Failed to create FunctionProto for " << func.name
-                          << ": " << e.what() << std::endl;
+                throw std::runtime_error("Cannot convert function " + func.name + ": " + e.what());
             }
         }
     }

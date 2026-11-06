@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Joris Gillis, YACODA
 // @onnx-test-known-failure(validate)
+// @onnx-test-known-failure(generate)
 
 //! base 0.1.0
 package 'enumerationLiteral_01'

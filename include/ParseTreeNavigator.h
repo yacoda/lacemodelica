@@ -83,7 +83,7 @@ public:
     /**
      * Parse range bounds from a range expression like "2:4" or "1:2:10".
      * Returns {start, end} (1-based, inclusive as in Modelica).
-     * Step is ignored for now (assumes step=1).
+     * Throws for a step other than 1.
      */
     static std::pair<int64_t, int64_t> parseRangeBounds(
         basemodelica::BaseModelicaParser::ExpressionContext* expr);

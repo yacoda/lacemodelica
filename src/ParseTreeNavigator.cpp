@@ -28,7 +28,10 @@ std::pair<int64_t, int64_t> ParseTreeNavigator::parseRangeBounds(
         int64_t end = std::stoi(logExprs[1]->getText());
         return {start, end};
     } else if (logExprs.size() == 3) {
-        // start:step:end - step is ignored for now (assume step=1)
+        // start:step:end - only a step of 1 is supported
+        if (std::stoi(logExprs[1]->getText()) != 1) {
+            throw std::runtime_error("Range with a step other than 1: " + expr->getText());
+        }
         int64_t start = std::stoi(logExprs[0]->getText());
         int64_t end = std::stoi(logExprs[2]->getText());
         return {start, end};

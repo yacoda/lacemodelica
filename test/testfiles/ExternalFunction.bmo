@@ -14,3 +14,5 @@ package 'ExternalFunction'
     'y' = 'my_sqrt'('x');
   end 'ExternalFunction';
 end 'ExternalFunction';
+// @onnx-test-known-failure(validate)
+// @onnx-test-known-failure(generate)

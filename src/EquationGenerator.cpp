@@ -26,8 +26,8 @@ ForLoopRange parseForLoopRangeFromIndex(basemodelica::BaseModelicaParser::ForInd
     std::string rangeText = forIndex->expression()->getText();
 
     size_t colonPos = rangeText.find(':');
-    if (colonPos == std::string::npos) {
-        throw std::runtime_error("For-loop range must be in format start:end");
+    if (colonPos == std::string::npos || rangeText.find(':', colonPos + 1) != std::string::npos) {
+        throw std::runtime_error("For-loop range must be in format start:end: " + rangeText);
     }
     try {
         range.startVal = std::stoi(rangeText.substr(0, colonPos));
@@ -354,9 +354,8 @@ void EquationGenerator::generateOutputs(
                 throw;
             }
         } catch (const std::exception& e) {
-            std::cerr << "Warning: Skipping equation " << prefix << "[" << equationOutputIndex << "] due to conversion error" << std::endl;
-            equationOutputIndex++;
-            continue;
+            throw std::runtime_error("Cannot convert equation " + prefix + "[" + std::to_string(equationOutputIndex) +
+                                     "]: " + e.what());
         }
 
         std::string eqOutputName = prefix + "[" + std::to_string(equationOutputIndex) + "]";
@@ -652,8 +651,7 @@ size_t EquationGenerator::generateForLoop(
         auto fullExpr = innerEq->expression();
 
         if (!simpleExpr || !fullExpr) {
-            std::cerr << "Warning: Skipping non-simple equation in for-loop" << std::endl;
-            continue;
+            throw std::runtime_error("Only simple equations are supported in a for-loop: " + innerEq->getText());
         }
 
         std::map<std::string, std::string> loopVarMap;
@@ -671,8 +669,7 @@ size_t EquationGenerator::generateForLoop(
             lhsTensor = ExpressionConverter::convert(simpleExpr, bodyCtx);
             rhsTensor = ExpressionConverter::convert(fullExpr, bodyCtx);
         } catch (const std::exception& e) {
-            std::cerr << "Warning: Failed to convert equation " << eqIdx << " in for-loop: " << e.what() << std::endl;
-            continue;
+            throw std::runtime_error("Cannot convert equation " + std::to_string(eqIdx) + " in a for-loop: " + e.what());
         }
 
         // Globally unique residual name (ONNX validates SSA across all subgraphs)

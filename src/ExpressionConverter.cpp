@@ -812,10 +812,6 @@ std::string ExpressionConverter::convertUserFunctionCall(
     auto funcCallArgs = expr->functionCallArgs();
     auto funcArgs = funcCallArgs->functionArguments();
 
-    if (!funcArgs) {
-        throw std::runtime_error("Function " + funcName + " requires arguments");
-    }
-
     // Collect all arguments (positional and named) and resolve to correct order
     auto allArgs = collectAllFunctionArguments(funcArgs);
     auto arguments = resolveArgumentOrder(allArgs, func);
