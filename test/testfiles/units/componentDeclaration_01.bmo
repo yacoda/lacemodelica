@@ -15,8 +15,9 @@ end 'componentDeclaration_01';
 //     import numpy as np
 //     outputs = {}
 //     der_pos = inputs['der(pos)']
-//     outputs['eq[0]'] = np.array(der_pos - 1.0)
-//     outputs['start[0]'] = np.array(0.0)
+//     # pos = 0.0, from the declaration
+//     outputs['eq[0]'] = np.array(inputs['pos'] - 0.0)
+//     outputs['eq[1]'] = np.array(der_pos - 1.0)
 //     return outputs
 //
 // @onnx-test-case

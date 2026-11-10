@@ -294,7 +294,7 @@ void EquationGenerator::generateOutputs(
 
         // The first primary of "(a + b) * c = d" is a parenthesized expression, not a tuple:
         // a tuple is all of the left-hand side, and has more than one slot
-        auto outExprList = ParseTreeNavigator::findOutputExpressionList(eq.lhsContext);
+        auto outExprList = eq.lhsContext ? ParseTreeNavigator::findOutputExpressionList(eq.lhsContext) : nullptr;
         if (outExprList && outExprList->children.size() > 1 &&
             eq.lhsContext->getText() == "(" + outExprList->getText() + ")") {
             isMultiOutput = true;
@@ -335,7 +335,8 @@ void EquationGenerator::generateOutputs(
         std::string lhsTensor, rhsTensor;
         try {
             try {
-                lhsTensor = ExpressionConverter::convert(eq.lhsContext, ctx);
+                // The variable of a declaration equation is a graph input of its own name
+                lhsTensor = eq.lhsContext ? ExpressionConverter::convert(eq.lhsContext, ctx) : eq.lhsVariable;
             } catch (const std::exception& e) {
                 std::cerr << "Error converting LHS of " << prefix << " equation " << i;
                 if (!eq.sourceFile.empty()) {
@@ -364,7 +365,7 @@ void EquationGenerator::generateOutputs(
 
         std::string eqOutputName = prefix + "[" + std::to_string(equationOutputIndex) + "]";
 
-        std::string lhsText = stripQuotes(eq.lhsContext->getText());
+        std::string lhsText = eq.lhsContext ? stripQuotes(eq.lhsContext->getText()) : eq.lhsVariable;
         const Variable* lhsVar = info.findVariable(lhsText);
         bool isBooleanEquation = (lhsVar && lhsVar->type == "Boolean");
 

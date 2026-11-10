@@ -23,6 +23,7 @@ struct Equation {
     std::string sourceFile;  // Source filename for debugging
     size_t sourceLine = 0;  // Source line number for debugging
     antlr4::ParserRuleContext* lhsContext = nullptr;  // AST node for LHS
+    std::string lhsVariable;  // LHS of a declaration equation, which has no AST node of its own
     antlr4::ParserRuleContext* rhsContext = nullptr;  // AST node for RHS
     antlr4::ParserRuleContext* forEquationContext = nullptr;  // AST node for for-equation (if this is a for-equation)
     antlr4::ParserRuleContext* ifEquationContext = nullptr;  // AST node for if-equation (if this is an if-equation)

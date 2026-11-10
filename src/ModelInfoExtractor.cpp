@@ -257,8 +257,25 @@ void ModelInfoExtractor::extractVariables(basemodelica::BaseModelicaParser::Base
 
                     // Extract start value and binding context from modification
                     if (auto mod = compDecl->declaration()->modification()) {
-                        var.startValue = extractStartValue(mod);
-                        var.bindingContext = extractBindingContext(mod);
+                        // The value of a variable is an equation, that of a parameter or input is not:
+                        // "A value modification in a model component declaration is equivalent to
+                        // having a normal equation" (Base Modelica, MCP-0031, differences.md)
+                        bool isVariable = var.causality == "local" || var.causality == "output";
+                        if (isVariable && mod->expression() && !recordDefinitions.count(var.type)) {
+                            Equation eq;
+                            eq.lhsVariable = var.name;
+                            eq.rhsContext = mod->expression();
+                            eq.sourceFile = sourceFile;
+                            eq.sourceLine = var.sourceLine;
+                            info.equations.push_back(eq);
+                            scanForDerivativeCalls(mod->expression()->getText());
+                            auto start = findModificationAttribute(mod, "start");
+                            var.startValue = start ? start->getText() : "";
+                            var.bindingContext = dynamic_cast<antlr4::ParserRuleContext*>(start);
+                        } else {
+                            var.startValue = extractStartValue(mod);
+                            var.bindingContext = extractBindingContext(mod);
+                        }
                         var.minValue = extractMinValue(mod);
                         var.minContext = extractMinContext(mod);
                         var.maxValue = extractMaxValue(mod);
