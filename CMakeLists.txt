@@ -77,6 +77,12 @@ else()
     FetchContent_MakeAvailable(antlr4_runtime tinyxml2)
 endif()
 
+# ANTLR 4.13.2 uses std::chrono in ProfilingATNSimulator.cpp without including <chrono>,
+# which the standard library of current MSVC no longer brings in through other headers
+if(MSVC AND TARGET antlr4_shared)
+    target_compile_options(antlr4_shared PRIVATE /FIchrono)
+endif()
+
 # Try to find system dependencies
 # Dependency chain: ONNX -> Protobuf -> (absl, utf8_range)
 find_package(absl QUIET)
