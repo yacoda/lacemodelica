@@ -296,6 +296,13 @@ if(LACEMODELICA_BUILD_EXE)
     add_executable(lacemodelica_exe src/main.cpp)
     set_target_properties(lacemodelica_exe PROPERTIES OUTPUT_NAME lacemodelica)
     target_link_libraries(lacemodelica_exe lacemodelica)
+
+    # Windows looks for a DLL next to the executable: the ANTLR runtime is built in another folder
+    if(WIN32)
+        add_custom_command(TARGET lacemodelica_exe POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    $<TARGET_FILE:antlr4_shared> $<TARGET_FILE_DIR:lacemodelica_exe>)
+    endif()
 endif()
 
 install(TARGETS lacemodelica
