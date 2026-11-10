@@ -127,13 +127,21 @@ else()
             -DCMAKE_POLICY_VERSION_MINIMUM=3.5
     )
 
+    # Protobuf names its libraries libprotobuf.lib and libutf8_range.lib with MSVC, where
+    # CMAKE_STATIC_LIBRARY_PREFIX is empty
+    if(MSVC)
+        set(PROTOBUF_LIBRARY_PREFIX "lib")
+    else()
+        set(PROTOBUF_LIBRARY_PREFIX "${CMAKE_STATIC_LIBRARY_PREFIX}")
+    endif()
+
     add_library(protobuf::libprotobuf STATIC IMPORTED)
     add_dependencies(protobuf::libprotobuf protobuf-external)
 
     # utf8_range (protobuf dependency)
     add_library(utf8_range::utf8_range STATIC IMPORTED)
     set_target_properties(utf8_range::utf8_range PROPERTIES
-        IMPORTED_LOCATION "${CMAKE_BINARY_DIR}/external_projects/lib/${CMAKE_STATIC_LIBRARY_PREFIX}utf8_range${CMAKE_STATIC_LIBRARY_SUFFIX}"
+        IMPORTED_LOCATION "${CMAKE_BINARY_DIR}/external_projects/lib/${PROTOBUF_LIBRARY_PREFIX}utf8_range${CMAKE_STATIC_LIBRARY_SUFFIX}"
         INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_BINARY_DIR}/external_projects/include")
     target_link_libraries(protobuf::libprotobuf INTERFACE utf8_range::utf8_range)
 
@@ -143,7 +151,7 @@ else()
 
     file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/external_projects/include")
     set_target_properties(protobuf::libprotobuf PROPERTIES
-        IMPORTED_LOCATION "${CMAKE_BINARY_DIR}/external_projects/lib/${CMAKE_STATIC_LIBRARY_PREFIX}protobuf${CMAKE_STATIC_LIBRARY_SUFFIX}"
+        IMPORTED_LOCATION "${CMAKE_BINARY_DIR}/external_projects/lib/${PROTOBUF_LIBRARY_PREFIX}protobuf${CMAKE_STATIC_LIBRARY_SUFFIX}"
         INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_BINARY_DIR}/external_projects/include")
 endif()
 
