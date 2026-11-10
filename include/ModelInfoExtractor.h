@@ -35,6 +35,7 @@ private:
 
     // Helper to find named attribute in modification's class modification argument list
     void extractDelays(antlr4::tree::ParseTree* tree);
+    bool hasEvaluateTrue(basemodelica::BaseModelicaParser::AnnotationCommentContext* ctx);
     antlr4::tree::ParseTree* findModificationAttribute(basemodelica::BaseModelicaParser::ModificationContext* ctx, const std::string& attrName);
 
     std::string extractStartValue(basemodelica::BaseModelicaParser::ModificationContext* ctx);

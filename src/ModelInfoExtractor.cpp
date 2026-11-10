@@ -225,11 +225,9 @@ void ModelInfoExtractor::extractVariables(basemodelica::BaseModelicaParser::Base
                     var.sourceFile = sourceFile;
                     var.sourceLine = compDecl->getStart()->getLine();
 
-                    // Check for annotation(Evaluate=true) for structural parameters
+                    // annotation(Evaluate = true) marks a structural parameter
                     if (compDecl->comment() && compDecl->comment()->annotationComment()) {
-                        std::string annotation = compDecl->comment()->annotationComment()->getText();
-                        var.isStructuralParameter = annotation.find("Evaluate") != std::string::npos &&
-                                                   annotation.find("true") != std::string::npos;
+                        var.isStructuralParameter = hasEvaluateTrue(compDecl->comment()->annotationComment());
                     }
 
                     // Determine causality and variability from typePrefix
@@ -532,6 +530,25 @@ void ModelInfoExtractor::identifyDerivatives() {
     }
 }
 
+
+// Whether an annotation has the argument Evaluate = true. Other arguments, such as
+// HideResult = true next to Evaluate = false, do not count.
+bool ModelInfoExtractor::hasEvaluateTrue(
+    basemodelica::BaseModelicaParser::AnnotationCommentContext* ctx) {
+
+    if (!ctx || !ctx->classModification() || !ctx->classModification()->argumentList()) return false;
+
+    for (auto arg : ctx->classModification()->argumentList()->argument()) {
+        auto elemMod = arg->elementModificationOrReplaceable();
+        auto mod = elemMod ? elemMod->elementModification() : nullptr;
+        if (mod && mod->name()->getText() == "Evaluate" && mod->modification() &&
+            !mod->modification()->classModification() && mod->modification()->expression()) {
+            return mod->modification()->expression()->getText() == "true";
+        }
+    }
+
+    return false;
+}
 
 // Helper to find named attribute in modification's class modification argument list
 antlr4::tree::ParseTree* ModelInfoExtractor::findModificationAttribute(

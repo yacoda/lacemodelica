@@ -5,6 +5,8 @@
 package 'ModelDescriptionAttributes'
   model 'ModelDescriptionAttributes' "Causality, nominal and fixed; see test_model_description.py"
     parameter Real 'scale' = 2.0;
+    parameter Real 'evaluated' = 1.0 annotation(Evaluate = true);
+    parameter Real 'notEvaluated' = 1.0 annotation(Evaluate = false, HideResult = true);
     input Real 'u'(fixed = true, nominal = 5.0);
     input Real 'v'(fixed = false);
     output Real 'y'(nominal = 'scale' * 3.0);

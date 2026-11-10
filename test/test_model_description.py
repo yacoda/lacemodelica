@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""What modelDescription.xml says of causality, nominal and fixed; a bound with an expression is no literal there.
+"""What modelDescription.xml says of causality (with the Evaluate annotation), nominal and fixed; a bound with an expression is no literal there.
 
 Usage: test_model_description.py <lacemodelica_exe> <test file>
 """
@@ -29,6 +29,10 @@ def main():
         return None if found is None else found.get("fixed")
 
     assert variables["scale"].get("causality") == "parameter"
+    assert variables["evaluated"].get("causality") == "structuralParameter"
+    assert "evaluated" not in inputs, "a structural parameter is a constant of the graph"
+    assert variables["notEvaluated"].get("causality") == "parameter", "only Evaluate = true counts"
+    assert "notEvaluated" in inputs
     assert variables["u"].get("causality") == "input"
     assert variables["u"].get("initial") is None, "FMI does not allow initial on an input"
     assert variables["u"].get("nominal") == "5.0"
