@@ -537,6 +537,32 @@ std::string ExpressionConverter::convertPrimary(
             return builder.addBinaryOp(funcName == "min" ? "Min" : "Max", a, b);
         }
 
+        // fill(s, n1, n2, ...) is the n1 x n2 x ... array with every element s (MLS 10.3.3)
+        if (funcName == "fill") {
+            auto allArgs = collectAllFunctionArguments(expr->functionCallArgs()->functionArguments());
+            if (allArgs.positional.size() < 2 || !allArgs.named.empty()) {
+                throw std::runtime_error("fill() takes a value and one or more sizes: " + text);
+            }
+            std::vector<int64_t> shape;
+            bool isEmpty = false;
+            for (size_t i = 1; i < allArgs.positional.size(); i++) {
+                std::string size = allArgs.positional[i]->getText();
+                if (size.empty() || size.find_first_not_of("0123456789") != std::string::npos) {
+                    throw std::runtime_error("Only integer literals are supported as the sizes of fill(): " + text);
+                }
+                shape.push_back(std::stoll(size));
+                isEmpty = isEmpty || shape.back() == 0;
+            }
+            if (isEmpty) {
+                // No element to give the value to
+                return builder.addDoubleZerosConstant(shape);
+            }
+            std::vector<int64_t> axes(shape.size());
+            for (size_t i = 0; i < axes.size(); i++) axes[i] = static_cast<int64_t>(i);
+            std::string value = builder.addUnsqueeze(convert(allArgs.positional[0], ctx), axes);
+            return builder.addBinaryOp("Tile", value, builder.addInt64ArrayConstant(shape));
+        }
+
         // delay() is an input of the graph, see ModelInfo::delays
         if (funcName == "delay") {
             for (const auto& delay : ctx.info.delays) {

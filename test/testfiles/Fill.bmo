@@ -1,0 +1,45 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Joris Gillis, YACODA
+
+// fill() in equations and in attributes, also for an array without elements,
+// as tools write for the attributes of an empty array.
+
+//! base 0.1.0
+package 'Fill'
+  model 'Fill'
+    parameter Real 'k' = 2.0;
+    Real 'x';
+    Real 'v'[3];
+    Real 'm'[2, 3](start = fill('k', 2, 3));
+    Real 'q'[0](start = fill(0.001, 0), nominal = fill('k', 0));
+  equation
+    der('x') = -'k' * 'x';
+    'v' = fill('k' * 'x', 3);
+    'm' = fill(1.5, 2, 3);
+  end 'Fill';
+end 'Fill';
+
+// @onnx-test-reference
+// def reference_implementation(inputs):
+//     import numpy as np
+//     outputs = {}
+//     k = inputs['k']
+//     x = inputs['x']
+//     outputs['eq[0]'] = np.array(inputs['der(x)'] + k * x)
+//     outputs['eq[1]'] = inputs['v'] - np.full(3, k * x)
+//     outputs['eq[2]'] = inputs['m'] - np.full((2, 3), 1.5)
+//     outputs['start[3]'] = np.full((2, 3), k)
+//     outputs['start[4]'] = np.zeros(0)
+//     outputs['nominal[4]'] = np.zeros(0)
+//     return outputs
+//
+// @onnx-test-case
+// import numpy as np
+// {
+//   "k": np.array(2.0),
+//   "x": np.array(0.5),
+//   "v": np.array([1.0, 2.0, 3.0]),
+//   "m": np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]),
+//   "q": np.zeros(0),
+//   "der(x)": np.array(-1.0)
+// }
