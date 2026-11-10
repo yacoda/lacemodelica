@@ -145,7 +145,8 @@ def validate_onnx_model(test_name: str, verbose: bool = False) -> bool:
                 else:
                     # Numeric comparison - use 1e-4 tolerance to account for float32 precision loss
                     diff = np.abs(onnx_val - ref_val)
-                    max_diff = np.max(diff) if diff.size > 0 else abs(diff)
+                    # An array without elements has nothing that can differ
+                    max_diff = np.max(diff) if diff.size > 0 else 0.0
                     if max_diff >= 1e-4:
                         print(f'Test {i} FAILED: {name}: max diff={max_diff:.2e}, shapes={onnx_val.shape}')
                         passed = False
