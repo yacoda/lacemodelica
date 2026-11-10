@@ -530,7 +530,8 @@ void GraphBuilder::addScalarDoubleOutput(const std::string& tensorName) {
     output->set_name(tensorName);
     auto* tensorType = output->mutable_type()->mutable_tensor_type();
     tensorType->set_elem_type(onnx::TensorProto::DOUBLE);
-    tensorType->mutable_shape()->add_dim()->set_dim_value(1);
+    // No shape: the value is a scalar here, and a declared shape of [1] is one that newer
+    // onnxruntime versions refuse to put a scalar into
 }
 
 void GraphBuilder::addShapeDimensions(onnx::TensorShapeProto* shape,
