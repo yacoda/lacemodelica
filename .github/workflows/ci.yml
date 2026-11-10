@@ -46,13 +46,15 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-build-
 
+    # Python3_FIND_STRATEGY=LOCATION: CMake otherwise takes the newest Python on the runner,
+    # which is not the one that got the packages above
     - name: Configure CMake (Unix)
       if: runner.os != 'Windows'
       run: |
         mkdir -p build
         cd build
         rm -f CMakeCache.txt
-        cmake .. -DCMAKE_BUILD_TYPE=Release -DPython3_ROOT_DIR=${{ env.pythonLocation }}
+        cmake .. -DCMAKE_BUILD_TYPE=Release -DPython3_ROOT_DIR=${{ env.pythonLocation }} -DPython3_FIND_STRATEGY=LOCATION
       env:
         CXX: ${{ matrix.compiler }}
 
@@ -62,7 +64,7 @@ jobs:
         if (!(Test-Path build)) { mkdir build }
         cd build
         Remove-Item -Force CMakeCache.txt -ErrorAction SilentlyContinue
-        cmake .. -DCMAKE_BUILD_TYPE=Release -DPython3_ROOT_DIR=${{ env.pythonLocation }}
+        cmake .. -DCMAKE_BUILD_TYPE=Release -DPython3_ROOT_DIR=${{ env.pythonLocation }} -DPython3_FIND_STRATEGY=LOCATION
 
     - name: Build (Unix)
       if: runner.os != 'Windows'
