@@ -1,0 +1,47 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Joris Gillis, YACODA
+
+// The value of a variable in its declaration is an equation. That of a parameter
+// is its value, and a start attribute stays a start value.
+
+//! base 0.1.0
+package 'DeclarationEquation'
+  model 'DeclarationEquation'
+    parameter Real 'p' = 2.0;
+    input Real 'u';
+    Real 'x'(start = 1.0);
+    Real 'y' = 3.0 * 'x';
+    output Real 'z' = 'y' + 'u';
+    Real 'v'[2](start = 'p' * {1.0, 2.0}) = 'p' * {'x', 'u'};
+  equation
+    der('x') = -'x';
+  end 'DeclarationEquation';
+end 'DeclarationEquation';
+
+// @onnx-test-reference
+// def reference_implementation(inputs):
+//     import numpy as np
+//     outputs = {}
+//     p = inputs['p']
+//     u = inputs['u']
+//     x = inputs['x']
+//     # The declaration equations come first, in the order of the declarations
+//     outputs['eq[0]'] = np.array(inputs['y'] - 3.0 * x)
+//     outputs['eq[1]'] = np.array(inputs['z'] - (inputs['y'] + u))
+//     outputs['eq[2]'] = inputs['v'] - p * np.array([x, u])
+//     outputs['eq[3]'] = np.array(inputs['der(x)'] + x)
+//     # The start attribute of v is still its start value
+//     outputs['start[5]'] = p * np.array([1.0, 2.0])
+//     return outputs
+//
+// @onnx-test-case
+// import numpy as np
+// {
+//   "p": np.array(2.0),
+//   "u": np.array(0.5),
+//   "x": np.array(1.5),
+//   "y": np.array(4.0),
+//   "z": np.array(5.0),
+//   "v": np.array([3.0, 2.0]),
+//   "der(x)": np.array(-1.0)
+// }
