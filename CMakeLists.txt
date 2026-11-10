@@ -83,6 +83,12 @@ if(MSVC AND TARGET antlr4_shared)
     target_compile_options(antlr4_shared PRIVATE /FIchrono)
 endif()
 
+# ANTLR passes ANTLR4CPP_EXPORTS on to whoever links antlr4_shared, so that our own code would
+# declare the ANTLR classes as exported instead of imported. Keep the definition to the runtime.
+if(MSVC AND TARGET antlr4_shared)
+    set_property(TARGET antlr4_shared PROPERTY INTERFACE_COMPILE_DEFINITIONS "")
+endif()
+
 # Try to find system dependencies
 # Dependency chain: ONNX -> Protobuf -> (absl, utf8_range)
 find_package(absl QUIET)
@@ -123,6 +129,7 @@ else()
             -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
             -DCMAKE_POSITION_INDEPENDENT_CODE=ON
             -Dprotobuf_BUILD_TESTS=OFF
+            -Dprotobuf_MSVC_STATIC_RUNTIME=OFF
             -Dprotobuf_ABSL_PROVIDER=module
             -DCMAKE_POLICY_VERSION_MINIMUM=3.5
     )
