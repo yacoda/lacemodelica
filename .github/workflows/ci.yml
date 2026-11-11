@@ -91,6 +91,9 @@ jobs:
         Release\lacemodelica.exe ..\test\testfiles\MinimalValid.bmo --parse-only
 
     - name: Run tests
+      # The test scripts print characters that the default encoding of Windows cannot write
+      env:
+        PYTHONUTF8: 1
       run: ctest --test-dir build -C Release --output-on-failure
 
     - name: Install
