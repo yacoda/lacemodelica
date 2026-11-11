@@ -91,7 +91,7 @@ jobs:
         Release\lacemodelica.exe ..\test\testfiles\MinimalValid.bmo --parse-only
 
     - name: Run tests
-      run: ctest --test-dir build --output-on-failure
+      run: ctest --test-dir build -C Release --output-on-failure
 
     - name: Install
       run: cmake --install build --prefix install
