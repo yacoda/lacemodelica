@@ -332,6 +332,9 @@ install(DIRECTORY ${CMAKE_SOURCE_DIR}/include/
 # Testing
 enable_testing()
 
+# The generation tests below run through Python as well
+find_package(Python3 COMPONENTS Interpreter)
+
 # Find all test files
 file(GLOB_RECURSE TEST_FILES "${CMAKE_SOURCE_DIR}/test/testfiles/*.bmo")
 
@@ -360,7 +363,6 @@ if(LACEMODELICA_BUILD_EXE)
 endif()
 
 # Add Python FMU import test (runs independently, expects FMUs to exist)
-find_package(Python3 COMPONENTS Interpreter)
 if(Python3_FOUND)
     add_test(
         NAME fmu_import_test
