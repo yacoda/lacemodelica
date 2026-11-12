@@ -1,0 +1,48 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Joris Gillis, YACODA
+
+// transpose() of a matrix, and the products with a matrix it is used in:
+// matrix * vector and vector * matrix, as tools write for a mapping matrix.
+
+//! base 0.1.0
+package 'Transpose'
+  model 'Transpose'
+    parameter Real 'A'[2, 3] = {{1.0, 2.0, 3.0}, {4.0, 5.0, 6.0}};
+    Real 'x'[2];
+    Real 'B'[3, 2];
+    Real 'y'[3];
+    Real 'z'[3];
+    Real 'w'[2];
+  equation
+    der('x') = -'x';
+    'B' = transpose('A');
+    'y' = transpose('A') * 'x';
+    'z' = 'x' * 'A';
+    'w' = 'A' * 'y';
+  end 'Transpose';
+end 'Transpose';
+
+// @onnx-test-reference
+// def reference_implementation(inputs):
+//     import numpy as np
+//     outputs = {}
+//     A = inputs['A']
+//     x = inputs['x']
+//     outputs['eq[0]'] = inputs['der(x)'] + x
+//     outputs['eq[1]'] = inputs['B'] - A.T
+//     outputs['eq[2]'] = inputs['y'] - A.T @ x
+//     outputs['eq[3]'] = inputs['z'] - x @ A
+//     outputs['eq[4]'] = inputs['w'] - A @ inputs['y']
+//     return outputs
+//
+// @onnx-test-case
+// import numpy as np
+// {
+//   "A": np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]),
+//   "x": np.array([0.5, -1.0]),
+//   "B": np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]),
+//   "y": np.array([1.0, 2.0, 3.0]),
+//   "z": np.array([0.0, 1.0, 2.0]),
+//   "w": np.array([1.0, -1.0]),
+//   "der(x)": np.array([0.1, 0.2])
+// }
