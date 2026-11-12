@@ -9,14 +9,18 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# RPATH settings for relocatable install
+# RPATH settings for relocatable install: the executable in bin/ finds the libraries in ../lib,
+# liblacemodelica finds the ANTLR runtime next to itself, also where a project that embeds it
+# installs both into one folder (CasADi). A project can set its own CMAKE_INSTALL_RPATH.
 set(CMAKE_SKIP_BUILD_RPATH FALSE)
 set(CMAKE_BUILD_WITH_INSTALL_RPATH FALSE)
 set(CMAKE_INSTALL_RPATH_USE_LINK_PATH FALSE)
-if(APPLE)
-    set(CMAKE_INSTALL_RPATH "@executable_path/../lib")
-else()
-    set(CMAKE_INSTALL_RPATH "$ORIGIN/../lib")
+if(NOT DEFINED CMAKE_INSTALL_RPATH)
+    if(APPLE)
+        set(CMAKE_INSTALL_RPATH "@loader_path;@executable_path/../lib")
+    else()
+        set(CMAKE_INSTALL_RPATH "$ORIGIN;$ORIGIN/../lib")
+    endif()
 endif()
 
 # Dependencies
