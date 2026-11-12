@@ -159,12 +159,19 @@ collectFunctionArguments(basemodelica::BaseModelicaParser::FunctionArgumentsCont
     return arguments;
 }
 
-bool isMatrixVariable(const std::string& tensorName, const ModelInfo& info) {
-    auto it = info.variableIndex.find(tensorName);
-    if (it != info.variableIndex.end()) {
-        return info.variables[it->second].dimensions.size() == 2;
+// The number of dimensions of a tensor, where it is known: that of a declared variable, or of the
+// transpose of such a tensor. -1 if unknown.
+int tensorRank(const std::string& tensorName, const ConversionContext& ctx) {
+    auto it = ctx.info.variableIndex.find(tensorName);
+    if (it != ctx.info.variableIndex.end()) {
+        return static_cast<int>(ctx.info.variables[it->second].dimensions.size());
     }
-    return false;
+    for (const auto& node : ctx.graph->node()) {
+        if (node.op_type() == "Transpose" && node.output_size() == 1 && node.output(0) == tensorName) {
+            return tensorRank(node.input(0), ctx);
+        }
+    }
+    return -1;
 }
 
 // -----------------------------------------------------------------------------
@@ -424,9 +431,13 @@ std::string ExpressionConverter::convertTerm(
 
         std::string onnxOp;
         if (opText == "*") {
-            bool leftIsMatrix = isMatrixVariable(result, ctx.info);
-            bool rightIsMatrix = isMatrixVariable(rightTensor, ctx.info);
-            onnxOp = (leftIsMatrix && rightIsMatrix) ? "MatMul" : "Mul";
+            // A product with a matrix is a matrix product: matrix * matrix, matrix * vector and
+            // vector * matrix (MLS 10.6.4). Otherwise elementwise, as for a scalar factor.
+            int leftRank = tensorRank(result, ctx);
+            int rightRank = tensorRank(rightTensor, ctx);
+            bool matrixProduct = (leftRank == 2 && (rightRank == 1 || rightRank == 2)) ||
+                                 (leftRank == 1 && rightRank == 2);
+            onnxOp = matrixProduct ? "MatMul" : "Mul";
         } else if (opText == "/" || opText == "./") {
             onnxOp = "Div";
         } else if (opText == ".*") {
@@ -561,6 +572,28 @@ std::string ExpressionConverter::convertPrimary(
             for (size_t i = 0; i < axes.size(); i++) axes[i] = static_cast<int64_t>(i);
             std::string value = builder.addUnsqueeze(convert(allArgs.positional[0], ctx), axes);
             return builder.addBinaryOp("Tile", value, builder.addInt64ArrayConstant(shape));
+        }
+
+        // transpose(A) permutes the first two dimensions of A, which must have at least two
+        // (MLS 10.3.5). The rank comes from the declaration of the variable A refers to (tensorRank).
+        if (funcName == "transpose") {
+            auto allArgs = collectAllFunctionArguments(expr->functionCallArgs()->functionArguments());
+            if (allArgs.positional.size() != 1 || !allArgs.named.empty()) {
+                throw std::runtime_error("transpose() takes one array: " + text);
+            }
+            std::string array = convert(allArgs.positional[0], ctx);
+            int rank = tensorRank(array, ctx);
+            if (rank < 0) {
+                throw std::runtime_error("transpose() is only supported of a variable, whose declaration "
+                                         "gives its number of dimensions, or of its transpose: " + text);
+            }
+            if (rank < 2) {
+                throw std::runtime_error("transpose() needs an array of at least two dimensions: " + text);
+            }
+            std::vector<int64_t> perm(rank);
+            for (int i = 0; i < rank; i++) perm[i] = i;
+            std::swap(perm[0], perm[1]);
+            return builder.addTranspose(array, perm);
         }
 
         // delay() is an input of the graph, see ModelInfo::delays

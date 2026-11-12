@@ -120,7 +120,7 @@ private:
 std::vector<basemodelica::BaseModelicaParser::ExpressionContext*>
 collectFunctionArguments(basemodelica::BaseModelicaParser::FunctionArgumentsContext* funcArgs);
 
-// Check if a variable is a 2D matrix
-bool isMatrixVariable(const std::string& tensorName, const ModelInfo& info);
+// The number of dimensions of a tensor, where known: a declared variable or its transpose; else -1
+int tensorRank(const std::string& tensorName, const ConversionContext& ctx);
 
 } // namespace lacemodelica
