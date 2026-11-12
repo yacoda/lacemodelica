@@ -61,13 +61,18 @@ def validate_onnx_model(test_name: str, verbose: bool = False) -> bool:
 
     model = onnx.load(str(onnx_path))
     use_float32 = False
+    # Validate the graph as generated, not onnxruntime's rewrite of it: its Transpose + MatMul
+    # fusion (com.microsoft.FusedMatMul) has no float64 kernel, and in float32 it gives a wrong
+    # result for transpose(A) * x with a vector x.
+    options = ort.SessionOptions()
+    options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_DISABLE_ALL
     try:
         # Try loading with float64 first
-        session = ort.InferenceSession(model.SerializeToString())
+        session = ort.InferenceSession(model.SerializeToString(), options)
     except Exception:
         # Fall back to float32 conversion if needed (e.g., for trig ops)
         model_f32 = convert_float64_to_float32(model)
-        session = ort.InferenceSession(model_f32.SerializeToString())
+        session = ort.InferenceSession(model_f32.SerializeToString(), options)
         use_float32 = True
     input_names = [inp.name for inp in session.get_inputs()]
     output_names = [out.name for out in session.get_outputs()]
