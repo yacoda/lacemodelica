@@ -10,7 +10,9 @@ import tempfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
+import numpy as np
 import onnx
+from onnx.reference import ReferenceEvaluator
 
 
 def main():
@@ -18,7 +20,8 @@ def main():
     with tempfile.TemporaryDirectory() as folder:
         subprocess.run([exe, test_file, "--output-dir", folder], check=True)
         root = ET.parse(Path(folder) / "modelDescription.xml").getroot()
-        graph = onnx.load(str(Path(folder) / "extra/org.lacemodelica.ls-onnx-serialization/model.onnx")).graph
+        model = onnx.load(str(Path(folder) / "extra/org.lacemodelica.ls-onnx-serialization/model.onnx"))
+        graph = model.graph
 
     variables = {v.get("name"): v for v in root.find("ModelVariables")}
     inputs = [i.name for i in graph.input]
@@ -67,6 +70,30 @@ def main():
     assert initial("p.y") == ("approx", "2.0")
     assert fixed("p.y") is None
     assert initial("der(a)") == (None, None)
+
+    # fixed = true without a start value: the default start value of the type is the initial value
+    assert initial("f") == ("exact", "0")
+    assert initial("g") == ("exact", "false")
+    assert initial("q.y") == ("exact", "0")
+
+    # fixed = true with an expression as start value: the initial equation x = start, after the
+    # model's own
+    assert initial("q.x") == ("calculated", None)
+    assert fixed("q.x") == "true"
+    init_eqs = sorted(o for o in outputs if o.startswith("init_eq["))
+    assert init_eqs == ["init_eq[0]", "init_eq[1]", "init_eq[2]"], init_eqs
+    values = {i.name: np.array(1.0) for i in graph.input}
+    values["scale"] = np.array(2.0)
+    values["b"] = np.array(2.5)
+    values["e"] = np.array(4.0)  # 2.0 * scale
+    values["q.x"] = np.array(6.0)  # 3.0 * scale
+    values = {k: v.astype(bool) if k == "g" else v for k, v in values.items()}
+    residuals = ReferenceEvaluator(model).run(init_eqs, values)
+    assert [float(r) for r in residuals] == [0.0, 0.0, 0.0], residuals
+    values["e"] = np.array(5.0)
+    values["q.x"] = np.array(8.0)
+    residuals = ReferenceEvaluator(model).run(init_eqs, values)
+    assert [float(r) for r in residuals] == [0.0, 1.0, 2.0], residuals
     print("OK")
 
 

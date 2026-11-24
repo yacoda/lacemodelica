@@ -107,8 +107,8 @@ bool FMUGenerator::generateModelDescription(const ModelInfo& info, const std::st
         }
 
         // Keep the Modelica fixed attribute in an annotation, which FMI 3.0 wants before the
-        // dimensions. FMI has no counterpart for an input; for other variables, initial carries it,
-        // but readers take fixed from here for all variables
+        // dimensions. FMI has no counterpart for an input. For other variables, initial carries it,
+        // together with the initial equation x = start for an expression as start value
         if (!var.fixedValue.empty()) {
             XMLElement* annotations = doc.NewElement("Annotations");
             XMLElement* annotation = doc.NewElement("Annotation");
