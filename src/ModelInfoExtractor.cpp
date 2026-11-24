@@ -12,12 +12,15 @@ namespace lacemodelica {
 ModelInfo ModelInfoExtractor::extract(basemodelica::BaseModelicaParser::BaseModelicaContext* tree, const std::string& sourceFile) {
     info = ModelInfo();
     this->sourceFile = sourceFile;
+    fixedStartEquations.clear();
 
     extractPackageAndModelName(tree);
     extractRecordDefinitions(tree);
     extractGlobalConstants(tree);
     extractVariables(tree);
     extractEquations(tree);
+    // After the model's own initial equations, which keep their numbers
+    info.initialEquations.insert(info.initialEquations.end(), fixedStartEquations.begin(), fixedStartEquations.end());
     for (const auto* equations : {&info.equations, &info.initialEquations}) {
         for (const auto& eq : *equations) {
             // A delay in a for-equation depends on the index: not supported, conversion will say so
@@ -300,6 +303,7 @@ void ModelInfoExtractor::extractVariables(basemodelica::BaseModelicaParser::Base
                         }
                     }
                     if (var.causality == "local" || var.causality == "output") {
+                        applyFixedStart(var, var.bindingContext);
                         var.initial = variableInitial(var);
                     }
 
@@ -317,6 +321,7 @@ void ModelInfoExtractor::extractVariables(basemodelica::BaseModelicaParser::Base
                         // Parse field modifications from the record instance modification
                         std::map<std::string, std::string> fieldStartValues;
                         std::map<std::string, std::string> fieldFixedValues;
+                        std::map<std::string, antlr4::ParserRuleContext*> fieldStartContexts;
                         if (auto mod = compDecl->declaration()->modification()) {
                             // Look for class modifications like p(x(start = 1.0), y(start = 2.0))
                             if (mod->classModification() && mod->classModification()->argumentList()) {
@@ -330,6 +335,7 @@ void ModelInfoExtractor::extractVariables(basemodelica::BaseModelicaParser::Base
                                                     std::string fieldStart = extractStartValue(elemMod->modification());
                                                     if (!fieldStart.empty()) {
                                                         fieldStartValues[fieldName] = fieldStart;
+                                                        fieldStartContexts[fieldName] = extractBindingContext(elemMod->modification());
                                                     }
                                                     if (auto fixed = findModificationAttribute(elemMod->modification(), "fixed")) {
                                                         fieldFixedValues[fieldName] = fixed->getText();
@@ -365,6 +371,9 @@ void ModelInfoExtractor::extractVariables(basemodelica::BaseModelicaParser::Base
                                 }
                             }
                             if (flatVar.causality == "local" || flatVar.causality == "output") {
+                                auto fieldStartContextIt = fieldStartContexts.find(field.name);
+                                applyFixedStart(flatVar, fieldStartContextIt != fieldStartContexts.end()
+                                                             ? fieldStartContextIt->second : nullptr);
                                 flatVar.initial = variableInitial(flatVar);
                             }
 
@@ -650,6 +659,36 @@ std::string ModelInfoExtractor::variableInitial(const Variable& var) {
         return "calculated";
     }
     return var.fixedValue == "true" ? "exact" : "approx";
+}
+
+// fixed = true makes x(t0) = start an initial equation (MLS 8.6). initial="exact" says so for a
+// constant start value. Without a start value, the start value is the default of the type (MLS 4.9),
+// which is constant as well, so it is written. An expression as start value has initial="calculated"
+// and no start attribute: the initial equation x = start then carries fixed = true
+void ModelInfoExtractor::applyFixedStart(Variable& var, antlr4::ParserRuleContext* startContext) {
+    if (var.fixedValue != "true") {
+        return;
+    }
+    if (var.startValue.empty()) {
+        if (var.type == "Real" || var.type == "Integer") {
+            var.startValue = "0";
+        } else if (var.type == "Boolean") {
+            var.startValue = "false";
+        }
+        return;
+    }
+    if (isConstExpression(var.startValue)) {
+        return;
+    }
+    if (!startContext) {
+        throw std::runtime_error("Cannot find the start value of " + var.name + " with fixed = true");
+    }
+    Equation eq;
+    eq.lhsVariable = var.name;
+    eq.rhsContext = startContext;
+    eq.sourceFile = var.sourceFile;
+    eq.sourceLine = var.sourceLine;
+    fixedStartEquations.push_back(eq);
 }
 
 bool ModelInfoExtractor::isConstExpression(const std::string& expr) {

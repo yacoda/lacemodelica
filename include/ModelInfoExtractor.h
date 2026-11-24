@@ -18,6 +18,7 @@ private:
     std::string sourceFile;
     std::set<std::string> derivativeCalls;  // Track der() calls
     std::map<std::string, std::vector<Variable>> recordDefinitions;  // Record type -> field variables
+    std::vector<Equation> fixedStartEquations;  // x = start for fixed = true with an expression as start
 
     void extractPackageAndModelName(basemodelica::BaseModelicaParser::BaseModelicaContext* ctx);
     void extractRecordDefinitions(basemodelica::BaseModelicaParser::BaseModelicaContext* ctx);
@@ -45,6 +46,7 @@ private:
     antlr4::ParserRuleContext* extractMaxContext(basemodelica::BaseModelicaParser::ModificationContext* ctx);
     bool isConstExpression(const std::string& expr);
     std::string variableInitial(const Variable& var);
+    void applyFixedStart(Variable& var, antlr4::ParserRuleContext* startContext);
     std::string extractDescription(basemodelica::BaseModelicaParser::CommentContext* ctx);
     std::vector<std::string> extractDimensions(basemodelica::BaseModelicaParser::DeclarationContext* ctx);
 };

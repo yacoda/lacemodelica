@@ -19,7 +19,12 @@ package 'ModelDescriptionAttributes'
     Real 'c'(start = 3.0);
     Real 'e'(fixed = true, start = 2.0 * 'scale');
     output Real 'z'(fixed = true, start = 0.5);
+    Real 'f'(fixed = true);
+    Boolean 'g'(fixed = true);
     'Point' 'p'(x(fixed = true, start = 1.0), y(start = 2.0));
+    'Point' 'q'(x(fixed = true, start = 3.0 * 'scale'), y(fixed = true));
+  initial equation
+    'b' = 2.5;
   equation
     der('x') = 'u' + 'v';
     'y' = 'x';
@@ -30,5 +35,9 @@ package 'ModelDescriptionAttributes'
     der('z') = 'u';
     der('p.x') = -'p.y';
     der('p.y') = 'p.x';
+    der('f') = 'f';
+    'g' = 'f' > 1.0;
+    der('q.x') = -'q.y';
+    der('q.y') = 'q.x';
   end 'ModelDescriptionAttributes';
 end 'ModelDescriptionAttributes';
