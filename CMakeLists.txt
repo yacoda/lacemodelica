@@ -375,7 +375,7 @@ if(Python3_FOUND)
     )
     set_tests_properties(fmu_import_test PROPERTIES LABELS "integration")
 
-    # What modelDescription.xml says of causality, nominal and fixed
+    # What modelDescription.xml says of causality, nominal, fixed and initial
     if(LACEMODELICA_BUILD_EXE)
         add_test(
             NAME model_description_test

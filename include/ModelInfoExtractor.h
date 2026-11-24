@@ -44,6 +44,7 @@ private:
     antlr4::ParserRuleContext* extractMinContext(basemodelica::BaseModelicaParser::ModificationContext* ctx);
     antlr4::ParserRuleContext* extractMaxContext(basemodelica::BaseModelicaParser::ModificationContext* ctx);
     bool isConstExpression(const std::string& expr);
+    std::string variableInitial(const Variable& var);
     std::string extractDescription(basemodelica::BaseModelicaParser::CommentContext* ctx);
     std::vector<std::string> extractDimensions(basemodelica::BaseModelicaParser::DeclarationContext* ctx);
 };

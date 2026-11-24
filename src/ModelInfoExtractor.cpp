@@ -247,9 +247,9 @@ void ModelInfoExtractor::extractVariables(basemodelica::BaseModelicaParser::Base
                         var.causality = "input";
                         var.variability = "continuous";
                     } else {
+                        // initial follows from the start and fixed attributes, see variableInitial
                         var.causality = typePrefix.find("output") != std::string::npos ? "output" : "local";
                         var.variability = "continuous";
-                        var.initial = "exact";
                     }
 
                     // Extract dimensions
@@ -299,6 +299,9 @@ void ModelInfoExtractor::extractVariables(basemodelica::BaseModelicaParser::Base
                             var.initial = "calculated";
                         }
                     }
+                    if (var.causality == "local" || var.causality == "output") {
+                        var.initial = variableInitial(var);
+                    }
 
                     // Extract description from comment
                     if (compDecl->comment()) {
@@ -313,6 +316,7 @@ void ModelInfoExtractor::extractVariables(basemodelica::BaseModelicaParser::Base
 
                         // Parse field modifications from the record instance modification
                         std::map<std::string, std::string> fieldStartValues;
+                        std::map<std::string, std::string> fieldFixedValues;
                         if (auto mod = compDecl->declaration()->modification()) {
                             // Look for class modifications like p(x(start = 1.0), y(start = 2.0))
                             if (mod->classModification() && mod->classModification()->argumentList()) {
@@ -326,6 +330,9 @@ void ModelInfoExtractor::extractVariables(basemodelica::BaseModelicaParser::Base
                                                     std::string fieldStart = extractStartValue(elemMod->modification());
                                                     if (!fieldStart.empty()) {
                                                         fieldStartValues[fieldName] = fieldStart;
+                                                    }
+                                                    if (auto fixed = findModificationAttribute(elemMod->modification(), "fixed")) {
+                                                        fieldFixedValues[fieldName] = fixed->getText();
                                                     }
                                                 }
                                             }
@@ -348,6 +355,17 @@ void ModelInfoExtractor::extractVariables(basemodelica::BaseModelicaParser::Base
                                 flatVar.startValue = fieldStartIt->second;
                             } else {
                                 flatVar.startValue = "";
+                            }
+                            auto fieldFixedIt = fieldFixedValues.find(field.name);
+                            if (fieldFixedIt != fieldFixedValues.end()) {
+                                flatVar.fixedValue = fieldFixedIt->second;
+                                if (flatVar.fixedValue != "true" && flatVar.fixedValue != "false") {
+                                    throw std::runtime_error("Only true or false are supported for the fixed attribute of " +
+                                                             flatVar.name + ": " + flatVar.fixedValue);
+                                }
+                            }
+                            if (flatVar.causality == "local" || flatVar.causality == "output") {
+                                flatVar.initial = variableInitial(flatVar);
                             }
 
                             info.addVariable(flatVar);
@@ -617,6 +635,21 @@ antlr4::ParserRuleContext* ModelInfoExtractor::extractMinContext(basemodelica::B
 
 antlr4::ParserRuleContext* ModelInfoExtractor::extractMaxContext(basemodelica::BaseModelicaParser::ModificationContext* ctx) {
     return dynamic_cast<antlr4::ParserRuleContext*>(findModificationAttribute(ctx, "max"));
+}
+
+// The FMI initial attribute of a local or output variable. exact: the start value is an initial
+// condition, which is what Modelica's fixed = true says; approx: it is a guess, as with fixed = false,
+// the default for a variable (MLS 8.6). Without a start value, or with an expression as start
+// value, the FMU calculates the value: no start attribute is then allowed (FMI 3.0.2, 2.4.7.5,
+// Definition of initial)
+std::string ModelInfoExtractor::variableInitial(const Variable& var) {
+    if (var.startValue.empty()) {
+        return "";  // calculated, the default for a local or output
+    }
+    if (!isConstExpression(var.startValue)) {
+        return "calculated";
+    }
+    return var.fixedValue == "true" ? "exact" : "approx";
 }
 
 bool ModelInfoExtractor::isConstExpression(const std::string& expr) {
