@@ -3,14 +3,32 @@
 
 //! base 0.1.0
 package 'ModelDescriptionAttributes'
-  model 'ModelDescriptionAttributes' "Causality, nominal and fixed; see test_model_description.py"
+  record 'Point'
+    Real 'x';
+    Real 'y';
+  end 'Point';
+
+  model 'ModelDescriptionAttributes' "Causality, nominal, fixed and initial; see test_model_description.py"
     parameter Real 'scale' = 2.0;
     input Real 'u'(fixed = true, nominal = 5.0);
     input Real 'v'(fixed = false);
     output Real 'y'(nominal = 'scale' * 3.0);
     Real 'x'(min = 2.0 * 'scale');
+    Real 'a'(fixed = true, start = 1.0);
+    Real 'b'(fixed = false, start = 2.0);
+    Real 'c'(start = 3.0);
+    Real 'e'(fixed = true, start = 2.0 * 'scale');
+    output Real 'z'(fixed = true, start = 0.5);
+    'Point' 'p'(x(fixed = true, start = 1.0), y(start = 2.0));
   equation
     der('x') = 'u' + 'v';
     'y' = 'x';
+    der('a') = -'a';
+    der('b') = 'a';
+    'c' = 'a' + 'b';
+    der('e') = -'e';
+    der('z') = 'u';
+    der('p.x') = -'p.y';
+    der('p.y') = 'p.x';
   end 'ModelDescriptionAttributes';
 end 'ModelDescriptionAttributes';
