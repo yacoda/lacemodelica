@@ -523,7 +523,7 @@ std::string ExpressionConverter::convertPrimary(
             funcName = text.substr(0, parenPos);
         }
 
-        if (funcName == "der") {
+        if (ParseTreeNavigator::isDerCall(expr)) {
             return convertDerCall(expr, ctx);
         }
 
@@ -809,51 +809,10 @@ std::string ExpressionConverter::convertDerCall(
 
     auto builder = ctx.builder();
 
-    // Check if the argument is a simple variable reference
-    bool isSimpleVariable = false;
-    std::string varName;
-
-    if (argExpr->children.size() == 1) {
-        antlr4::tree::ParseTree* node = argExpr->children[0];
-        while (node && node->children.size() == 1) {
-            node = node->children[0];
-        }
-        if (node && node->children.empty()) {
-            isSimpleVariable = true;
-            varName = stripQuotes(argExpr->getText());
-        }
-    }
-
-    // Check if the argument is an array element access
-    basemodelica::BaseModelicaParser::ComponentReferenceContext* compRef = nullptr;
-    if (!isSimpleVariable) {
-        auto primary = ParseTreeNavigator::findPrimary(argExpr);
-        compRef = primary ? primary->componentReference() : nullptr;
-    }
-
-    // Handle array element derivative: der(x[i]) -> der(x)[i]
-    if (compRef && !compRef->arraySubscripts().empty()) {
-        std::string baseVarName = stripQuotes(compRef->IDENT(0)->getText());
-
-        if (ctx.derivativeInputs) {
-            std::string derInputName = "der(" + baseVarName + ")";
-
-            if (ctx.derivativeInputs->find(derInputName) == ctx.derivativeInputs->end()) {
-                std::vector<std::string> dimensions;
-                const Variable* var = ctx.info.findVariable(baseVarName);
-                if (var) {
-                    dimensions = var->dimensions;
-                }
-                (*ctx.derivativeInputs)[derInputName] = dimensions;
-            }
-
-            auto subscriptList = compRef->arraySubscripts()[0]->subscript();
-            return builder.applySubscripts(derInputName, subscriptList, ctx.variableMap);
-        }
-    }
-
-    // Handle simple variable derivative
-    if (isSimpleVariable && ctx.derivativeInputs) {
+    // der(x) is the input der(x), der(x[i]) an element of it
+    auto* stateRef = ParseTreeNavigator::derStateReference(expr);
+    if (stateRef && ctx.derivativeInputs) {
+        std::string varName = ParseTreeNavigator::stateName(stateRef);
         std::string derInputName = "der(" + varName + ")";
 
         if (ctx.derivativeInputs->find(derInputName) == ctx.derivativeInputs->end()) {
@@ -865,7 +824,11 @@ std::string ExpressionConverter::convertDerCall(
             (*ctx.derivativeInputs)[derInputName] = dimensions;
         }
 
-        return derInputName;
+        auto subscripts = stateRef->arraySubscripts();
+        if (subscripts.empty()) {
+            return derInputName;
+        }
+        return builder.applySubscripts(derInputName, subscripts[0]->subscript(), ctx.variableMap);
     }
 
     // Complex expression derivative: create a Der node

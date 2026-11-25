@@ -383,6 +383,19 @@ if(Python3_FOUND)
                     $<TARGET_FILE:lacemodelica_exe> ${CMAKE_SOURCE_DIR}/test/testfiles/ModelDescriptionAttributes.bmo
         )
         set_tests_properties(model_description_test PROPERTIES LABELS "integration")
+
+        # der(x) in modelDescription.xml for a scalar and an array state, with the dimensions of x
+        add_test(
+            NAME state_derivatives_test
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/test/test_state_derivatives.py
+                    $<TARGET_FILE:lacemodelica_exe>
+                    ${CMAKE_SOURCE_DIR}/test/testfiles/DerCallSyntax.bmo
+                    ${CMAKE_SOURCE_DIR}/test/testfiles/DerVariable.bmo
+                    ${CMAKE_SOURCE_DIR}/test/testfiles/ForLoop.bmo
+                    ${CMAKE_SOURCE_DIR}/test/testfiles/MatrixState.bmo
+                    ${CMAKE_SOURCE_DIR}/test/testfiles/StructuralParameters.bmo
+        )
+        set_tests_properties(state_derivatives_test PROPERTIES LABELS "integration")
     endif()
 
     # Add ONNX runtime validation test

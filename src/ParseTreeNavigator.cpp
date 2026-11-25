@@ -2,6 +2,7 @@
 // Copyright (c) 2025 Joris Gillis, YACODA
 
 #include "ParseTreeNavigator.h"
+#include "Utils.hpp"
 #include <stdexcept>
 
 namespace lacemodelica {
@@ -38,6 +39,74 @@ std::pair<int64_t, int64_t> ParseTreeNavigator::parseRangeBounds(
     }
 
     throw std::runtime_error("Invalid range expression: " + expr->getText());
+}
+
+bool ParseTreeNavigator::isDerCall(basemodelica::BaseModelicaParser::PrimaryContext* primary) {
+    return primary && primary->functionCallArgs() && !primary->componentReference() &&
+           primary->getStart()->getText() == "der";
+}
+
+basemodelica::BaseModelicaParser::ComponentReferenceContext*
+ParseTreeNavigator::derStateReference(basemodelica::BaseModelicaParser::PrimaryContext* derCall) {
+    using namespace basemodelica;
+    auto* funcArgs = derCall->functionCallArgs()->functionArguments();
+    if (!funcArgs || !funcArgs->expression()) {
+        return nullptr;
+    }
+
+    // The argument is a reference only if the expression is that one primary: each rule
+    // between them has a single child, so x in der(x + y) or der(-x) does not count
+    antlr4::tree::ParseTree* node = funcArgs->expression();
+    while (!dynamic_cast<BaseModelicaParser::PrimaryContext*>(node)) {
+        if (node->children.size() != 1 || !dynamic_cast<antlr4::ParserRuleContext*>(node->children[0])) {
+            return nullptr;
+        }
+        node = node->children[0];
+    }
+    auto* primary = static_cast<BaseModelicaParser::PrimaryContext*>(node);
+    auto* ref = primary->componentReference();
+    if (!ref || primary->functionCallArgs()) {
+        return nullptr;
+    }
+
+    // An element of an array of records, 'a'[i].'b', is not a variable of its own
+    bool afterSubscripts = false;
+    for (auto* child : ref->children) {
+        if (dynamic_cast<BaseModelicaParser::ArraySubscriptsContext*>(child)) {
+            afterSubscripts = true;
+        } else if (afterSubscripts) {
+            return nullptr;
+        }
+    }
+    return ref;
+}
+
+std::string ParseTreeNavigator::stateName(basemodelica::BaseModelicaParser::ComponentReferenceContext* ref) {
+    std::string name;
+    for (auto* ident : ref->IDENT()) {
+        if (!name.empty()) {
+            name += ".";
+        }
+        name += stripQuotes(ident->getText());
+    }
+    return name;
+}
+
+std::vector<basemodelica::BaseModelicaParser::PrimaryContext*>
+ParseTreeNavigator::findDerCalls(antlr4::tree::ParseTree* tree) {
+    std::vector<basemodelica::BaseModelicaParser::PrimaryContext*> calls;
+    std::vector<antlr4::tree::ParseTree*> stack{tree};
+    while (!stack.empty()) {
+        auto* node = stack.back();
+        stack.pop_back();
+        if (!node) continue;
+        auto* primary = dynamic_cast<basemodelica::BaseModelicaParser::PrimaryContext*>(node);
+        if (isDerCall(primary)) {
+            calls.push_back(primary);
+        }
+        stack.insert(stack.end(), node->children.rbegin(), node->children.rend());
+    }
+    return calls;
 }
 
 std::map<std::type_index, ParseTreeNavigator::NavigationFunc>
