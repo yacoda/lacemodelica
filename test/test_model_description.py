@@ -71,6 +71,14 @@ def main():
     assert fixed("p.y") is None
     assert initial("der(a)") == (None, None)
 
+    # start[N], min[N], max[N] and nominal[N] belong to graph input N, which counts time as well
+    assert inputs[0] == "time", inputs
+    for output in graph.output:
+        attribute, _, index = output.name.partition("[")
+        if attribute in ("start", "min", "max", "nominal"):
+            variable = next(p.value for p in output.metadata_props if p.key == "variable_name")
+            assert inputs[int(index[:-1])] == variable, (output.name, variable)
+
     # fixed = true without a start value: the default start value of the type is the initial value
     assert initial("f") == ("exact", "0")
     assert initial("g") == ("exact", "false")

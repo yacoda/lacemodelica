@@ -2251,9 +2251,9 @@ void ONNXGenerator::generateONNXModel(const ModelInfo& info, const std::string& 
         timeType->mutable_shape();
     }
 
-    // Create inputs and track mapping for start[] outputs
+    // Create inputs, and keep the graph input index of each variable: the N of its outputs
+    // start[N], min[N], max[N] and nominal[N], counting the input time if there is one
     std::map<size_t, int> varIndexToInputIndex;
-    int inputIndex = 0;
 
     for (size_t i = 0; i < info.variables.size(); i++) {
         const auto& var = info.variables[i];
@@ -2287,7 +2287,7 @@ void ONNXGenerator::generateONNXModel(const ModelInfo& info, const std::string& 
             continue;
         }
 
-        varIndexToInputIndex[i] = inputIndex++;
+        varIndexToInputIndex[i] = graph->input_size();
 
         auto* input = graph->add_input();
         input->set_name(var.name);

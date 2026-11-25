@@ -23,6 +23,7 @@ package 'ModelDescriptionAttributes'
     Boolean 'g'(fixed = true);
     'Point' 'p'(x(fixed = true, start = 1.0), y(start = 2.0));
     'Point' 'q'(x(fixed = true, start = 3.0 * 'scale'), y(fixed = true));
+    Real 'w' "Uses time, an input before all variables";
   initial equation
     'b' = 2.5;
   equation
@@ -39,5 +40,6 @@ package 'ModelDescriptionAttributes'
     'g' = 'f' > 1.0;
     der('q.x') = -'q.y';
     der('q.y') = 'q.x';
+    der('w') = time;
   end 'ModelDescriptionAttributes';
 end 'ModelDescriptionAttributes';
