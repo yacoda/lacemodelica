@@ -142,6 +142,8 @@ The generated ONNX model represents the mathematical equations of a Modelica mod
 | **Start Values** | `start[N]` | Initial/default values for variables |
 | **Bounds** | `min[N]`, `max[N]` | Variable bounds (only for non-constant expressions) |
 
+In `start[N]`, `min[N]`, `max[N]` and `nominal[N]`, N is the index of the variable among the graph inputs. The input `time`, if the model uses it, comes first and counts as well.
+
 ### Equation Residuals (`eq[N]`, `init_eq[N]`)
 
 For each equation of the form `lhs = rhs`, the output computes the **residual**: `lhs - rhs`. At the solution, all residuals should equal zero.
