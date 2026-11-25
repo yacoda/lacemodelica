@@ -31,8 +31,8 @@ private:
 
     void processEquation(basemodelica::BaseModelicaParser::EquationContext* equation, std::vector<Equation>& target);
 
-    // Scan equation text for der() calls and add to derivativeCalls set
-    void scanForDerivativeCalls(const std::string& equationText);
+    // Add the state of each der() call in a parse tree to derivativeCalls
+    void scanForDerivativeCalls(antlr4::tree::ParseTree* tree);
 
     // Helper to find named attribute in modification's class modification argument list
     void extractDelays(antlr4::tree::ParseTree* tree);

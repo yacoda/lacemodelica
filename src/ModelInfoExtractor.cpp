@@ -271,7 +271,7 @@ void ModelInfoExtractor::extractVariables(basemodelica::BaseModelicaParser::Base
                             eq.sourceFile = sourceFile;
                             eq.sourceLine = var.sourceLine;
                             info.equations.push_back(eq);
-                            scanForDerivativeCalls(mod->expression()->getText());
+                            scanForDerivativeCalls(mod->expression());
                             auto start = findModificationAttribute(mod, "start");
                             var.startValue = start ? start->getText() : "";
                             var.bindingContext = dynamic_cast<antlr4::ParserRuleContext*>(start);
@@ -447,16 +447,12 @@ void ModelInfoExtractor::extractDelays(antlr4::tree::ParseTree* tree) {
     }
 }
 
-void ModelInfoExtractor::scanForDerivativeCalls(const std::string& equationText) {
-    size_t pos = 0;
-    while ((pos = equationText.find("der(", pos)) != std::string::npos) {
-        size_t start = pos + 4;
-        size_t end = equationText.find(")", start);
-        if (end != std::string::npos) {
-            std::string varName = equationText.substr(start, end - start);
-            derivativeCalls.insert(varName);
+void ModelInfoExtractor::scanForDerivativeCalls(antlr4::tree::ParseTree* tree) {
+    // der(x[i]) is an element of der(x); the derivative of another expression has no state
+    for (auto* derCall : ParseTreeNavigator::findDerCalls(tree)) {
+        if (auto* ref = ParseTreeNavigator::derStateReference(derCall)) {
+            derivativeCalls.insert(ParseTreeNavigator::stateName(ref));
         }
-        pos = end;
     }
 }
 
@@ -473,7 +469,7 @@ void ModelInfoExtractor::processEquation(basemodelica::BaseModelicaParser::Equat
     if (equation->ifEquation()) {
         eq.ifEquationContext = equation->ifEquation();
         target.push_back(eq);
-        scanForDerivativeCalls(equation->getText());
+        scanForDerivativeCalls(equation);
         return;
     }
 
@@ -481,7 +477,7 @@ void ModelInfoExtractor::processEquation(basemodelica::BaseModelicaParser::Equat
     if (equation->forEquation()) {
         eq.forEquationContext = equation->forEquation();
         target.push_back(eq);
-        scanForDerivativeCalls(equation->getText());
+        scanForDerivativeCalls(equation);
         return;
     }
 
@@ -498,7 +494,7 @@ void ModelInfoExtractor::processEquation(basemodelica::BaseModelicaParser::Equat
         eq.lhsContext = simpleExpr;
         eq.rhsContext = fullExpr;
         target.push_back(eq);
-        scanForDerivativeCalls(equation->getText());
+        scanForDerivativeCalls(equation);
         return;
     }
 
@@ -559,16 +555,16 @@ void ModelInfoExtractor::processEquation(basemodelica::BaseModelicaParser::Equat
 void ModelInfoExtractor::identifyDerivatives() {
     // For each variable that appears in der(), create a derivative variable
     for (const auto& derVar : derivativeCalls) {
-        std::string cleanDerVar = stripQuotes(derVar);
-        auto* stateVar = info.findVariable(cleanDerVar);
+        auto* stateVar = info.findVariable(derVar);
         if (stateVar) {
             Variable derVariable;
-            derVariable.name = "der(" + cleanDerVar + ")";
+            derVariable.name = "der(" + derVar + ")";
             derVariable.type = "Real";
             derVariable.causality = "local";
             derVariable.variability = "continuous";
             derVariable.isDerivative = true;
             derVariable.derivativeOf = stateVar->valueReference;
+            derVariable.dimensions = stateVar->dimensions;
             derVariable.valueReference = info.nextValueReference++;
 
             info.addVariable(derVariable);

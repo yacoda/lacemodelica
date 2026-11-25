@@ -120,19 +120,10 @@ std::set<std::string> scanForDerivatives(
 
     std::set<std::string> derivatives;
     for (auto* eq : equations) {
-        std::string eqText = eq->getText();
-        size_t pos = 0;
-        while ((pos = eqText.find("der(", pos)) != std::string::npos) {
-            size_t start = pos + 4;
-            size_t end = eqText.find(")", start);
-            if (end != std::string::npos) {
-                std::string derArg = eqText.substr(start, end - start);
-                size_t bracketPos = derArg.find('[');
-                std::string baseVar = stripQuotes(
-                    (bracketPos != std::string::npos) ? derArg.substr(0, bracketPos) : derArg);
-                derivatives.insert("der(" + baseVar + ")");
+        for (auto* derCall : ParseTreeNavigator::findDerCalls(eq)) {
+            if (auto* ref = ParseTreeNavigator::derStateReference(derCall)) {
+                derivatives.insert("der(" + ParseTreeNavigator::stateName(ref) + ")");
             }
-            pos = end;
         }
     }
     return derivatives;

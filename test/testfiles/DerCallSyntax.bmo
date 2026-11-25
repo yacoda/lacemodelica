@@ -1,0 +1,57 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Joris Gillis, YACODA
+
+//! base 0.1.0
+package 'DerCallSyntax'
+  pure function under "A function whose name ends in der"
+    input Real 'u';
+    output Real 'y';
+  algorithm
+    'y' := 2.0 * 'u';
+  end under;
+
+  model 'DerCallSyntax' "der() calls that a text search for der( up to ) gets wrong"
+    Real 'x'[2];
+    Real 'a)b'(start = 1.0) "A quoted name with a closing parenthesis";
+    Real 'w' "No state, the argument of under";
+    Real 'v';
+    Real 'z' "No state, in the name of 'k der(z)'";
+    Real 'k der(z)';
+  equation
+    der('x'[1]) = -'x'[1];
+    der('x'[2 * (1)]) = -'x'[2];
+    der('a)b') = -'a)b';
+    'w' = 1.0;
+    'v' = under('w');
+    'z' = 2.0;
+    'k der(z)' = 'z';
+  end 'DerCallSyntax';
+end 'DerCallSyntax';
+
+// @onnx-test-reference
+// def reference_implementation(inputs):
+//     import numpy as np
+//     x = inputs['x']
+//     der_x = inputs['der(x)']
+//     return {
+//         'eq[0]': np.array(der_x[0] + x[0]),
+//         'eq[1]': np.array(der_x[1] + x[1]),
+//         'eq[2]': np.array(inputs['der(a)b)'] + inputs['a)b']),
+//         'eq[3]': np.array(inputs['w'] - 1.0),
+//         'eq[4]': np.array(inputs['v'] - 2.0 * inputs['w']),
+//         'eq[5]': np.array(inputs['z'] - 2.0),
+//         'eq[6]': np.array(inputs['k der(z)'] - inputs['z']),
+//     }
+//
+// @onnx-test-case
+// import numpy as np
+// {
+//   "x": np.array([1.0, 2.0]),
+//   "der(x)": np.array([-1.0, 0.5]),
+//   "a)b": np.array(3.0),
+//   "der(a)b)": np.array(-2.0),
+//   "w": np.array(1.5),
+//   "v": np.array(3.0),
+//   "z": np.array(2.0),
+//   "k der(z)": np.array(4.0)
+// }

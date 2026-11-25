@@ -8,7 +8,9 @@
 #include <typeindex>
 #include <functional>
 #include <map>
+#include <string>
 #include <utility>
+#include <vector>
 
 namespace lacemodelica {
 
@@ -74,6 +76,32 @@ public:
         auto primary = findPrimary(start);
         return primary ? primary->outputExpressionList() : nullptr;
     }
+
+    /**
+     * Check if a primary is a call of the der operator: the keyword der, not a function
+     * named 'der'.
+     */
+    static bool isDerCall(basemodelica::BaseModelicaParser::PrimaryContext* primary);
+
+    /**
+     * The state of a der call: the component reference x of der(x), der(x[i]) or
+     * der('a'.'b'), with subscripts on its last part only. Returns nullptr for the
+     * derivative of any other expression, such as der(x + y).
+     */
+    static basemodelica::BaseModelicaParser::ComponentReferenceContext*
+        derStateReference(basemodelica::BaseModelicaParser::PrimaryContext* derCall);
+
+    /**
+     * The variable name of a state reference, without quotes and subscripts:
+     * x for 'x'[i], a.b for 'a'.'b'.
+     */
+    static std::string stateName(basemodelica::BaseModelicaParser::ComponentReferenceContext* ref);
+
+    /**
+     * Every der call in a parse tree, nested ones included.
+     */
+    static std::vector<basemodelica::BaseModelicaParser::PrimaryContext*>
+        findDerCalls(antlr4::tree::ParseTree* tree);
 
     /**
      * Check if an expression is a range expression (has colons like "2:4" or "1:2:10").
